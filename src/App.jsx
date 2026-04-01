@@ -173,17 +173,215 @@ function ImportModal({onClose,onImport}){
 
 function DeleteConfirm({trade,onConfirm,onCancel}){return(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:110,display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{background:"#13121A",border:"1px solid rgba(240,90,126,0.3)",borderRadius:16,padding:28,width:360,textAlign:"center"}}><div style={{fontSize:16,fontWeight:700,color:B.text,marginBottom:8}}>Delete Trade?</div><div style={{fontSize:13,color:B.textMuted,marginBottom:6}}>{trade.date} - {trade.instrument} - {trade.direction}</div><div style={{fontSize:15,fontWeight:700,fontFamily:"monospace",color:pnlColor(trade.pnl),marginBottom:20}}>{fmt(trade.pnl)}</div><div style={{display:"flex",gap:10,justifyContent:"center"}}><button onClick={onCancel} style={{padding:"9px 22px",borderRadius:9,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontWeight:600}}>Cancel</button><button onClick={onConfirm} style={{padding:"9px 22px",borderRadius:9,background:"rgba(240,90,126,0.15)",color:B.loss,cursor:"pointer",fontWeight:700,border:"1px solid rgba(240,90,126,0.3)"}}>Delete</button></div></div></div>);}
 
+function GaugeChart({value, max=100, label, color, size=110}){
+  const pct = Math.min(value/max, 1);
+  const angle = pct * 180;
+  const r = 44, cx = 55, cy = 55;
+  const toRad = d => (d-180)*Math.PI/180;
+  const startX = cx + r*Math.cos(toRad(0));
+  const startY = cy + r*Math.sin(toRad(0));
+  const endX = cx + r*Math.cos(toRad(angle));
+  const endY = cy + r*Math.sin(toRad(angle));
+  const large = angle > 180 ? 1 : 0;
+  const trackEnd = cx + r*Math.cos(toRad(180));
+  return(
+    <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+      <svg width={size} height={size*0.6} viewBox="0 0 110 62">
+        <path d={`M ${cx-r} ${cy} A ${r} ${r} 0 0 1 ${cx+r} ${cy}`} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="8" strokeLinecap="round"/>
+        {pct>0&&<path d={`M ${cx-r} ${cy} A ${r} ${r} 0 ${large} 1 ${endX} ${endY}`} fill="none" stroke={color} strokeWidth="8" strokeLinecap="round"/>}
+        <text x={cx} y={cy-4} textAnchor="middle" fill={color} fontSize="14" fontWeight="800" fontFamily="'Space Mono',monospace">{value}{max===100?"%":""}</text>
+      </svg>
+      <div style={{fontSize:10,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase"}}>{label}</div>
+    </div>
+  );
+}
+
+function StreakBadge({trades}){
+  const sorted=[...trades].sort((a,b)=>b.date.localeCompare(a.date));
+  let streak=0, type="";
+  for(const t of sorted){
+    if(streak===0){type=t.result;streak=1;}
+    else if(t.result===type)streak++;
+    else break;
+  }
+  if(!streak)return null;
+  const isWin=type==="Win";
+  return(
+    <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+      <div style={{fontSize:28,fontWeight:800,color:isWin?B.profit:B.loss,fontFamily:"'Space Mono',monospace"}}>{streak}</div>
+      <div style={{fontSize:10,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase"}}>{isWin?"Win":"Loss"} Streak</div>
+      <div style={{display:"flex",gap:3,marginTop:2}}>
+        {Array.from({length:Math.min(streak,7)}).map((_,i)=>(
+          <div key={i} style={{width:8,height:8,borderRadius:"50%",background:isWin?B.profit:B.loss,opacity:1-(i*0.08)}}/>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function Overview({trades}){
   const wins=trades.filter(t=>t.result==="Win"),losses=trades.filter(t=>t.result==="Loss");
-  const totalPnl=trades.reduce((a,t)=>a+t.pnl,0),winRate=trades.length?Math.round((wins.length/trades.length)*100):0;
-  const avgWin=wins.length?Math.round(wins.reduce((a,t)=>a+t.pnl,0)/wins.length):0;
-  const avgLoss=losses.length?Math.round(losses.reduce((a,t)=>a+t.pnl,0)/losses.length):0;
+  const totalPnl=trades.reduce((a,t)=>a+t.pnl,0);
+  const winRate=trades.length?Math.round((wins.length/trades.length)*100):0;
+  const profitFactor=losses.length?parseFloat(Math.abs(wins.reduce((a,t)=>a+t.pnl,0)/(losses.reduce((a,t)=>a+t.pnl,0)||1)).toFixed(2)):0;
   const equity=buildEquity(trades);
-  const dailyPnl=Object.entries(trades.reduce((m,t)=>{m[t.date]=(m[t.date]||0)+t.pnl;return m;},{})).sort((a,b)=>a[0].localeCompare(b[0])).map(([d,p])=>({date:d.slice(5),pnl:p}));
-  const bySetup=trades.reduce((m,t)=>{if(!m[t.setup])m[t.setup]={wins:0,total:0};m[t.setup].total++;if(t.result==="Win")m[t.setup].wins++;return m;},{});
-  const sg=[GL,GTB,GBP,GTB,GL];
-  if(!trades.length)return(<div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:400,gap:16}}><TCAIcon size={64}/><div style={{fontSize:15,color:B.textMuted}}>No trades yet. Log your first trade or import a CSV.</div></div>);
-  return(<div style={{display:"flex",flexDirection:"column",gap:20}}><div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14}}><StatCard label="Net P&L" value={fmt(totalPnl)} sub={`${trades.length} trades`} grad={GTB} accent={B.teal}/><StatCard label="Win Rate" value={`${winRate}%`} sub={`${wins.length}W / ${losses.length}L`} grad={GBP} accent={B.blue}/><StatCard label="Avg Win" value={`+$${avgWin}`} sub="Per winning trade" accent={B.profit}/><StatCard label="Avg Loss" value={`-$${Math.abs(avgLoss)}`} sub="Per losing trade" accent={B.loss}/></div><div style={{display:"grid",gridTemplateColumns:"2fr 1fr",gap:14}}><div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:22}}><div style={{fontSize:10,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",marginBottom:16}}>Equity Curve</div><ResponsiveContainer width="100%" height={185}><AreaChart data={equity}><defs><linearGradient id="eqF" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#00D4A8" stopOpacity={0.25}/><stop offset="60%" stopColor="#4F8EF7" stopOpacity={0.08}/><stop offset="100%" stopColor="#8B5CF6" stopOpacity={0}/></linearGradient><linearGradient id="eqL" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stopColor="#00D4A8"/><stop offset="50%" stopColor="#4F8EF7"/><stop offset="100%" stopColor="#8B5CF6"/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)"/><XAxis dataKey="date" tick={{fill:B.textDim,fontSize:10}} axisLine={false} tickLine={false} interval={Math.ceil(equity.length/8)}/><YAxis tick={{fill:B.textDim,fontSize:10}} axisLine={false} tickLine={false} tickFormatter={v=>`$${v}`}/><Tooltip content={<CTip/>}/><ReferenceLine y={0} stroke="rgba(255,255,255,0.07)"/><Area type="monotone" dataKey="equity" stroke="url(#eqL)" strokeWidth={2.5} fill="url(#eqF)" name="Equity"/></AreaChart></ResponsiveContainer></div><div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:22}}><div style={{fontSize:10,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",marginBottom:16}}>Daily P&L</div><ResponsiveContainer width="100%" height={185}><BarChart data={dailyPnl}><CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false}/><XAxis dataKey="date" tick={{fill:B.textDim,fontSize:9}} axisLine={false} tickLine={false} interval={Math.ceil(dailyPnl.length/6)}/><YAxis tick={{fill:B.textDim,fontSize:9}} axisLine={false} tickLine={false} tickFormatter={v=>`$${v}`}/><Tooltip content={<CTip/>}/><ReferenceLine y={0} stroke="rgba(255,255,255,0.1)"/><Bar dataKey="pnl" name="P&L" radius={[3,3,0,0]} fill={B.teal} isAnimationActive/></BarChart></ResponsiveContainer></div></div>{Object.keys(bySetup).length>0&&(<div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:22}}><div style={{fontSize:10,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",marginBottom:16}}>Setup Performance</div><div style={{display:"grid",gridTemplateColumns:`repeat(${Math.min(Object.keys(bySetup).length,5)},1fr)`,gap:10}}>{Object.entries(bySetup).slice(0,5).map(([s,d],i)=>(<div key={s} style={{background:"rgba(0,0,0,0.3)",borderRadius:12,padding:16,border:`1px solid ${B.border}`,position:"relative",overflow:"hidden"}}><div style={{position:"absolute",bottom:0,left:0,right:0,height:2,background:sg[i%sg.length]}}/><div style={{fontSize:11,color:"#9CA0BC",marginBottom:10,lineHeight:1.4}}>{s}</div><div style={{fontSize:24,fontWeight:800,background:sg[i%sg.length],WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",fontFamily:"monospace"}}>{Math.round((d.wins/d.total)*100)}%</div><div style={{fontSize:10,color:B.textMuted,marginTop:3}}>{d.total} trades</div></div>))}</div></div>)}</div>);
+
+  // Calendar
+  const calMap=buildCalendar(trades);
+  const allDates=trades.map(t=>t.date).sort();
+  const ld=allDates[allDates.length-1]||new Date().toISOString().slice(0,10);
+  const yr=parseInt(ld.slice(0,4)),mo=parseInt(ld.slice(5,7))-1;
+  const mn=new Date(yr,mo,1).toLocaleString("default",{month:"long",year:"numeric"}).toUpperCase();
+  const fd=new Date(yr,mo,1).getDay(),dim=new Date(yr,mo+1,0).getDate();
+  const cells=[];for(let i=0;i<fd;i++)cells.push(null);for(let d=1;d<=dim;d++)cells.push(d);
+  const weeks=[];for(let i=0;i<cells.length;i+=7)weeks.push(cells.slice(i,i+7));
+  const calDays=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+
+  // Weekly P&L
+  const weeklyPnl=weeks.map((week,wi)=>{
+    let wpnl=0,wdays=0;
+    week.forEach(day=>{
+      if(!day)return;
+      const ds=`${yr}-${String(mo+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
+      if(calMap[ds]){wpnl+=calMap[ds].pnl;wdays++;}
+    });
+    return{week:wi+1,pnl:wpnl,days:wdays};
+  });
+
+  // Day win %
+  const tradeDays=Object.values(calMap);
+  const greenDays=tradeDays.filter(d=>d.pnl>0).length;
+  const dayWinPct=tradeDays.length?Math.round((greenDays/tradeDays.length)*100):0;
+
+  if(!trades.length)return(
+    <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:400,gap:16}}>
+      <TCAIcon size={64}/>
+      <div style={{fontSize:15,color:B.textMuted}}>No trades yet. Log your first trade or import a CSV.</div>
+    </div>
+  );
+
+  return(<div style={{display:"flex",flexDirection:"column",gap:18}}>
+
+    {/* Top stats row */}
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr 1fr",gap:14}}>
+      {/* Net P&L */}
+      <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:"18px 20px",position:"relative",overflow:"hidden"}}>
+        <div style={{position:"absolute",top:0,left:0,right:0,height:2,background:GTB}}/>
+        <div style={{fontSize:10,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",marginBottom:6}}>Account P&L</div>
+        <div style={{fontSize:28,fontWeight:800,background:GTB,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",fontFamily:"'Space Mono',monospace",letterSpacing:-1}}>{fmt(totalPnl)}</div>
+        <div style={{fontSize:11,color:B.textMuted,marginTop:4}}>{trades.length} trades total</div>
+      </div>
+
+      {/* Win % gauge */}
+      <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:"14px 20px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
+        <GaugeChart value={winRate} label="Trade Win %" color={winRate>=50?B.profit:B.loss}/>
+      </div>
+
+      {/* Profit factor gauge */}
+      <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:"14px 20px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
+        <GaugeChart value={profitFactor} max={3} label="Profit Factor" color={profitFactor>=1?B.teal:B.loss}/>
+      </div>
+
+      {/* Day win % gauge */}
+      <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:"14px 20px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
+        <GaugeChart value={dayWinPct} label="Day Win %" color={dayWinPct>=50?B.blue:B.loss}/>
+      </div>
+
+      {/* Streak */}
+      <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:"14px 20px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
+        <StreakBadge trades={trades}/>
+      </div>
+    </div>
+
+    {/* Calendar + Weekly P&L */}
+    <div style={{display:"grid",gridTemplateColumns:"1fr 180px",gap:14}}>
+      {/* Main Calendar */}
+      <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:22}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:18}}>
+          <span style={{fontSize:13,fontWeight:800,background:GL,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",letterSpacing:3}}>{mn}</span>
+          <div style={{display:"flex",gap:16,fontSize:11,color:B.textMuted}}>
+            <span><span style={{color:B.profit,fontWeight:700}}>{greenDays}</span> green</span>
+            <span><span style={{color:B.loss,fontWeight:700}}>{tradeDays.length-greenDays}</span> red</span>
+          </div>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:6,marginBottom:8}}>
+          {calDays.map(d=><div key={d} style={{textAlign:"center",fontSize:10,color:B.textMuted,letterSpacing:1,paddingBottom:6}}>{d}</div>)}
+        </div>
+        {weeks.map((w,wi)=>(
+          <div key={wi} style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:6,marginBottom:6}}>
+            {w.map((day,di)=>{
+              if(!day)return <div key={di}/>;
+              const ds=`${yr}-${String(mo+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
+              const data=calMap[ds];
+              const isToday=ds===new Date().toISOString().slice(0,10);
+              return(
+                <div key={di} style={{
+                  minHeight:68,borderRadius:10,padding:"8px 10px",
+                  background:data?(data.pnl>0?`${B.teal}10`:`${B.loss}10`):"rgba(255,255,255,0.01)",
+                  border:`1px solid ${data?(data.pnl>0?`${B.teal}35`:`${B.loss}35`):B.border}`,
+                  outline:isToday?`2px solid ${B.blue}60`:"none",
+                  cursor:data?"pointer":"default",transition:"all 0.15s"
+                }}>
+                  <div style={{fontSize:11,color:data?B.text:B.textDim,fontWeight:700,marginBottom:4}}>{day}</div>
+                  {data&&<>
+                    <div style={{fontSize:12,fontWeight:800,fontFamily:"monospace",color:pnlColor(data.pnl),lineHeight:1}}>{fmt(data.pnl)}</div>
+                    <div style={{fontSize:9,color:B.textMuted,marginTop:3}}>{data.count} trade{data.count>1?"s":""}</div>
+                    <div style={{fontSize:9,color:data.pnl>0?B.profit:B.loss,marginTop:2}}>
+                      {data.pnl>0?"▲":"▼"}
+                    </div>
+                  </>}
+                </div>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+
+      {/* Weekly P&L sidebar */}
+      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+        <div style={{fontSize:10,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",marginBottom:4}}>Weekly P&L</div>
+        {weeklyPnl.map(w=>(
+          <div key={w.week} style={{
+            background:B.surface,border:`1px solid ${w.pnl>0?`${B.teal}25`:w.pnl<0?`${B.loss}25`:B.border}`,
+            borderRadius:10,padding:"12px 14px",borderLeft:`3px solid ${w.pnl>0?B.teal:w.pnl<0?B.loss:B.border}`
+          }}>
+            <div style={{fontSize:10,color:B.textMuted,marginBottom:4}}>Week {w.week}</div>
+            <div style={{fontSize:15,fontWeight:800,fontFamily:"monospace",color:w.pnl>0?B.profit:w.pnl<0?B.loss:B.textMuted}}>
+              {w.pnl===0?"$0":fmt(w.pnl)}
+            </div>
+            <div style={{fontSize:9,color:B.textMuted,marginTop:2}}>{w.days} day{w.days!==1?"s":""}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+
+    {/* Equity curve */}
+    <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:22}}>
+      <div style={{fontSize:10,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",marginBottom:16}}>Account Balance Curve</div>
+      <ResponsiveContainer width="100%" height={160}>
+        <AreaChart data={equity}>
+          <defs>
+            <linearGradient id="eqF2" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#00D4A8" stopOpacity={0.25}/>
+              <stop offset="100%" stopColor="#8B5CF6" stopOpacity={0}/>
+            </linearGradient>
+            <linearGradient id="eqL2" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stopColor="#00D4A8"/>
+              <stop offset="50%" stopColor="#4F8EF7"/>
+              <stop offset="100%" stopColor="#8B5CF6"/>
+            </linearGradient>
+          </defs>
+          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)"/>
+          <XAxis dataKey="date" tick={{fill:B.textDim,fontSize:10}} axisLine={false} tickLine={false} interval={Math.ceil(equity.length/8)}/>
+          <YAxis tick={{fill:B.textDim,fontSize:10}} axisLine={false} tickLine={false} tickFormatter={v=>`$${v}`}/>
+          <Tooltip content={<CTip/>}/>
+          <ReferenceLine y={0} stroke="rgba(255,255,255,0.07)"/>
+          <Area type="monotone" dataKey="equity" stroke="url(#eqL2)" strokeWidth={2.5} fill="url(#eqF2)" name="Balance"/>
+        </AreaChart>
+      </ResponsiveContainer>
+    </div>
+
+  </div>);
 }
 
 function Journal({trades,onEdit,onDelete}){
@@ -253,7 +451,7 @@ export default function App(){
     if(!session){setLoading(false);return;}
     (async()=>{
       const{data}=await supabase.from("trades").select("*").order("date",{ascending:false});
-      setTrades(data||[]);
+      setTrades(data?.length>0?data:SAMPLE);
       setLoading(false);
     })();
   },[session]);
