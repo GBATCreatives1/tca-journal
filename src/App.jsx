@@ -3128,7 +3128,186 @@ function ReportWidget({trades}){
 }
 
 // ── WIDGETS DASHBOARD ────────────────────────────────────────────────────────
-const NAV=[{id:"overview",label:"Overview",icon:"▦"},{id:"journal",label:"Journal",icon:"⊟"},{id:"analytics",label:"Analytics",icon:"◈"},{id:"calendar",label:"Calendar",icon:"⊞"},{id:"playbooks",label:"Strategies",icon:"⊕"}];
+// ── Resources Page ────────────────────────────────────────────────────────────
+function ResourcesPage(){
+  const STORAGE_KEY="tca_youtube_videos_v1";
+  const [videos,setVideos]=useState([]);
+  const [showAdd,setShowAdd]=useState(false);
+  const [newUrl,setNewUrl]=useState("");
+  const [newTitle,setNewTitle]=useState("");
+  const [newDesc,setNewDesc]=useState("");
+  const [loaded,setLoaded]=useState(false);
+
+  const DEFAULT_VIDEOS=[
+    {id:"dQw4w9WgXcQ",title:"Getting Started with MES Futures",desc:"Introduction to Micro E-mini S&P 500 trading"},
+    {id:"dQw4w9WgXcQ",title:"10AM Triple Timeframe Confluence",desc:"The core TCA setup explained step by step"},
+  ];
+
+  useEffect(()=>{
+    (async()=>{
+      try{
+        const r=await window.storage.get(STORAGE_KEY);
+        if(r?.value)setVideos(JSON.parse(r.value));
+        else setVideos([]);
+      }catch(e){setVideos([]);}
+      setLoaded(true);
+    })();
+  },[]);
+
+  const saveVideos=async(vids)=>{
+    setVideos(vids);
+    try{await window.storage.set(STORAGE_KEY,JSON.stringify(vids));}catch(e){}
+  };
+
+  const extractVideoId=(url)=>{
+    // Handle various YouTube URL formats
+    const patterns=[
+      /youtu\.be\/([^?&]+)/,
+      /youtube\.com\/watch\?v=([^&]+)/,
+      /youtube\.com\/embed\/([^?&]+)/,
+      /^([a-zA-Z0-9_-]{11})$/, // raw ID
+    ];
+    for(const p of patterns){
+      const m=url.match(p);
+      if(m)return m[1];
+    }
+    return null;
+  };
+
+  const addVideo=()=>{
+    if(!newUrl.trim())return;
+    const vid=extractVideoId(newUrl.trim());
+    if(!vid){alert("Invalid YouTube URL or ID. Please try again.");return;}
+    const newVid={id:vid,title:newTitle||"Untitled Video",desc:newDesc||""};
+    saveVideos([...videos,newVid]);
+    setNewUrl("");setNewTitle("");setNewDesc("");setShowAdd(false);
+  };
+
+  const removeVideo=(idx)=>{
+    saveVideos(videos.filter((_,i)=>i!==idx));
+  };
+
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:24}}>
+
+      {/* Twitter/X Feed */}
+      <div>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
+          <div style={{width:32,height:32,borderRadius:8,background:"#000",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="white"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.744l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+          </div>
+          <div>
+            <div style={{fontSize:16,fontWeight:800,color:B.text}}>X / Twitter Feed</div>
+            <div style={{fontSize:12,color:B.textMuted}}>@ansarae89</div>
+          </div>
+        </div>
+        <div style={{borderRadius:14,overflow:"hidden",border:`1px solid ${B.border}`,background:"#000",minHeight:600}}>
+          <a
+            className="twitter-timeline"
+            data-theme="dark"
+            data-chrome="nofooter noborders noheader"
+            data-tweet-limit="8"
+            data-height="600"
+            href="https://twitter.com/ansarae89"
+            style={{display:"block",width:"100%"}}
+          >
+            Loading tweets...
+          </a>
+          <script
+            dangerouslySetInnerHTML={{__html:`
+              if(!window.twitterLoaded){
+                window.twitterLoaded=true;
+                var s=document.createElement('script');
+                s.src='https://platform.twitter.com/widgets.js';
+                s.async=true;
+                document.head.appendChild(s);
+              } else if(window.twttr&&window.twttr.widgets){
+                window.twttr.widgets.load();
+              }
+            `}}
+          />
+        </div>
+      </div>
+
+      {/* YouTube Videos */}
+      <div>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <div style={{width:32,height:32,borderRadius:8,background:"#FF0000",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="white"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
+            </div>
+            <div>
+              <div style={{fontSize:16,fontWeight:800,color:B.text}}>Educational Videos</div>
+              <div style={{fontSize:12,color:B.textMuted}}>{videos.length} video{videos.length!==1?"s":""} · Add your TCA YouTube content</div>
+            </div>
+          </div>
+          <button onClick={()=>setShowAdd(true)} style={{padding:"8px 16px",borderRadius:9,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:12,fontWeight:800}}>+ Add Video</button>
+        </div>
+
+        {/* Add video form */}
+        {showAdd&&(
+          <div style={{marginBottom:16,padding:20,borderRadius:14,background:B.surface,border:`1px solid ${B.border}`}}>
+            <div style={{fontSize:13,fontWeight:700,color:B.text,marginBottom:14}}>Add YouTube Video</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+              <div>
+                <label style={lS}>YouTube URL or Video ID *</label>
+                <input value={newUrl} onChange={e=>setNewUrl(e.target.value)} style={iS} placeholder="https://youtube.com/watch?v=... or video ID"/>
+              </div>
+              <div>
+                <label style={lS}>Title</label>
+                <input value={newTitle} onChange={e=>setNewTitle(e.target.value)} style={iS} placeholder="e.g. 10AM Triple TF Setup"/>
+              </div>
+              <div style={{gridColumn:"1/-1"}}>
+                <label style={lS}>Description (optional)</label>
+                <input value={newDesc} onChange={e=>setNewDesc(e.target.value)} style={iS} placeholder="Brief description of what this video covers"/>
+              </div>
+            </div>
+            <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+              <button onClick={()=>{setShowAdd(false);setNewUrl("");setNewTitle("");setNewDesc("");}} style={{padding:"8px 16px",borderRadius:8,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:12}}>Cancel</button>
+              <button onClick={addVideo} style={{padding:"8px 20px",borderRadius:8,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:12,fontWeight:800}}>Add Video</button>
+            </div>
+          </div>
+        )}
+
+        {videos.length===0?(
+          <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"60px 20px",borderRadius:14,border:`2px dashed ${B.border}`,gap:12}}>
+            <div style={{fontSize:36}}>🎬</div>
+            <div style={{fontSize:14,fontWeight:700,color:B.text}}>No videos yet</div>
+            <div style={{fontSize:12,color:B.textMuted,textAlign:"center"}}>Add YouTube videos from The Candlestick Academy<br/>to build your personal educational library</div>
+            <button onClick={()=>setShowAdd(true)} style={{marginTop:8,padding:"9px 20px",borderRadius:9,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:12,fontWeight:800}}>+ Add Your First Video</button>
+          </div>
+        ):(
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(340px,1fr))",gap:16}}>
+            {videos.map((v,i)=>(
+              <div key={i} style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,overflow:"hidden",position:"relative"}}>
+                {/* Remove button */}
+                <button onClick={()=>removeVideo(i)} style={{position:"absolute",top:8,right:8,zIndex:10,width:24,height:24,borderRadius:"50%",background:"rgba(0,0,0,0.7)",border:`1px solid ${B.border}`,color:B.textMuted,cursor:"pointer",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
+                {/* YouTube iframe */}
+                <div style={{position:"relative",paddingBottom:"56.25%",height:0,overflow:"hidden"}}>
+                  <iframe
+                    src={`https://www.youtube.com/embed/${v.id}?rel=0&modestbranding=1`}
+                    title={v.title}
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                    style={{position:"absolute",top:0,left:0,width:"100%",height:"100%",border:"none"}}
+                  />
+                </div>
+                {/* Video info */}
+                <div style={{padding:"14px 16px"}}>
+                  <div style={{fontSize:13,fontWeight:700,color:B.text,marginBottom:4}}>{v.title}</div>
+                  {v.desc&&<div style={{fontSize:11,color:B.textMuted,lineHeight:1.5}}>{v.desc}</div>}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
+const NAV=[{id:"overview",label:"Overview",icon:"▦"},{id:"journal",label:"Journal",icon:"⊟"},{id:"analytics",label:"Analytics",icon:"◈"},{id:"calendar",label:"Calendar",icon:"⊞"},{id:"playbooks",label:"Strategies",icon:"⊕"},{id:"resources",label:"Resources",icon:"◎"}];
 
 export default function App(){
   const [session,setSession]=useState(null);
@@ -3362,6 +3541,7 @@ export default function App(){
       {active==="analytics"&&<Analytics trades={trades}/>}
       {active==="calendar"&&<CalendarView trades={trades} onGradeUpdate={handleGradeUpdate}/>}
       {active==="playbooks"&&<PlaybookView/>}
+      {active==="resources"&&<ResourcesPage/>}
     </div>
   </div>);
 }
