@@ -1371,8 +1371,7 @@ function TemplatePanel({ date, currentNotes, onApply, onClose }) {
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 13, fontWeight: 700, color: B.text }}>{t.name}</div>
                   <div style={{ fontSize: 10, color: B.textMuted, marginTop: 2 }}>
-                    {t.locked ? "Default template" : "Custom template"} · {t.content.split("
-").length} lines
+                    {t.locked ? "Default template" : "Custom template"} · {(t.content.length > 500 ? 'Long' : t.content.length > 200 ? 'Medium' : 'Short') + ' template'
                   </div>
                 </div>
                 <div style={{ display: "flex", gap: 6 }}>
