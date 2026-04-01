@@ -890,40 +890,80 @@ function Overview({trades}){
   const profitFactor=losses.length?parseFloat(Math.abs(wins.reduce((a,t)=>a+t.pnl,0)/(losses.reduce((a,t)=>a+t.pnl,0)||1)).toFixed(2)):0;
   const equity=buildEquity(trades);
 
-  // Day modal state
   const [selectedDay,setSelectedDay]=useState(null);
+  const [showWidgetPicker,setShowWidgetPicker]=useState(false);
+  const [dragOver,setDragOver]=useState(null);
 
-  // Calendar with month navigation
+  // Widget storage
+  const WIDGET_KEY="tca_overview_widgets_v1";
+  const ALL_WIDGETS=[
+    {id:"calendar",    label:"Calendar",           icon:"📅", desc:"Monthly calendar with daily P&L"},
+    {id:"equity",      label:"Equity Curve",        icon:"📈", desc:"Account balance curve over time"},
+    {id:"gauges",      label:"Performance Gauges",  icon:"🎯", desc:"Win%, Profit Factor, Day Win%, Streak"},
+    {id:"dailypnl",    label:"Daily P&L Bar Chart", icon:"📊", desc:"Daily P&L bars"},
+    {id:"setups",      label:"Setup Performance",   icon:"🏆", desc:"Best/worst setups ranked"},
+    {id:"session",     label:"Session Heatmap",     icon:"🌡️", desc:"AM/Mid/PM performance breakdown"},
+    {id:"timeof",      label:"Time of Day",         icon:"🕐", desc:"Best hours to trade"},
+    {id:"cumulative",  label:"Daily & Cumulative",  icon:"📉", desc:"Daily bars + cumulative line"},
+    {id:"drawdown",    label:"Drawdown",             icon:"⚠️", desc:"Drawdown chart over time"},
+    {id:"winAvg",      label:"Win%/Avg Win/Loss",   icon:"💹", desc:"Win rate and averages over time"},
+    {id:"duration",    label:"Trade Duration",       icon:"⏱️", desc:"Performance by trade duration"},
+    {id:"leaderboard", label:"Setup Leaderboard",   icon:"🥇", desc:"Setups ranked by P&L"},
+    {id:"yearly",      label:"Yearly Calendar",      icon:"🗓️", desc:"Full year heatmap"},
+    {id:"progress",    label:"Progress Tracker",     icon:"✅", desc:"Daily rule consistency tracker"},
+    {id:"report",      label:"Report",               icon:"📋", desc:"Custom 3-metric report"},
+    {id:"aicoach",     label:"AI Trade Coach",       icon:"🧠", desc:"AI-powered trade analysis"},
+  ];
+
+  const DEFAULT_LAYOUT=["gauges","calendar","equity","session","setups"];
+  const [activeWidgets,setActiveWidgets]=useState(DEFAULT_LAYOUT);
+  const [loaded,setLoaded]=useState(false);
+
+  useEffect(()=>{
+    (async()=>{
+      try{
+        const r=await window.storage.get(WIDGET_KEY);
+        if(r?.value)setActiveWidgets(JSON.parse(r.value));
+      }catch(e){}
+      setLoaded(true);
+    })();
+  },[]);
+
+  const saveWidgets=async(widgets)=>{
+    setActiveWidgets(widgets);
+    try{await window.storage.set(WIDGET_KEY,JSON.stringify(widgets));}catch(e){}
+  };
+
+  const removeWidget=(id)=>saveWidgets(activeWidgets.filter(w=>w!==id));
+  const addWidget=(id)=>{if(!activeWidgets.includes(id))saveWidgets([...activeWidgets,id]);setShowWidgetPicker(false);};
+
+  // Drag and drop
+  const dragRef=useRef(null);
+  const handleDragStart=(e,id)=>{dragRef.current=id;e.dataTransfer.effectAllowed="move";};
+  const handleDrop=(e,targetId)=>{
+    e.preventDefault();
+    const dragId=dragRef.current;
+    if(!dragId||dragId===targetId)return;
+    const newOrder=[...activeWidgets];
+    const fromIdx=newOrder.indexOf(dragId);
+    const toIdx=newOrder.indexOf(targetId);
+    newOrder.splice(fromIdx,1);
+    newOrder.splice(toIdx,0,dragId);
+    saveWidgets(newOrder);
+    setDragOver(null);
+  };
+
+  // Calendar state
   const allDates=trades.map(t=>t.date).sort();
   const latestDate=allDates[allDates.length-1]||new Date().toISOString().slice(0,10);
   const [calYear,setCalYear]=useState(parseInt(latestDate.slice(0,4)));
   const [calMonth,setCalMonth]=useState(parseInt(latestDate.slice(5,7))-1);
   const [manualNav,setManualNav]=useState(false);
-
-  // Auto-update calendar when new trades sync in (unless user manually navigated)
-  useEffect(()=>{
-    if(manualNav)return;
-    const dates=trades.map(t=>t.date).sort();
-    const ld=dates[dates.length-1];
-    if(ld){
-      setCalYear(parseInt(ld.slice(0,4)));
-      setCalMonth(parseInt(ld.slice(5,7))-1);
-    }
-  },[trades,manualNav]);
-
-  const prevMonth=()=>{
-    setManualNav(true);
-    if(calMonth===0){setCalMonth(11);setCalYear(y=>y-1);}
-    else setCalMonth(m=>m-1);
-  };
-  const nextMonth=()=>{
-    setManualNav(true);
-    if(calMonth===11){setCalMonth(0);setCalYear(y=>y+1);}
-    else setCalMonth(m=>m+1);
-  };
+  useEffect(()=>{if(manualNav)return;const dates=trades.map(t=>t.date).sort();const ld=dates[dates.length-1];if(ld){setCalYear(parseInt(ld.slice(0,4)));setCalMonth(parseInt(ld.slice(5,7))-1);}},[trades,manualNav]);
+  const prevMonth=()=>{setManualNav(true);if(calMonth===0){setCalMonth(11);setCalYear(y=>y-1);}else setCalMonth(m=>m-1);};
+  const nextMonth=()=>{setManualNav(true);if(calMonth===11){setCalMonth(0);setCalYear(y=>y+1);}else setCalMonth(m=>m+1);};
   const now=new Date();
   const canGoForward=!(calYear===now.getFullYear()&&calMonth===now.getMonth());
-
   const calMap=buildCalendar(trades);
   const yr=calYear,mo=calMonth;
   const mn=new Date(yr,mo,1).toLocaleString("default",{month:"long",year:"numeric"}).toUpperCase();
@@ -931,27 +971,131 @@ function Overview({trades}){
   const cells=[];for(let i=0;i<fd;i++)cells.push(null);for(let d=1;d<=dim;d++)cells.push(d);
   const weeks=[];for(let i=0;i<cells.length;i+=7)weeks.push(cells.slice(i,i+7));
   const calDays=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
-
-  // Monthly stats for selected month
   const monthKey=`${yr}-${String(mo+1).padStart(2,"0")}`;
   const monthTrades=trades.filter(t=>t.date.startsWith(monthKey));
   const monthPnl=monthTrades.reduce((a,t)=>a+t.pnl,0);
+  const greenDays=Object.entries(calMap).filter(([k,v])=>k.startsWith(monthKey)&&v.pnl>0).length;
+  const redDays=Object.entries(calMap).filter(([k,v])=>k.startsWith(monthKey)&&v.pnl<0).length;
+  // Weekly pnl
+  const weeklyPnl=weeks.map((week,wi)=>{let wpnl=0,wdays=0;week.forEach(day=>{if(!day)return;const ds=`${yr}-${String(mo+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`;if(calMap[ds]){wpnl+=calMap[ds].pnl;wdays++;}});return{week:wi+1,pnl:wpnl,days:wdays};});
 
-  // Weekly P&L
-  const weeklyPnl=weeks.map((week,wi)=>{
-    let wpnl=0,wdays=0;
-    week.forEach(day=>{
-      if(!day)return;
-      const ds=`${yr}-${String(mo+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
-      if(calMap[ds]){wpnl+=calMap[ds].pnl;wdays++;}
-    });
-    return{week:wi+1,pnl:wpnl,days:wdays};
-  });
-
-  // Day win %
-  const tradeDays=Object.values(calMap);
-  const greenDays=tradeDays.filter(d=>d.pnl>0).length;
-  const dayWinPct=tradeDays.length?Math.round((greenDays/tradeDays.length)*100):0;
+  // Render individual widget by id
+  const renderWidget=(id)=>{
+    switch(id){
+      case "gauges": return(
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr 1fr",gap:14}}>
+          <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:"20px 22px",position:"relative",overflow:"hidden",gridColumn:"span 1"}}>
+            <div style={{position:"absolute",top:0,left:0,right:0,height:2,background:GTB}}/>
+            <div style={{fontSize:10,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",marginBottom:6}}>Account P&L</div>
+            <div style={{fontSize:28,fontWeight:800,color:pnlColor(totalPnl),fontFamily:"'Space Mono',monospace",letterSpacing:-1}}>{fmt(totalPnl)}</div>
+            <div style={{fontSize:11,color:B.textMuted,marginTop:4}}>{trades.length} trades total</div>
+          </div>
+          <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:"14px 20px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}><GaugeChart value={winRate} label="Trade Win %" color={winRate>=50?B.profit:B.loss}/></div>
+          <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:"14px 20px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}><GaugeChart value={profitFactor} max={3} label="Profit Factor" color={profitFactor>=1?B.teal:B.loss}/></div>
+          <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:"14px 20px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}><GaugeChart value={(() =>{const td=Object.values(calMap);const g=td.filter(d=>d.pnl>0).length;return td.length?Math.round((g/td.length)*100):0;})()} label="Day Win %" color={B.blue}/></div>
+          <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:"14px 20px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}><StreakBadge trades={trades}/></div>
+        </div>
+      );
+      case "calendar": return(
+        <div style={{display:"grid",gridTemplateColumns:"1fr 180px",gap:14}}>
+          <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:22}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:18}}>
+              <div style={{display:"flex",alignItems:"center",gap:12}}>
+                <button onClick={prevMonth} style={{background:"none",border:`1px solid ${B.border}`,borderRadius:8,color:B.textMuted,cursor:"pointer",fontSize:16,width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center"}}>‹</button>
+                <span style={{fontSize:13,fontWeight:800,background:GL,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",letterSpacing:3,minWidth:180,textAlign:"center"}}>{mn}</span>
+                <button onClick={nextMonth} disabled={!canGoForward} style={{background:"none",border:`1px solid ${B.border}`,borderRadius:8,color:!canGoForward?B.textDim:B.textMuted,cursor:!canGoForward?"default":"pointer",fontSize:16,width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center"}}>›</button>
+              </div>
+              <div style={{display:"flex",gap:16,alignItems:"center"}}>
+                <span style={{fontSize:12,fontWeight:700,fontFamily:"monospace",color:pnlColor(monthPnl)}}>{monthTrades.length?fmt(monthPnl):"$0"}</span>
+                <span style={{fontSize:11,color:B.textMuted}}><span style={{color:B.profit,fontWeight:700}}>{greenDays}</span> green · <span style={{color:B.loss,fontWeight:700}}>{redDays}</span> red</span>
+              </div>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:6,marginBottom:8}}>
+              {calDays.map(d=><div key={d} style={{textAlign:"center",fontSize:10,color:B.textMuted,letterSpacing:1,paddingBottom:6}}>{d}</div>)}
+            </div>
+            {weeks.map((w,wi)=>(
+              <div key={wi} style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:6,marginBottom:6}}>
+                {w.map((day,di)=>{
+                  if(!day)return <div key={di}/>;
+                  const ds=`${yr}-${String(mo+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
+                  const data=calMap[ds];
+                  const isToday=ds===new Date().toISOString().slice(0,10);
+                  return(
+                    <div key={di} onClick={()=>setSelectedDay(ds)} style={{minHeight:68,borderRadius:10,padding:"8px 10px",background:data?(data.pnl>0?`${B.teal}10`:`${B.loss}10`):"rgba(255,255,255,0.015)",border:`1px solid ${data?(data.pnl>0?`${B.teal}35`:`${B.loss}35`):B.border}`,outline:isToday?`2px solid ${B.blue}60`:"none",cursor:"pointer",transition:"all 0.15s"}}>
+                      <div style={{fontSize:11,color:data?B.text:B.textDim,fontWeight:700,marginBottom:4}}>{day}</div>
+                      {data?<><div style={{fontSize:12,fontWeight:800,fontFamily:"monospace",color:pnlColor(data.pnl),lineHeight:1}}>{fmt(data.pnl)}</div><div style={{fontSize:9,color:B.textMuted,marginTop:3}}>{data.count} trade{data.count>1?"s":""}</div><div style={{fontSize:9,color:data.pnl>0?B.profit:B.loss,marginTop:2}}>{data.pnl>0?"▲":"▼"}</div></>:<div style={{fontSize:8,color:B.textDim,marginTop:6,lineHeight:1.5,textAlign:"center"}}>click to<br/>journal</div>}
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            <div style={{fontSize:10,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",marginBottom:4}}>Weekly P&L</div>
+            {weeklyPnl.map(w=>(
+              <div key={w.week} style={{background:B.surface,border:`1px solid ${w.pnl>0?`${B.teal}25`:w.pnl<0?`${B.loss}25`:B.border}`,borderRadius:10,padding:"12px 14px",borderLeft:`3px solid ${w.pnl>0?B.teal:w.pnl<0?B.loss:B.border}`}}>
+                <div style={{fontSize:10,color:B.textMuted,marginBottom:4}}>Week {w.week}</div>
+                <div style={{fontSize:15,fontWeight:800,fontFamily:"monospace",color:w.pnl>0?B.profit:w.pnl<0?B.loss:B.textMuted}}>{w.pnl===0?"$0":fmt(w.pnl)}</div>
+                <div style={{fontSize:9,color:B.textMuted,marginTop:2}}>{w.days} day{w.days!==1?"s":""}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+      case "equity": return(
+        <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:22}}>
+          <div style={{fontSize:10,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",marginBottom:16}}>Account Balance Curve</div>
+          <ResponsiveContainer width="100%" height={160}>
+            <AreaChart data={equity}>
+              <defs><linearGradient id="eqF2" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#00D4A8" stopOpacity={0.25}/><stop offset="100%" stopColor="#8B5CF6" stopOpacity={0}/></linearGradient><linearGradient id="eqL2" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stopColor="#00D4A8"/><stop offset="50%" stopColor="#4F8EF7"/><stop offset="100%" stopColor="#8B5CF6"/></linearGradient></defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)"/>
+              <XAxis dataKey="date" tick={{fill:B.textDim,fontSize:10}} axisLine={false} tickLine={false} interval={Math.ceil(equity.length/8)}/>
+              <YAxis tick={{fill:B.textDim,fontSize:10}} axisLine={false} tickLine={false} tickFormatter={v=>`$${v}`}/>
+              <Tooltip content={<CTip/>}/><ReferenceLine y={0} stroke="rgba(255,255,255,0.07)"/>
+              <Area type="monotone" dataKey="equity" stroke="url(#eqL2)" strokeWidth={2.5} fill="url(#eqF2)" name="Balance"/>
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      );
+      case "dailypnl": return(
+        <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:22}}>
+          <div style={{fontSize:10,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",marginBottom:16}}>Daily P&L</div>
+          <ResponsiveContainer width="100%" height={160}>
+            <BarChart data={Object.entries(trades.reduce((m,t)=>{m[t.date]=(m[t.date]||0)+t.pnl;return m;},{})).sort((a,b)=>a[0].localeCompare(b[0])).map(([d,p])=>({date:d.slice(5),pnl:Math.round(p*100)/100}))}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false}/>
+              <XAxis dataKey="date" tick={{fill:B.textDim,fontSize:9}} axisLine={false} tickLine={false}/>
+              <YAxis tick={{fill:B.textDim,fontSize:9}} axisLine={false} tickLine={false} tickFormatter={v=>`$${v}`}/>
+              <Tooltip content={<CTip/>}/><ReferenceLine y={0} stroke="rgba(255,255,255,0.1)"/>
+              <Bar dataKey="pnl" name="P&L" radius={[3,3,0,0]}>
+                {Object.entries(trades.reduce((m,t)=>{m[t.date]=(m[t.date]||0)+t.pnl;return m;},{})).map(([d,p],i)=>(<Cell key={i} fill={p>=0?B.teal:B.loss}/>))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      );
+      case "setups": return(
+        <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:22}}>
+          <div style={{fontSize:10,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",marginBottom:16}}>Setup Performance</div>
+          {Object.entries(trades.reduce((m,t)=>{if(!m[t.setup])m[t.setup]={wins:0,total:0,pnl:0};m[t.setup].total++;m[t.setup].pnl+=t.pnl;if(t.result==="Win")m[t.setup].wins++;return m;},{})).sort((a,b)=>b[1].pnl-a[1].pnl).slice(0,5).map(([s,d],i)=>{
+            const sg=[GL,GTB,GBP,GTB,GL];
+            return(<div key={s} style={{marginBottom:12}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:5}}><span style={{fontSize:12,color:B.text}}>{s}</span><div style={{display:"flex",gap:12}}><span style={{fontSize:11,color:B.textMuted}}>{Math.round((d.wins/d.total)*100)}% WR</span><span style={{fontSize:12,fontFamily:"monospace",color:pnlColor(d.pnl),fontWeight:700}}>{fmt(d.pnl)}</span></div></div><div style={{height:5,background:"rgba(255,255,255,0.05)",borderRadius:3}}><div style={{height:"100%",width:Math.round((d.wins/d.total)*100)+"%",background:sg[i],borderRadius:3}}/></div></div>);
+          })}
+        </div>
+      );
+      case "session":    return <SessionHeatmapWidget trades={trades}/>;
+      case "timeof":     return <TradeTimeWidget trades={trades}/>;
+      case "cumulative": return <DailyCumulativeWidget trades={trades}/>;
+      case "drawdown":   return <DrawdownWidget trades={trades}/>;
+      case "winAvg":     return <WinAvgWidget trades={trades}/>;
+      case "duration":   return <TradeDurationWidget trades={trades}/>;
+      case "leaderboard":return <SetupLeaderboardWidget trades={trades}/>;
+      case "yearly":     return <YearlyCalendarWidget trades={trades}/>;
+      case "progress":   return <ProgressTrackerWidget trades={trades}/>;
+      case "report":     return <ReportWidget trades={trades}/>;
+      case "aicoach":    return <AICoachWidget trades={trades}/>;
+      default: return null;
+    }
+  };
 
   if(!trades.length)return(
     <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:400,gap:16}}>
@@ -960,136 +1104,104 @@ function Overview({trades}){
     </div>
   );
 
-  return(<div style={{display:"flex",flexDirection:"column",gap:18}}>
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:18}}>
+      {selectedDay&&<DayJournalModal date={selectedDay} trades={trades} onClose={()=>setSelectedDay(null)}/>}
 
-    {/* Top stats row */}
-    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr 1fr",gap:14}}>
-      {/* Net P&L */}
-      <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:"18px 20px",position:"relative",overflow:"hidden"}}>
-        <div style={{position:"absolute",top:0,left:0,right:0,height:2,background:GTB}}/>
-        <div style={{fontSize:10,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",marginBottom:6}}>Account P&L</div>
-        <div style={{fontSize:28,fontWeight:800,color:pnlColor(totalPnl),fontFamily:"'Space Mono',monospace",letterSpacing:-1}}>{fmt(totalPnl)}</div>
-        <div style={{fontSize:11,color:B.textMuted,marginTop:4}}>{trades.length} trades total</div>
-      </div>
-
-      {/* Win % gauge */}
-      <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:"14px 20px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
-        <GaugeChart value={winRate} label="Trade Win %" color={winRate>=50?B.profit:B.loss}/>
-      </div>
-
-      {/* Profit factor gauge */}
-      <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:"14px 20px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
-        <GaugeChart value={profitFactor} max={3} label="Profit Factor" color={profitFactor>=1?B.teal:B.loss}/>
-      </div>
-
-      {/* Day win % gauge */}
-      <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:"14px 20px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
-        <GaugeChart value={dayWinPct} label="Day Win %" color={dayWinPct>=50?B.blue:B.loss}/>
-      </div>
-
-      {/* Streak */}
-      <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:"14px 20px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
-        <StreakBadge trades={trades}/>
-      </div>
-    </div>
-
-    {/* Calendar + Weekly P&L */}
-    <div style={{display:"grid",gridTemplateColumns:"1fr 180px",gap:14}}>
-      {/* Main Calendar */}
-      <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:22}}>
-        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:18}}>
-          <div style={{display:"flex",alignItems:"center",gap:12}}>
-            <button onClick={prevMonth} style={{background:"none",border:`1px solid ${B.border}`,borderRadius:8,color:B.textMuted,cursor:"pointer",fontSize:16,width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center"}}>‹</button>
-            <span style={{fontSize:13,fontWeight:800,background:GL,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",letterSpacing:3,minWidth:180,textAlign:"center"}}>{mn}</span>
-            <button onClick={nextMonth} disabled={!canGoForward} style={{background:"none",border:`1px solid ${B.border}`,borderRadius:8,color:!canGoForward?B.textDim:B.textMuted,cursor:!canGoForward?"default":"pointer",fontSize:16,width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center"}}>›</button>
-          </div>
-          <div style={{display:"flex",gap:16,alignItems:"center"}}>
-            <span style={{fontSize:12,fontWeight:700,fontFamily:"monospace",color:pnlColor(monthPnl)}}>{fmt(monthPnl)}</span>
-            <span style={{fontSize:11,color:B.textMuted}}><span style={{color:B.profit,fontWeight:700}}>{greenDays}</span> green · <span style={{color:B.loss,fontWeight:700}}>{tradeDays.length-greenDays}</span> red</span>
-          </div>
-        </div>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:6,marginBottom:8}}>
-          {calDays.map(d=><div key={d} style={{textAlign:"center",fontSize:10,color:B.textMuted,letterSpacing:1,paddingBottom:6}}>{d}</div>)}
-        </div>
-        {weeks.map((w,wi)=>(
-          <div key={wi} style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:6,marginBottom:6}}>
-            {w.map((day,di)=>{
-              if(!day)return <div key={di}/>;
-              const ds=`${yr}-${String(mo+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
-              const data=calMap[ds];
-              const isToday=ds===new Date().toISOString().slice(0,10);
-              return(
-                <div key={di} onClick={()=>setSelectedDay(ds)} style={{
-                  minHeight:68,borderRadius:10,padding:"8px 10px",
-                  background:data?(data.pnl>0?`${B.teal}10`:`${B.loss}10`):"rgba(255,255,255,0.015)",
-                  border:`1px solid ${data?(data.pnl>0?`${B.teal}35`:`${B.loss}35`):B.border}`,
-                  outline:isToday?`2px solid ${B.blue}60`:"none",
-                  cursor:"pointer",transition:"all 0.15s",
-                }}>
-                  <div style={{fontSize:11,color:data?B.text:B.textDim,fontWeight:700,marginBottom:4}}>{day}</div>
-                  {data?<>
-                    <div style={{fontSize:12,fontWeight:800,fontFamily:"monospace",color:pnlColor(data.pnl),lineHeight:1}}>{fmt(data.pnl)}</div>
-                    <div style={{fontSize:9,color:B.textMuted,marginTop:3}}>{data.count} trade{data.count>1?"s":""}</div>
-                    <div style={{fontSize:9,color:data.pnl>0?B.profit:B.loss,marginTop:2}}>
-                      {data.pnl>0?"▲":"▼"}
-                    </div>
-                  </>:<div style={{fontSize:8,color:B.textDim,marginTop:6,lineHeight:1.5,textAlign:"center"}}>click to<br/>journal</div>}
-                </div>
-              );
-            })}
-          </div>
-        ))}
-      </div>
-
-      {/* Weekly P&L sidebar */}
-      <div style={{display:"flex",flexDirection:"column",gap:8}}>
-        <div style={{fontSize:10,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",marginBottom:4}}>Weekly P&L</div>
-        {weeklyPnl.map(w=>(
-          <div key={w.week} style={{
-            background:B.surface,border:`1px solid ${w.pnl>0?`${B.teal}25`:w.pnl<0?`${B.loss}25`:B.border}`,
-            borderRadius:10,padding:"12px 14px",borderLeft:`3px solid ${w.pnl>0?B.teal:w.pnl<0?B.loss:B.border}`
-          }}>
-            <div style={{fontSize:10,color:B.textMuted,marginBottom:4}}>Week {w.week}</div>
-            <div style={{fontSize:15,fontWeight:800,fontFamily:"monospace",color:w.pnl>0?B.profit:w.pnl<0?B.loss:B.textMuted}}>
-              {w.pnl===0?"$0":fmt(w.pnl)}
+      {/* Widget Picker Modal */}
+      {showWidgetPicker&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",zIndex:150,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(8px)"}} onClick={()=>setShowWidgetPicker(false)}>
+          <div style={{background:"#13121A",border:`1px solid ${B.border}`,borderRadius:20,width:600,maxHeight:"80vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
+            <div style={{height:3,background:GL,borderRadius:"20px 20px 0 0"}}/>
+            <div style={{padding:"22px 28px 0",display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+              <div>
+                <div style={{fontSize:18,fontWeight:800,color:B.text}}>Add Widget</div>
+                <div style={{fontSize:12,color:B.textMuted,marginTop:3}}>Click any widget to add it to your Overview</div>
+              </div>
+              <button onClick={()=>setShowWidgetPicker(false)} style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${B.border}`,borderRadius:8,color:B.textMuted,cursor:"pointer",fontSize:18,width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
             </div>
-            <div style={{fontSize:9,color:B.textMuted,marginTop:2}}>{w.days} day{w.days!==1?"s":""}</div>
+            <div style={{padding:"0 28px 28px",display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+              {ALL_WIDGETS.map(w=>{
+                const active=activeWidgets.includes(w.id);
+                return(
+                  <div key={w.id} onClick={()=>!active&&addWidget(w.id)} style={{
+                    padding:"14px 16px",borderRadius:12,cursor:active?"default":"pointer",
+                    background:active?`${B.teal}08`:`${B.surface}`,
+                    border:`1px solid ${active?`${B.teal}40`:B.border}`,
+                    opacity:active?0.6:1,transition:"all 0.15s",
+                    display:"flex",alignItems:"center",gap:12
+                  }}>
+                    <span style={{fontSize:22}}>{w.icon}</span>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:13,fontWeight:700,color:B.text}}>{w.label}</div>
+                      <div style={{fontSize:11,color:B.textMuted,marginTop:2}}>{w.desc}</div>
+                    </div>
+                    {active?<span style={{fontSize:10,color:B.teal,fontWeight:700}}>Added</span>:<span style={{fontSize:16,color:B.textMuted}}>+</span>}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Widget toolbar */}
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 16px",borderRadius:12,background:B.surface,border:`1px solid ${B.border}`}}>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <span style={{fontSize:11,color:B.textMuted}}>⠿ Drag widgets to reorder</span>
+          <span style={{fontSize:11,color:B.textDim}}>·</span>
+          <span style={{fontSize:11,color:B.textMuted}}>{activeWidgets.length} widget{activeWidgets.length!==1?"s":""} active</span>
+        </div>
+        <button onClick={()=>setShowWidgetPicker(true)} style={{padding:"7px 16px",borderRadius:9,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:12,fontWeight:800,display:"flex",alignItems:"center",gap:6}}>
+          + Add Widget
+        </button>
+      </div>
+
+      {/* Draggable widget grid */}
+      <div style={{display:"flex",flexDirection:"column",gap:16}}>
+        {activeWidgets.map((wid)=>(
+          <div key={wid}
+            draggable
+            onDragStart={e=>handleDragStart(e,wid)}
+            onDragOver={e=>{e.preventDefault();setDragOver(wid);}}
+            onDragLeave={()=>setDragOver(null)}
+            onDrop={e=>handleDrop(e,wid)}
+            style={{
+              position:"relative",
+              outline:dragOver===wid?`2px dashed ${B.teal}`:"none",
+              borderRadius:14,
+              transition:"outline 0.15s",
+              opacity:dragRef.current===wid?0.5:1,
+            }}
+          >
+            {/* Widget header bar with drag handle + remove */}
+            <div style={{position:"absolute",top:8,right:8,zIndex:10,display:"flex",gap:4,opacity:0,transition:"opacity 0.2s"}}
+              onMouseEnter={e=>e.currentTarget.style.opacity=1}
+              onMouseLeave={e=>e.currentTarget.style.opacity=0}
+              className="widget-controls">
+            </div>
+            <div style={{position:"relative"}} onMouseEnter={e=>{const ctrl=e.currentTarget.previousSibling;if(ctrl)ctrl.style.opacity=1;}} onMouseLeave={e=>{const ctrl=e.currentTarget.previousSibling;if(ctrl)ctrl.style.opacity=0;}}>
+              {/* Remove button overlay */}
+              <div style={{position:"absolute",top:-8,right:-8,zIndex:20}}>
+                <button
+                  onClick={()=>removeWidget(wid)}
+                  title="Remove widget"
+                  style={{width:22,height:22,borderRadius:"50%",border:`1px solid ${B.border}`,background:"#13121A",color:B.textMuted,cursor:"pointer",fontSize:12,display:"flex",alignItems:"center",justifyContent:"center",opacity:0,transition:"opacity 0.2s"}}
+                  onMouseEnter={e=>e.currentTarget.style.opacity=1}
+                  onMouseLeave={e=>e.currentTarget.style.opacity=0}
+                >×</button>
+              </div>
+              <div style={{cursor:"grab"}} onMouseDown={e=>e.currentTarget.style.cursor="grabbing"} onMouseUp={e=>e.currentTarget.style.cursor="grab"}>
+                {renderWidget(wid)}
+              </div>
+            </div>
           </div>
         ))}
       </div>
     </div>
-
-    {/* Equity curve */}
-    <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:22}}>
-      <div style={{fontSize:10,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",marginBottom:16}}>Account Balance Curve</div>
-      <ResponsiveContainer width="100%" height={160}>
-        <AreaChart data={equity}>
-          <defs>
-            <linearGradient id="eqF2" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#00D4A8" stopOpacity={0.25}/>
-              <stop offset="100%" stopColor="#8B5CF6" stopOpacity={0}/>
-            </linearGradient>
-            <linearGradient id="eqL2" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0%" stopColor="#00D4A8"/>
-              <stop offset="50%" stopColor="#4F8EF7"/>
-              <stop offset="100%" stopColor="#8B5CF6"/>
-            </linearGradient>
-          </defs>
-          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)"/>
-          <XAxis dataKey="date" tick={{fill:B.textDim,fontSize:10}} axisLine={false} tickLine={false} interval={Math.ceil(equity.length/8)}/>
-          <YAxis tick={{fill:B.textDim,fontSize:10}} axisLine={false} tickLine={false} tickFormatter={v=>`$${v}`}/>
-          <Tooltip content={<CTip/>}/>
-          <ReferenceLine y={0} stroke="rgba(255,255,255,0.07)"/>
-          <Area type="monotone" dataKey="equity" stroke="url(#eqL2)" strokeWidth={2.5} fill="url(#eqF2)" name="Balance"/>
-        </AreaChart>
-      </ResponsiveContainer>
-    </div>
-
-    {/* Day Detail Modal */}
-    {selectedDay&&<DayJournalModal date={selectedDay} trades={trades} onClose={()=>setSelectedDay(null)}/>}
-
-  </div>);
+  );
 }
+
 
 function Journal({trades,onEdit,onDelete}){
   const [filter,setFilter]=useState("All");const [sort,setSort]=useState("date");
@@ -2882,7 +2994,170 @@ function WidgetsDashboard({trades}){
 }
 
 
-const NAV=[{id:"overview",label:"Overview",icon:"▦"},{id:"journal",label:"Journal",icon:"⊟"},{id:"analytics",label:"Analytics",icon:"◈"},{id:"calendar",label:"Calendar",icon:"⊞"},{id:"widgets",label:"Widgets",icon:"⬡"},{id:"playbooks",label:"Strategies",icon:"⊕"}];
+
+// ── Chart Library Modal ───────────────────────────────────────────────────────
+const ALL_WIDGETS = [
+  {id:"aicoach",      label:"AI Trade Coach",         desc:"AI analyzes your trades and gives coaching feedback",         icon:"🧠", category:"AI"},
+  {id:"report",       label:"Report",                 desc:"Track up to 3 custom performance metrics",                   icon:"📋", category:"Stats"},
+  {id:"dailycum",     label:"Daily & Cumulative P&L",  desc:"Bar + line chart showing daily and running total P&L",       icon:"📈", category:"Charts"},
+  {id:"winavg",       label:"Win% / Avg Win / Loss",   desc:"How your win rate and averages change over time",            icon:"📊", category:"Charts"},
+  {id:"drawdown",     label:"Drawdown",                desc:"Net P&L drawdown across all trading days",                   icon:"📉", category:"Charts"},
+  {id:"sessionmap",   label:"Session Heatmap",         desc:"AM vs Mid vs PM performance breakdown",                      icon:"🌡️", category:"Stats"},
+  {id:"timechart",    label:"Trade Time Performance",  desc:"Which hours of the day are most profitable",                 icon:"🕐", category:"Charts"},
+  {id:"duration",     label:"Trade Duration",          desc:"Performance by how long you hold trades",                    icon:"⏱️", category:"Stats"},
+  {id:"leaderboard",  label:"Setup Leaderboard",       desc:"Your setups ranked best to worst by P&L",                   icon:"🏆", category:"Stats"},
+  {id:"progress",     label:"Progress Tracker",        desc:"Daily rule consistency checker",                             icon:"✅", category:"Tools"},
+  {id:"yearlycal",    label:"Yearly Calendar",         desc:"Full year heatmap of your trading performance",              icon:"📅", category:"Charts"},
+];
+
+const WIDGET_STORAGE_KEY = "tca_active_widgets_v1";
+const DEFAULT_WIDGETS = ["aicoach","report","dailycum","winavg","drawdown","sessionmap","timechart","duration","leaderboard","progress","yearlycal"];
+
+function useActiveWidgets(){
+  const [activeWidgets, setActiveWidgets] = useState(DEFAULT_WIDGETS);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(()=>{
+    (async()=>{
+      try{
+        const r = await window.storage.get(WIDGET_STORAGE_KEY);
+        if(r?.value) setActiveWidgets(JSON.parse(r.value));
+      }catch(e){}
+      setLoaded(true);
+    })();
+  },[]);
+
+  const save = async(widgets) => {
+    setActiveWidgets(widgets);
+    try{ await window.storage.set(WIDGET_STORAGE_KEY, JSON.stringify(widgets)); }catch(e){}
+  };
+
+  return { activeWidgets, save, loaded };
+}
+
+function ChartLibraryModal({activeWidgets, onSave, onClose}){
+  const [selected, setSelected] = useState([...activeWidgets]);
+  const [search, setSearch] = useState("");
+  const categories = ["All", "AI", "Charts", "Stats", "Tools"];
+  const [cat, setCat] = useState("All");
+
+  const filtered = ALL_WIDGETS.filter(w =>
+    (cat === "All" || w.category === cat) &&
+    (w.label.toLowerCase().includes(search.toLowerCase()) || w.desc.toLowerCase().includes(search.toLowerCase()))
+  );
+
+  const toggle = (id) => {
+    setSelected(s => s.includes(id) ? s.filter(x=>x!==id) : [...s, id]);
+  };
+
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",zIndex:150,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(8px)"}}>
+      <div style={{background:"#13121A",border:`1px solid ${B.border}`,borderRadius:20,width:620,maxHeight:"85vh",display:"flex",flexDirection:"column"}}>
+        <div style={{height:3,background:GL,borderRadius:"20px 20px 0 0"}}/>
+
+        {/* Header */}
+        <div style={{padding:"22px 28px 0",display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+          <div>
+            <div style={{fontSize:18,fontWeight:800,color:B.text}}>Chart Library</div>
+            <div style={{fontSize:12,color:B.textMuted,marginTop:3}}>Insert widgets to your dashboard</div>
+          </div>
+          <button onClick={onClose} style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${B.border}`,borderRadius:8,color:B.textMuted,cursor:"pointer",fontSize:18,width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
+        </div>
+
+        {/* Search */}
+        <div style={{padding:"0 28px",marginBottom:12}}>
+          <input value={search} onChange={e=>setSearch(e.target.value)}
+            style={{...iS,padding:"10px 14px"}} placeholder="Search widgets..."/>
+        </div>
+
+        {/* Category tabs */}
+        <div style={{padding:"0 28px",display:"flex",gap:6,marginBottom:16}}>
+          {categories.map(c=>(
+            <button key={c} onClick={()=>setCat(c)} style={{
+              padding:"5px 14px",borderRadius:20,border:"1px solid",cursor:"pointer",fontSize:11,fontWeight:700,
+              borderColor:cat===c?B.teal:B.border,
+              background:cat===c?`${B.teal}15`:"transparent",
+              color:cat===c?B.teal:B.textMuted,
+            }}>{c}</button>
+          ))}
+        </div>
+
+        {/* Widget list */}
+        <div style={{flex:1,overflowY:"auto",padding:"0 28px"}}>
+          {filtered.map(w=>(
+            <div key={w.id} style={{
+              display:"flex",alignItems:"center",gap:16,padding:"14px 16px",borderRadius:12,marginBottom:8,
+              background:selected.includes(w.id)?`${B.teal}08`:"rgba(255,255,255,0.02)",
+              border:`1px solid ${selected.includes(w.id)?`${B.teal}30`:B.border}`,
+            }}>
+              {/* Thumbnail */}
+              <div style={{width:64,height:44,borderRadius:8,background:"rgba(0,0,0,0.4)",border:`1px solid ${B.border}`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:22}}>
+                {w.icon}
+              </div>
+              {/* Info */}
+              <div style={{flex:1}}>
+                <div style={{fontSize:13,fontWeight:700,color:B.text,marginBottom:3}}>{w.label}</div>
+                <div style={{fontSize:11,color:B.textMuted,lineHeight:1.4}}>{w.desc}</div>
+              </div>
+              {/* Toggle button */}
+              <button onClick={()=>toggle(w.id)} style={{
+                padding:"7px 16px",borderRadius:20,border:"1px solid",cursor:"pointer",fontSize:11,fontWeight:700,
+                borderColor:selected.includes(w.id)?B.loss:B.teal,
+                background:selected.includes(w.id)?`${B.loss}10`:`${B.teal}10`,
+                color:selected.includes(w.id)?B.loss:B.teal,
+                whiteSpace:"nowrap",flexShrink:0,
+              }}>{selected.includes(w.id)?"Remove":"+ Add"}</button>
+            </div>
+          ))}
+        </div>
+
+        {/* Footer */}
+        <div style={{padding:"16px 28px",borderTop:`1px solid ${B.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div style={{fontSize:12,color:B.textMuted}}><span style={{color:B.teal,fontWeight:700}}>{selected.length}</span> of {ALL_WIDGETS.length} widgets active</div>
+          <div style={{display:"flex",gap:10}}>
+            <button onClick={onClose} style={{padding:"9px 20px",borderRadius:10,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:13}}>Cancel</button>
+            <button onClick={()=>{onSave(selected);onClose();}} style={{padding:"9px 24px",borderRadius:10,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:13,fontWeight:800}}>Save Dashboard</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Widget renderer
+function WidgetRenderer({id, trades}){
+  switch(id){
+    case "aicoach":     return <AICoachWidget trades={trades}/>;
+    case "report":      return <ReportWidget trades={trades}/>;
+    case "dailycum":    return <DailyCumulativeWidget trades={trades}/>;
+    case "winavg":      return <WinAvgWidget trades={trades}/>;
+    case "drawdown":    return <DrawdownWidget trades={trades}/>;
+    case "sessionmap":  return <SessionHeatmapWidget trades={trades}/>;
+    case "timechart":   return <TradeTimeWidget trades={trades}/>;
+    case "duration":    return <TradeDurationWidget trades={trades}/>;
+    case "leaderboard": return <SetupLeaderboardWidget trades={trades}/>;
+    case "progress":    return <ProgressTrackerWidget trades={trades}/>;
+    case "yearlycal":   return <YearlyCalendarWidget trades={trades}/>;
+    default: return null;
+  }
+}
+
+// Widget layout config
+const WIDGET_LAYOUT = {
+  aicoach:     {cols:2, rows:1},
+  report:      {cols:1, rows:1},
+  dailycum:    {cols:2, rows:1},
+  winavg:      {cols:1, rows:1},
+  drawdown:    {cols:1, rows:1},
+  sessionmap:  {cols:1, rows:1},
+  timechart:   {cols:1, rows:1},
+  duration:    {cols:1, rows:1},
+  leaderboard: {cols:1, rows:1},
+  progress:    {cols:1, rows:1},
+  yearlycal:   {cols:3, rows:1},
+};
+
+const NAV=[{id:"overview",label:"Overview",icon:"▦"},{id:"journal",label:"Journal",icon:"⊟"},{id:"analytics",label:"Analytics",icon:"◈"},{id:"calendar",label:"Calendar",icon:"⊞"},{id:"playbooks",label:"Strategies",icon:"⊕"}];
 
 export default function App(){
   const [session,setSession]=useState(null);
@@ -3098,7 +3373,6 @@ export default function App(){
       {active==="journal"&&<Journal trades={trades} onEdit={handleEdit} onDelete={setDelTrade}/>}
       {active==="analytics"&&<Analytics trades={trades}/>}
       {active==="calendar"&&<CalendarView trades={trades}/>}
-      {active==="widgets"&&<WidgetsDashboard trades={trades}/>}
       {active==="playbooks"&&<PlaybookView/>}
     </div>
   </div>);
