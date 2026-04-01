@@ -39,40 +39,29 @@ async function fetchClosedTrades(token) {
   try {
     const res  = await fetch(`${PROXY}?action=fills&token=${token}`);
     const data = await res.json();
-    if (!Array.isArray(data)) return [];
-    // Accept all execution types - Tradovate uses "New", "Fill", "Canceled" etc
-    // Filter for completed trades only (has realizedPnl or is a fill)
-    return data.filter(e =>
-      e.execType === "Fill" ||
-      e.execType === "New" ||
-      (e.ordStatus === "Filled" || e.ordStatus === "PartiallyFilled")
-    );
+    return Array.isArray(data) ? data.filter(e => e.execType === "Fill") : [];
   } catch (e) { return []; }
 }
 
 function execToTrade(exec) {
-  const rawDate = exec.timestamp || exec.tradeDate || new Date().toISOString();
+  const rawDate = exec.timestamp || new Date().toISOString();
   const dateStr = new Date(rawDate).toISOString().slice(0, 10);
-  // Handle Tradovate contract name formats like "MESH5", "MESM5" etc
-  const rawSymbol = exec.name || exec.contractId?.name || exec.symbol || "MES";
-  const symbol = rawSymbol.replace(/[FGHJKMNQUVXZ]\d+$/, "").replace(/\d+/g, "").toUpperCase() || "MES";
-  const direction = (exec.action === "Sell" || exec.side === "Sell") ? "Short" : "Long";
-  const pnl = Math.round((exec.realizedPnl || exec.pnl || 0) * 100) / 100;
+  const symbol = (exec.contractId?.name || "MES").replace(/[A-Z]\d+$/, "").replace(/\d+/g, "").toUpperCase() || "MES";
+  const direction = exec.action === "Sell" ? "Short" : "Long";
+  const pnl = Math.round((exec.realizedPnl || 0) * 100) / 100;
   const hr = new Date(rawDate).getHours();
-  const qty = exec.qty || exec.cumQty || exec.filledQty || 1;
-  const price = exec.price || exec.avgPx || exec.lastPx || 0;
   return {
     date: dateStr,
     instrument: symbol,
     direction,
-    contracts: qty,
-    entry: price,
+    contracts: exec.qty || 1,
+    entry: exec.price || 0,
     exit: 0,
     pnl,
     rr: "--",
     setup: "Auto-synced",
     grade: "B",
-    notes: `Tradovate auto-sync | ${rawSymbol}`,
+    notes: `Tradovate auto-sync`,
     session: hr < 10 ? "AM" : hr < 13 ? "Mid" : "PM",
     result: pnl >= 0 ? "Win" : "Loss",
     tradovate_id: String(exec.id),
@@ -115,219 +104,24 @@ function buildCalendar(trades){const m={};trades.forEach(t=>{if(!m[t.date])m[t.d
 function buildEquity(trades){const s=[...trades].sort((a,b)=>a.date.localeCompare(b.date));let c=0;return s.map(t=>{c+=t.pnl;return{date:t.date.slice(5),equity:c};});}
 
 function parseTradovateCSV(text){
-  // Detect if this is a Performance CSV (has buyPrice, sellPrice, pnl columns)
-  const firstLine = text.trim().split("\n")[0].toLowerCase();
-  if(firstLine.includes("buyprice") || firstLine.includes("buyfillid") || firstLine.includes("soldtimestamp")){
-    return parseTradovatePerformanceCSV(text);
-  }
-  // Otherwise fall through to Orders CSV parser below
-  return parseTradovateOrdersCSV(text);
-}
-
-function parseTradovatePerformanceCSV(text){
-  // Parse CSV respecting quoted fields
-  function parseCSVLine(line){
-    const result=[];let cur="";let inQ=false;
-    for(let i=0;i<line.length;i++){
-      if(line[i]==='"'){inQ=!inQ;}
-      else if(line[i]===","&&!inQ){result.push(cur.trim());cur="";}
-      else cur+=line[i];
-    }
-    result.push(cur.trim());
-    return result;
-  }
-
-  const lines=text.trim().split("\n").filter(l=>l.trim());
-  const headers=parseCSVLine(lines[0]).map(h=>h.replace(/"/g,"").trim().toLowerCase());
+  const lines=text.trim().split("\n");
+  const headers=lines[0].split(",").map(h=>h.trim().replace(/"/g,"").toLowerCase());
   const trades=[];
-
   for(let i=1;i<lines.length;i++){
-    const vals=parseCSVLine(lines[i]);
-    const row={};
-    headers.forEach((h,idx)=>{row[h]=(vals[idx]||"").replace(/"/g,"").trim();});
-
-    // Parse P&L — handles "$6.25" and "$(51.25)" formats
-    const rawPnl=row["pnl"]||"0";
-    const isNeg=rawPnl.includes("(");
-    const pnl=parseFloat(rawPnl.replace(/[$(),]/g,""))*(isNeg?-1:1)||0;
-
-    // Parse dates
-    const rawDate=row["boughttimestamp"]||row["soldtimestamp"]||"";
+    const vals=lines[i].split(",").map(v=>v.trim().replace(/"/g,""));
+    const row={};headers.forEach((h,idx)=>{row[h]=vals[idx]||"";});
+    const rawDate=row["buy fill time"]||row["sell fill time"]||row["entry time"]||row["date"]||"";
     let dateStr=new Date().toISOString().slice(0,10);
     try{if(rawDate)dateStr=new Date(rawDate).toISOString().slice(0,10);}catch(e){}
-
-    // Parse prices
-    const buyPrice=parseFloat(row["buyprice"]||"0")||0;
-    const sellPrice=parseFloat(row["sellprice"]||"0")||0;
-    const qty=parseInt(row["qty"]||"1")||1;
-
-    // Determine direction: if buyTimestamp < sellTimestamp = Long, else Short
-    const buyTime=new Date(row["boughttimestamp"]||"").getTime();
-    const sellTime=new Date(row["soldtimestamp"]||"").getTime();
-    const direction=buyTime<=sellTime?"Long":"Short";
-    const entryPrice=direction==="Long"?buyPrice:sellPrice;
-    const exitPrice=direction==="Long"?sellPrice:buyPrice;
-
-    // Product
-    const rawSymbol=row["symbol"]||"MES";
-    const product=rawSymbol.replace(/[FGHJKMNQUVXZ]\d+$/,"").replace(/\d+/g,"").toUpperCase()||"MES";
-
-    // Session
+    const symbol=(row["symbol"]||row["instrument"]||"MES").replace(/\d+/g,"").toUpperCase();
+    const side=(row["action"]||row["side"]||row["buy/sell"]||"").toLowerCase();
+    const direction=side.includes("sell")||side.includes("short")?"Short":"Long";
+    const qty=parseInt(row["qty"]||row["contracts"]||row["quantity"]||"1")||1;
+    const pnlRaw=parseFloat(row["pnl"]||row["realized p&l"]||row["realized pnl"]||row["profit/loss"]||"0")||0;
+    if(isNaN(pnlRaw))continue;
     const hr=rawDate?new Date(rawDate).getHours():9;
-    const session=hr<10?"AM":hr<13?"Mid":hr<16?"PM":"After";
-
-    // Duration
-    const duration=row["duration"]||"";
-
-    if(!dateStr)continue;
-
-    trades.push({
-      id:`perf_${Date.now()}_${i}`,
-      date:dateStr,
-      instrument:product,
-      direction,
-      contracts:qty,
-      entry:entryPrice,
-      exit:exitPrice,
-      pnl:Math.round(pnl*100)/100,
-      rr:"--",
-      setup:"Imported",
-      grade:"B",
-      notes:`${rawSymbol} | ${duration} | Entry: ${entryPrice} → Exit: ${exitPrice}`,
-      session,
-      result:pnl>=0?"Win":"Loss",
-    });
+    trades.push({id:`imp_${Date.now()}_${i}`,date:dateStr,instrument:symbol||"MES",direction,contracts:qty,entry:0,exit:0,pnl:pnlRaw,rr:"--",setup:"Imported",grade:"B",notes:"Imported from Tradovate CSV",session:hr<10?"AM":hr<13?"Mid":"PM",result:pnlRaw>=0?"Win":"Loss"});
   }
-  return trades;
-}
-
-function parseTradovateOrdersCSV(text){
-  // Parse CSV respecting quoted fields
-  function parseCSVLine(line){
-    const result=[];let cur="";let inQ=false;
-    for(let i=0;i<line.length;i++){
-      if(line[i]==='"'){inQ=!inQ;}
-      else if(line[i]===","&&!inQ){result.push(cur.trim());cur="";}
-      else cur+=line[i];
-    }
-    result.push(cur.trim());
-    return result;
-  }
-
-  const lines=text.trim().split("\n").filter(l=>l.trim());
-  const headers=parseCSVLine(lines[0]).map(h=>h.replace(/"/g,"").trim().toLowerCase());
-
-  // Tick value lookup per product
-  const TICK_VAL={MES:1.25,ES:12.5,MNQ:0.5,NQ:5,MYM:0.5,YM:5};
-  const TICK_SIZE=0.25;
-
-  // Collect only Filled orders
-  const filled=[];
-  for(let i=1;i<lines.length;i++){
-    const vals=parseCSVLine(lines[i]);
-    const row={};
-    headers.forEach((h,idx)=>{row[h]=vals[idx]?.replace(/"/g,"").trim()||"";});
-
-    const status=(row["status"]||"").trim().toLowerCase();
-    if(!status.includes("filled"))continue;
-
-    const avgPrice=parseFloat(row["avg fill price"]||row["avgprice"]||row["avg price"]||"0")||0;
-    const qty=parseInt(row["filled qty"]||row["filledqty"]||row["quantity"]||"1")||1;
-    if(!avgPrice||!qty)continue;
-
-    const rawDate=row["fill time"]||row["timestamp"]||row["date"]||"";
-    let dateStr=new Date().toISOString().slice(0,10);
-    try{if(rawDate)dateStr=new Date(rawDate.replace(/,/g,"")).toISOString().slice(0,10);}catch(e){}
-
-    const side=(row["b/s"]||row["side"]||"").trim();
-    const contract=(row["contract"]||row["product"]||"MES").trim();
-    const product=(row["product"]||"MES").replace(/\d+/g,"").toUpperCase().trim();
-    const text2=(row["text"]||"").toLowerCase();
-    const isExit=text2.includes("exit");
-
-    filled.push({
-      id:row["orderid"]||row["order id"]||`${Date.now()}_${i}`,
-      date:dateStr,
-      side:side.includes("Buy")?"Buy":"Sell",
-      product,
-      contract,
-      price:avgPrice,
-      qty,
-      isExit,
-      rawDate,
-    });
-  }
-
-  // Pair entries and exits into round-trip trades
-  const trades=[];
-  const used=new Set();
-
-  for(let i=0;i<filled.length;i++){
-    if(used.has(i))continue;
-    const entry=filled[i];
-    if(entry.isExit)continue; // skip standalone exits
-
-    // Find matching exit — same product, opposite side, not yet used
-    const exitSide=entry.side==="Buy"?"Sell":"Buy";
-    let exitIdx=-1;
-    for(let j=i+1;j<filled.length;j++){
-      if(used.has(j))continue;
-      const ex=filled[j];
-      if(ex.product===entry.product&&ex.side===exitSide&&ex.qty===entry.qty){
-        exitIdx=j;break;
-      }
-    }
-
-    if(exitIdx===-1){
-      // Try to find any matching exit regardless of qty
-      for(let j=i+1;j<filled.length;j++){
-        if(used.has(j))continue;
-        const ex=filled[j];
-        if(ex.product===entry.product&&(ex.isExit||ex.side===exitSide)){
-          exitIdx=j;break;
-        }
-      }
-    }
-
-    if(exitIdx===-1)continue; // no exit found
-
-    const exit=filled[exitIdx];
-    used.add(i);used.add(exitIdx);
-
-    // Calculate P&L
-    const tv=TICK_VAL[entry.product]||1.25;
-    const qty2=Math.min(entry.qty,exit.qty);
-    let pnl;
-    if(entry.side==="Buy"){
-      // Long: exit - entry
-      pnl=Math.round(((exit.price-entry.price)/TICK_SIZE)*tv*qty2*100)/100;
-    }else{
-      // Short: entry - exit
-      pnl=Math.round(((entry.price-exit.price)/TICK_SIZE)*tv*qty2*100)/100;
-    }
-
-    const direction=entry.side==="Buy"?"Long":"Short";
-    const hr=entry.rawDate?new Date(entry.rawDate).getHours():9;
-    const session=hr<10?"AM":hr<13?"Mid":hr<16?"PM":"After";
-
-    trades.push({
-      id:`imp_${Date.now()}_${i}`,
-      date:entry.date,
-      instrument:entry.product,
-      direction,
-      contracts:qty2,
-      entry:entry.price,
-      exit:exit.price,
-      pnl,
-      rr:"--",
-      setup:"Imported",
-      grade:"B",
-      notes:`${entry.contract} | Entry: ${entry.price} → Exit: ${exit.price}`,
-      session,
-      result:pnl>=0?"Win":"Loss",
-    });
-  }
-
   return trades;
 }
 
@@ -657,7 +451,7 @@ export default function App(){
     if(!session){setLoading(false);return;}
     (async()=>{
       const{data}=await supabase.from("trades").select("*").order("date",{ascending:false});
-      setTrades(data?.length>0?data:SAMPLE);
+      setTrades(data||[]);
       setLoading(false);
     })();
   },[session]);
@@ -746,7 +540,7 @@ export default function App(){
   const handleEdit=t=>{setEditTrade(t);setShowForm(true);};
   const nyTime=time.toLocaleTimeString("en-US",{timeZone:"America/New_York",hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false});
   const totalPnl=trades.reduce((a,t)=>a+t.pnl,0);
-  const hasSample=trades.some(t=>t.id?.startsWith("s"));
+  
 
   const syncDot = syncStatus==="connected"?B.teal:syncStatus==="syncing"?B.blue:syncStatus==="error"?B.loss:"#444";
   const syncLabel = syncStatus==="connected"?"Live":syncStatus==="syncing"?"Syncing...":syncStatus==="error"?"Sync Error":"Connecting";
@@ -772,20 +566,20 @@ export default function App(){
           <button onClick={syncTradovate} style={{marginLeft:"auto",background:"none",border:"none",color:B.textMuted,cursor:"pointer",fontSize:10,padding:0}}>↻</button>
         </div>
         <div style={{marginTop:10,padding:"12px 14px",borderRadius:10,background:`${B.teal}08`,border:`1px solid ${B.teal}22`,position:"relative",overflow:"hidden"}}><div style={{position:"absolute",top:0,left:0,right:0,height:2,background:GTB}}/><div style={{fontSize:9,color:B.textMuted,marginBottom:3,letterSpacing:1}}>MONTH P&L</div><div style={{fontSize:20,fontWeight:800,fontFamily:"monospace",background:GTB,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>{fmt(totalPnl)}</div></div>
-        <div style={{marginTop:10,fontSize:10,color:B.textMuted,textAlign:"center"}}>{trades.filter(t=>!t.id?.startsWith("s")).length} trades logged</div>
+        <div style={{marginTop:10,fontSize:10,color:B.textMuted,textAlign:"center"}}>{trades.length} trades logged</div>
         <button onClick={()=>supabase.auth.signOut()} style={{marginTop:10,width:"100%",padding:"7px",borderRadius:8,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:11,fontWeight:600}}>Sign Out</button>
       </div>
     </div>
     <div style={{marginLeft:216,padding:"28px 32px",minHeight:"100vh"}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
-        <div><h1 style={{margin:0,fontSize:20,fontWeight:800,color:B.text,letterSpacing:-0.5}}>{NAV.find(n=>n.id===active)?.label}</h1><div style={{fontSize:12,color:B.textMuted,marginTop:4}}>{session.user.email} - {trades.filter(t=>!t.id?.startsWith("s")).length} trades logged</div></div>
+        <div><h1 style={{margin:0,fontSize:20,fontWeight:800,color:B.text,letterSpacing:-0.5}}>{NAV.find(n=>n.id===active)?.label}</h1><div style={{fontSize:12,color:B.textMuted,marginTop:4}}>{session.user.email} - {trades.length} trades logged</div></div>
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
-          {hasSample&&(<button onClick={()=>setTrades([])} style={{padding:"8px 14px",borderRadius:9,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:11,fontWeight:600}}>Clear Sample Data</button>)}
+        
           <button onClick={()=>setShowImport(true)} style={{padding:"8px 16px",borderRadius:9,border:`1px solid ${B.blue}40`,background:`${B.blue}12`,color:B.blue,cursor:"pointer",fontSize:12,fontWeight:700}}>Import CSV</button>
           <button onClick={()=>{setEditTrade(null);setShowForm(true);}} style={{padding:"8px 18px",borderRadius:9,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:12,fontWeight:800}}>+ Log Trade</button>
         </div>
       </div>
-      {hasSample&&(<div style={{marginBottom:18,padding:"10px 16px",borderRadius:10,background:"rgba(79,142,247,0.07)",border:"1px solid rgba(79,142,247,0.2)",fontSize:12,color:B.blue,display:"flex",alignItems:"center",justifyContent:"space-between"}}><span>Viewing sample data. Import your Tradovate CSV or log a real trade to get started.</span><button onClick={()=>setTrades([])} style={{background:"none",border:"none",color:B.blue,cursor:"pointer",fontWeight:700,fontSize:12,textDecoration:"underline"}}>Clear it</button></div>)}
+    
       {active==="overview"&&<Overview trades={trades}/>}
       {active==="journal"&&<Journal trades={trades} onEdit={handleEdit} onDelete={setDelTrade}/>}
       {active==="analytics"&&<Analytics trades={trades}/>}
