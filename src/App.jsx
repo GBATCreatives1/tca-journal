@@ -9,18 +9,25 @@ const supabase = createClient(
 
 // ── Tradovate Sync ────────────────────────────────────────────────────────────
 const TV_URL = "https://live.tradovateapi.com/v1";
-const TV_KEY = import.meta.env.VITE_TRADOVATE_API_KEY;
-const TV_SECRET = import.meta.env.VITE_TRADOVATE_API_SECRET;
+const TV_USERNAME = import.meta.env.VITE_TV_USERNAME;
+const TV_PASSWORD = import.meta.env.VITE_TV_PASSWORD;
+const TV_CID      = import.meta.env.VITE_TV_CID;
+const TV_SECRET   = import.meta.env.VITE_TV_SECRET;
+const TV_DEVICE   = import.meta.env.VITE_TV_DEVICE_ID;
 
 async function tvAuth() {
   try {
     const res = await fetch(`${TV_URL}/auth/accesstokenrequest`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "accept": "application/json" },
       body: JSON.stringify({
-        name: TV_KEY, password: TV_SECRET,
-        appId: "TCA Trade Journal", appVersion: "1.0.0",
-        cid: TV_KEY, sec: TV_SECRET,
+        name: TV_USERNAME,
+        password: TV_PASSWORD,
+        appId: "TCA Journal",
+        appVersion: "0.0.1",
+        deviceId: TV_DEVICE,
+        cid: parseInt(TV_CID),
+        sec: TV_SECRET,
       }),
     });
     const data = await res.json();
@@ -29,8 +36,12 @@ async function tvAuth() {
       sessionStorage.setItem("tv_expiry", Date.now() + 75 * 60 * 1000);
       return data.accessToken;
     }
+    console.error("Tradovate auth failed:", data);
     return null;
-  } catch (e) { return null; }
+  } catch (e) {
+    console.error("Tradovate auth error:", e);
+    return null;
+  }
 }
 
 async function getToken() {
