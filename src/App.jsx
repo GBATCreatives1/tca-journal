@@ -804,13 +804,12 @@ function Overview({trades}){
               const data=calMap[ds];
               const isToday=ds===new Date().toISOString().slice(0,10);
               return(
-                <div key={di} onClick={()=>data&&setSelectedDay(ds)} style={{
+                <div key={di} onClick={()=>setSelectedDay(ds)} style={{
                   minHeight:68,borderRadius:10,padding:"8px 10px",
-                  background:data?(data.pnl>0?`${B.teal}10`:`${B.loss}10`):"rgba(255,255,255,0.01)",
+                  background:data?(data.pnl>0?`${B.teal}10`:`${B.loss}10`):"rgba(255,255,255,0.015)",
                   border:`1px solid ${data?(data.pnl>0?`${B.teal}35`:`${B.loss}35`):B.border}`,
                   outline:isToday?`2px solid ${B.blue}60`:"none",
-                  cursor:data?"pointer":"default",transition:"all 0.15s",
-                  transform:data?"scale(1)":"none",
+                  cursor:"pointer",transition:"all 0.15s",
                 }}>
                   <div style={{fontSize:11,color:data?B.text:B.textDim,fontWeight:700,marginBottom:4}}>{day}</div>
                   {data&&<>
@@ -872,7 +871,7 @@ function Overview({trades}){
     </div>
 
     {/* Day Detail Modal */}
-    {selectedDay&&<DayModal date={selectedDay} trades={trades} onClose={()=>setSelectedDay(null)}/>}
+    {selectedDay&&<DayJournalModal date={selectedDay} trades={trades} onClose={()=>setSelectedDay(null)}/>}
 
   </div>);
 }
@@ -1820,6 +1819,118 @@ function WidgetsDashboard({trades}){
   );
 }
 
+// ── Tradovate Date Range Sync Modal ──────────────────────────────────────────
+function TradovateSyncModal({onClose, onSync, syncing}){
+  const today = new Date().toISOString().slice(0,10);
+  const firstOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0,10);
+  const [fromDate, setFromDate] = useState(firstOfMonth);
+  const [toDate, setToDate] = useState(today);
+  const [preset, setPreset] = useState("month");
+
+  const applyPreset = (p) => {
+    setPreset(p);
+    const now = new Date();
+    const to = now.toISOString().slice(0,10);
+    let from;
+    if(p==="today"){
+      from = to;
+    }else if(p==="week"){
+      const d = new Date(now);
+      d.setDate(d.getDate() - 7);
+      from = d.toISOString().slice(0,10);
+    }else if(p==="month"){
+      from = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0,10);
+    }else if(p==="quarter"){
+      from = new Date(now.getFullYear(), Math.floor(now.getMonth()/3)*3, 1).toISOString().slice(0,10);
+    }else if(p==="year"){
+      from = new Date(now.getFullYear(), 0, 1).toISOString().slice(0,10);
+    }else if(p==="all"){
+      from = "2020-01-01";
+    }
+    setFromDate(from);
+    setToDate(to);
+  };
+
+  const PRESETS = [
+    {id:"today", label:"Today"},
+    {id:"week",  label:"Last 7 Days"},
+    {id:"month", label:"This Month"},
+    {id:"quarter",label:"This Quarter"},
+    {id:"year",  label:"This Year"},
+    {id:"all",   label:"All Time"},
+  ];
+
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(8px)"}}>
+      <div style={{background:"#13121A",border:`1px solid ${B.border}`,borderRadius:20,width:480,position:"relative",overflow:"hidden"}}>
+        <div style={{height:3,background:GTB,borderRadius:"20px 20px 0 0"}}/>
+        
+        {/* Header */}
+        <div style={{padding:"24px 28px 0",display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+          <div>
+            <div style={{fontSize:18,fontWeight:800,color:B.text}}>Sync from Tradovate</div>
+            <div style={{fontSize:12,color:B.textMuted,marginTop:3}}>Select the date range to import trades from</div>
+          </div>
+          <button onClick={onClose} style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${B.border}`,borderRadius:8,color:B.textMuted,cursor:"pointer",fontSize:18,width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
+        </div>
+
+        <div style={{padding:"0 28px 28px"}}>
+          {/* Quick presets */}
+          <div style={{marginBottom:20}}>
+            <div style={{fontSize:10,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:10}}>Quick Select</div>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+              {PRESETS.map(p=>(
+                <button key={p.id} onClick={()=>applyPreset(p.id)} style={{
+                  padding:"7px 14px",borderRadius:20,border:"1px solid",cursor:"pointer",fontSize:12,fontWeight:700,
+                  borderColor:preset===p.id?B.teal:B.border,
+                  background:preset===p.id?`${B.teal}15`:"transparent",
+                  color:preset===p.id?B.teal:B.textMuted,
+                  transition:"all 0.15s"
+                }}>{p.label}</button>
+              ))}
+            </div>
+          </div>
+
+          {/* Custom date range */}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:24}}>
+            <div>
+              <label style={lS}>From Date</label>
+              <input type="date" value={fromDate} onChange={e=>{setFromDate(e.target.value);setPreset("custom");}} style={iS}/>
+            </div>
+            <div>
+              <label style={lS}>To Date</label>
+              <input type="date" value={toDate} onChange={e=>{setToDate(e.target.value);setPreset("custom");}} style={iS}/>
+            </div>
+          </div>
+
+          {/* Summary */}
+          <div style={{padding:"12px 16px",borderRadius:10,background:"rgba(0,0,0,0.3)",border:`1px solid ${B.border}`,marginBottom:20}}>
+            <div style={{fontSize:12,color:B.textMuted}}>
+              Importing trades from <span style={{color:B.teal,fontWeight:700}}>{fromDate}</span> to <span style={{color:B.teal,fontWeight:700}}>{toDate}</span>
+            </div>
+            <div style={{fontSize:11,color:B.textMuted,marginTop:4}}>
+              Duplicate trades will be skipped automatically
+            </div>
+          </div>
+
+          {/* Buttons */}
+          <div style={{display:"flex",gap:10}}>
+            <button onClick={onClose} style={{flex:1,padding:"11px",borderRadius:10,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:13,fontWeight:600}}>Cancel</button>
+            <button onClick={()=>onSync(fromDate,toDate)} disabled={syncing} style={{flex:2,padding:"11px",borderRadius:10,border:"none",background:GL,color:"#0E0E10",cursor:syncing?"default":"pointer",fontSize:13,fontWeight:800,opacity:syncing?0.7:1,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+              {syncing?(
+                <>
+                  <div style={{width:14,height:14,border:"2px solid #0E0E10",borderTop:"2px solid transparent",borderRadius:"50%",animation:"spin 1s linear infinite"}}/>
+                  Syncing...
+                </>
+              ):"Sync Trades →"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const NAV=[{id:"overview",label:"Overview",icon:"▦"},{id:"journal",label:"Journal",icon:"⊟"},{id:"analytics",label:"Analytics",icon:"◈"},{id:"calendar",label:"Calendar",icon:"⊞"},{id:"widgets",label:"Widgets",icon:"⬡"},{id:"playbooks",label:"Strategies",icon:"⊕"}];
 
 export default function App(){
@@ -1834,6 +1945,8 @@ export default function App(){
   const [toast,setToast]=useState(null);
   const [loading,setLoading]=useState(true);
   const [syncStatus,setSyncStatus]=useState("idle"); // idle | syncing | connected | error
+  const [showSyncModal,setShowSyncModal]=useState(false);
+  const [syncRange,setSyncRange]=useState({from:"",to:""});
 
   useEffect(()=>{
     supabase.auth.getSession().then(({data})=>setSession(data.session));
@@ -1851,13 +1964,18 @@ export default function App(){
   },[session]);
 
   // ── Tradovate Auto Sync ────────────────────────────────────────────────────
-  const syncTradovate = useCallback(async () => {
+  const syncTradovate = useCallback(async (fromDate=null, toDate=null) => {
     if (!session) return;
     setSyncStatus("syncing");
     try {
       const token = await getToken();
       if (!token) { setSyncStatus("error"); return; }
-      const execs = await fetchClosedTrades(token);
+      let execs = await fetchClosedTrades(token);
+      // Filter by date range if provided
+      if(fromDate) execs = execs.filter(e => {
+        const d = new Date(e.timestamp||"").toISOString().slice(0,10);
+        return d >= fromDate && d <= (toDate||new Date().toISOString().slice(0,10));
+      });
       if (!execs.length) { setSyncStatus("connected"); return; }
 
       // Get existing tradovate_ids to avoid duplicates
@@ -1933,6 +2051,11 @@ export default function App(){
     showT(`${data?.length||imported.length} trades imported and saved ✓`);
   };
 
+  const handleManualSync=async(from,to)=>{
+    setShowSyncModal(false);
+    await syncTradovate(from,to);
+  };
+
   const handleDelete=async()=>{
     await supabase.from("trades").delete().eq("id",delTrade.id);
     setTrades(ts=>ts.filter(t=>t.id!==delTrade.id));
@@ -1953,6 +2076,7 @@ export default function App(){
 
   return(<div style={{minHeight:"100vh",background:B.bg,fontFamily:"'DM Sans','Segoe UI',sans-serif",color:B.text}}><style>{`@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,600;0,9..40,700;0,9..40,800&family=Space+Mono:wght@400;700&display=swap');*{box-sizing:border-box;}body{margin:0;}::-webkit-scrollbar{width:4px;}::-webkit-scrollbar-track{background:transparent;}::-webkit-scrollbar-thumb{background:rgba(0,212,168,0.2);border-radius:2px;}input[type=date]::-webkit-calendar-picker-indicator{filter:invert(0.5);}select option{background:#13121A;color:#F0EEF8;}`}</style>
     {toast&&(<div style={{position:"fixed",top:20,right:24,zIndex:200,padding:"12px 20px",borderRadius:10,background:toast.type==="error"?`${B.loss}18`:`${B.teal}15`,border:`1px solid ${toast.type==="error"?`${B.loss}40`:`${B.teal}40`}`,color:toast.type==="error"?B.loss:B.teal,fontWeight:700,fontSize:13,boxShadow:"0 8px 32px rgba(0,0,0,0.5)"}}>{toast.msg}</div>)}
+    {showSyncModal&&<TradovateSyncModal onClose={()=>setShowSyncModal(false)} onSync={handleManualSync} syncing={syncStatus==="syncing"}/>}
     {showForm&&<TradeFormModal onClose={()=>{setShowForm(false);setEditTrade(null);}} onSave={handleSave} editTrade={editTrade}/>}
     {showImport&&<ImportModal onClose={()=>setShowImport(false)} onImport={handleImport}/>}
     {delTrade&&<DeleteConfirm trade={delTrade} onConfirm={handleDelete} onCancel={()=>setDelTrade(null)}/>}
@@ -1966,7 +2090,7 @@ export default function App(){
         <div style={{marginTop:10,display:"flex",alignItems:"center",gap:6,padding:"8px 12px",borderRadius:8,background:"rgba(0,0,0,0.3)",border:`1px solid ${B.border}`}}>
           <div style={{width:7,height:7,borderRadius:"50%",background:syncDot,boxShadow:syncStatus==="connected"?`0 0 6px ${B.teal}`:"none"}}/>
           <div style={{fontSize:10,color:syncStatus==="connected"?B.teal:B.textMuted,fontWeight:600}}>Tradovate {syncLabel}</div>
-          <button onClick={syncTradovate} style={{marginLeft:"auto",background:"none",border:"none",color:B.textMuted,cursor:"pointer",fontSize:10,padding:0}}>↻</button>
+          <button onClick={()=>setShowSyncModal(true)} style={{marginLeft:"auto",background:"none",border:"none",color:B.textMuted,cursor:"pointer",fontSize:10,padding:0}} title="Sync with date range">↻</button>
         </div>
         <div style={{marginTop:10,padding:"12px 14px",borderRadius:10,background:`${B.teal}08`,border:`1px solid ${B.teal}22`,position:"relative",overflow:"hidden"}}><div style={{position:"absolute",top:0,left:0,right:0,height:2,background:GTB}}/><div style={{fontSize:9,color:B.textMuted,marginBottom:3,letterSpacing:1}}>MONTH P&L</div><div style={{fontSize:20,fontWeight:800,fontFamily:"monospace",color:pnlColor(totalPnl)}}>{fmt(totalPnl)}</div></div>
         <div style={{marginTop:10,fontSize:10,color:B.textMuted,textAlign:"center"}}>{trades.filter(t=>!t.id?.startsWith("s")).length} trades logged</div>
