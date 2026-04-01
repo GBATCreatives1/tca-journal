@@ -35,47 +35,44 @@ async function getToken() {
   return await tvAuth();
 }
 
-async function fetchClosedTrades(token) {
+async function fetchClosedTrades(token, fromDate=null, toDate=null) {
   try {
-    const res  = await fetch(`${PROXY}?action=fills&token=${token}`);
+    let url = `${PROXY}?action=fills&token=${token}`;
+    if (fromDate) url += `&from=${fromDate}`;
+    if (toDate) url += `&to=${toDate}`;
+    const res = await fetch(url);
     const data = await res.json();
-    if (!Array.isArray(data)) return [];
-    // Accept all execution types - Tradovate uses "New", "Fill", "Canceled" etc
-    // Filter for completed trades only (has realizedPnl or is a fill)
-    return data.filter(e =>
-      e.execType === "Fill" ||
-      e.execType === "New" ||
-      (e.ordStatus === "Filled" || e.ordStatus === "PartiallyFilled")
-    );
-  } catch (e) { return []; }
+    // New proxy returns pre-built trade objects directly
+    if (Array.isArray(data)) return data;
+    // Handle old format with execs/filledOrders
+    if (data.fills && Array.isArray(data.fills)) return data.fills;
+    return [];
+  } catch (e) {
+    console.error("fetchClosedTrades error:", e);
+    return [];
+  }
 }
 
 function execToTrade(exec) {
-  const rawDate = exec.timestamp || exec.tradeDate || new Date().toISOString();
+  // New proxy returns pre-built trade objects - just pass through
+  // with any missing fields filled in
+  if (exec.date && exec.instrument) return exec; // already built by proxy
+  // Fallback for old format
+  const rawDate = exec.timestamp || new Date().toISOString();
   const dateStr = new Date(rawDate).toISOString().slice(0, 10);
-  // Handle Tradovate contract name formats like "MESH5", "MESM5" etc
-  const rawSymbol = exec.name || exec.contractId?.name || exec.symbol || "MES";
+  const rawSymbol = exec.name || "MES";
   const symbol = rawSymbol.replace(/[FGHJKMNQUVXZ]\d+$/, "").replace(/\d+/g, "").toUpperCase() || "MES";
-  const direction = (exec.action === "Sell" || exec.side === "Sell") ? "Short" : "Long";
-  const pnl = Math.round((exec.realizedPnl || exec.pnl || 0) * 100) / 100;
+  const direction = exec.action === "Sell" ? "Short" : "Long";
+  const pnl = Math.round((exec.pnl || 0) * 100) / 100;
   const hr = new Date(rawDate).getHours();
-  const qty = exec.qty || exec.cumQty || exec.filledQty || 1;
-  const price = exec.price || exec.avgPx || exec.lastPx || 0;
   return {
-    date: dateStr,
-    instrument: symbol,
-    direction,
-    contracts: qty,
-    entry: price,
-    exit: 0,
-    pnl,
-    rr: "--",
-    setup: "Auto-synced",
-    grade: "B",
-    notes: `Tradovate auto-sync | ${rawSymbol}`,
+    date: dateStr, instrument: symbol, direction,
+    contracts: exec.qty || 1, entry: exec.entry || 0, exit: exec.exit || 0,
+    pnl, rr: "--", setup: "Auto-synced", grade: "B",
+    notes: exec.notes || "Tradovate sync",
     session: hr < 10 ? "AM" : hr < 13 ? "Mid" : "PM",
     result: pnl >= 0 ? "Win" : "Loss",
-    tradovate_id: String(exec.id),
+    tradovate_id: exec.tradovate_id || String(exec.id),
   };
 }
 
@@ -1993,15 +1990,15 @@ export default function App(){
     if (!session) return;
     setSyncStatus("syncing");
     try {
+      // Force fresh token to pick up new permissions
+      sessionStorage.removeItem("tv_token");
+      sessionStorage.removeItem("tv_expiry");
       const token = await getToken();
       if (!token) { setSyncStatus("error"); return; }
-      let execs = await fetchClosedTrades(token);
-      // Filter by date range if provided
-      if(fromDate) execs = execs.filter(e => {
-        const d = new Date(e.timestamp||"").toISOString().slice(0,10);
-        return d >= fromDate && d <= (toDate||new Date().toISOString().slice(0,10));
-      });
-      if (!execs.length) { setSyncStatus("connected"); return; }
+      // Pass date range directly to proxy
+      const execs = await fetchClosedTrades(token, fromDate, toDate);
+      console.log("Synced trades from Tradovate:", execs.length);
+      if (!execs.length) { setSyncStatus("connected"); showT("Tradovate connected — no new trades in range"); return; }
 
       // Get existing tradovate_ids to avoid duplicates
       const { data: existing } = await supabase
@@ -2011,19 +2008,29 @@ export default function App(){
         .not("tradovate_id", "is", null);
 
       const existingIds = new Set((existing || []).map(e => e.tradovate_id));
-      const newExecs = execs.filter(e => !existingIds.has(String(e.id)));
+
+      // Filter out already imported trades
+      const newExecs = execs.filter(e => {
+        const tid = e.tradovate_id || String(e.id);
+        return !existingIds.has(tid);
+      });
+
+      console.log("New trades to insert:", newExecs.length, "of", execs.length);
 
       if (newExecs.length > 0) {
-        const newTrades = newExecs.map(e => ({
-          ...execToTrade(e),
-          user_id: session.user.id,
-          day: dayName(execToTrade(e).date),
-        }));
-        const { data } = await supabase.from("trades").insert(newTrades).select();
+        const newTrades = newExecs.map(e => {
+          const built = execToTrade(e);
+          const { id, ...rest } = built; // strip client ID
+          return { ...rest, user_id: session.user.id, day: dayName(built.date) };
+        });
+        const { data, error } = await supabase.from("trades").insert(newTrades).select();
+        if (error) { console.error("Supabase insert error:", error); }
         if (data?.length) {
           setTrades(ts => [...(ts.filter(t => !t.id?.startsWith("s"))), ...data]);
-          showT(`${data.length} new trade${data.length > 1 ? "s" : ""} synced from Tradovate`);
+          showT(`${data.length} new trade${data.length > 1 ? "s" : ""} synced from Tradovate ✓`);
         }
+      } else {
+        showT("Already up to date — no new trades found");
       }
       setSyncStatus("connected");
     } catch (e) {
