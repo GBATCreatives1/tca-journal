@@ -451,7 +451,7 @@ export default function App(){
     if(!session){setLoading(false);return;}
     (async()=>{
       const{data}=await supabase.from("trades").select("*").order("date",{ascending:false});
-      setTrades(data?.length>0?data:SAMPLE);
+      setTrades(data||[]);
       setLoading(false);
     })();
   },[session]);
@@ -540,7 +540,7 @@ export default function App(){
   const handleEdit=t=>{setEditTrade(t);setShowForm(true);};
   const nyTime=time.toLocaleTimeString("en-US",{timeZone:"America/New_York",hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false});
   const totalPnl=trades.reduce((a,t)=>a+t.pnl,0);
-  const hasSample=trades.some(t=>t.id?.startsWith("s"));
+  
 
   const syncDot = syncStatus==="connected"?B.teal:syncStatus==="syncing"?B.blue:syncStatus==="error"?B.loss:"#444";
   const syncLabel = syncStatus==="connected"?"Live":syncStatus==="syncing"?"Syncing...":syncStatus==="error"?"Sync Error":"Connecting";
@@ -566,20 +566,20 @@ export default function App(){
           <button onClick={syncTradovate} style={{marginLeft:"auto",background:"none",border:"none",color:B.textMuted,cursor:"pointer",fontSize:10,padding:0}}>↻</button>
         </div>
         <div style={{marginTop:10,padding:"12px 14px",borderRadius:10,background:`${B.teal}08`,border:`1px solid ${B.teal}22`,position:"relative",overflow:"hidden"}}><div style={{position:"absolute",top:0,left:0,right:0,height:2,background:GTB}}/><div style={{fontSize:9,color:B.textMuted,marginBottom:3,letterSpacing:1}}>MONTH P&L</div><div style={{fontSize:20,fontWeight:800,fontFamily:"monospace",background:GTB,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>{fmt(totalPnl)}</div></div>
-        <div style={{marginTop:10,fontSize:10,color:B.textMuted,textAlign:"center"}}>{trades.filter(t=>!t.id?.startsWith("s")).length} trades logged</div>
+        <div style={{marginTop:10,fontSize:10,color:B.textMuted,textAlign:"center"}}>{trades.length} trades logged</div>
         <button onClick={()=>supabase.auth.signOut()} style={{marginTop:10,width:"100%",padding:"7px",borderRadius:8,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:11,fontWeight:600}}>Sign Out</button>
       </div>
     </div>
     <div style={{marginLeft:216,padding:"28px 32px",minHeight:"100vh"}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
-        <div><h1 style={{margin:0,fontSize:20,fontWeight:800,color:B.text,letterSpacing:-0.5}}>{NAV.find(n=>n.id===active)?.label}</h1><div style={{fontSize:12,color:B.textMuted,marginTop:4}}>{session.user.email} - {trades.filter(t=>!t.id?.startsWith("s")).length} trades logged</div></div>
+        <div><h1 style={{margin:0,fontSize:20,fontWeight:800,color:B.text,letterSpacing:-0.5}}>{NAV.find(n=>n.id===active)?.label}</h1><div style={{fontSize:12,color:B.textMuted,marginTop:4}}>{session.user.email} - {trades.length} trades logged</div></div>
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
-          {hasSample&&(<button onClick={()=>setTrades([])} style={{padding:"8px 14px",borderRadius:9,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:11,fontWeight:600}}>Clear Sample Data</button>)}
+        
           <button onClick={()=>setShowImport(true)} style={{padding:"8px 16px",borderRadius:9,border:`1px solid ${B.blue}40`,background:`${B.blue}12`,color:B.blue,cursor:"pointer",fontSize:12,fontWeight:700}}>Import CSV</button>
           <button onClick={()=>{setEditTrade(null);setShowForm(true);}} style={{padding:"8px 18px",borderRadius:9,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:12,fontWeight:800}}>+ Log Trade</button>
         </div>
       </div>
-      {hasSample&&(<div style={{marginBottom:18,padding:"10px 16px",borderRadius:10,background:"rgba(79,142,247,0.07)",border:"1px solid rgba(79,142,247,0.2)",fontSize:12,color:B.blue,display:"flex",alignItems:"center",justifyContent:"space-between"}}><span>Viewing sample data. Import your Tradovate CSV or log a real trade to get started.</span><button onClick={()=>setTrades([])} style={{background:"none",border:"none",color:B.blue,cursor:"pointer",fontWeight:700,fontSize:12,textDecoration:"underline"}}>Clear it</button></div>)}
+    
       {active==="overview"&&<Overview trades={trades}/>}
       {active==="journal"&&<Journal trades={trades} onEdit={handleEdit} onDelete={setDelTrade}/>}
       {active==="analytics"&&<Analytics trades={trades}/>}
