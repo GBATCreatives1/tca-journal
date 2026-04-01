@@ -1011,55 +1011,65 @@ function Overview({trades}){
   const [selectedDay,setSelectedDay]=useState(null);
   const [showWidgetPicker,setShowWidgetPicker]=useState(false);
   const [dragOver,setDragOver]=useState(null);
+  const [saveStatus,setSaveStatus]=useState("saved"); // "saved"|"unsaved"|"saving"
+  const dragRef=useRef(null);
 
-  // Widget storage
-  const WIDGET_KEY="tca_overview_widgets_v1";
+  // Widget sizes: S=3, M=4, Half=6, L=8, Full=12
+  const WIDGET_KEY="tca_overview_widgets_v2";
+  const SIZE_KEY="tca_widget_sizes_v2";
+
   const ALL_WIDGETS=[
-    {id:"calendar",    label:"Calendar",           icon:"📅", desc:"Monthly calendar with daily P&L"},
-    {id:"equity",      label:"Equity Curve",        icon:"📈", desc:"Account balance curve over time"},
-    {id:"gauges",      label:"Performance Gauges",  icon:"🎯", desc:"Win%, Profit Factor, Day Win%, Streak"},
-    {id:"dailypnl",    label:"Daily P&L Bar Chart", icon:"📊", desc:"Daily P&L bars"},
-    {id:"setups",      label:"Setup Performance",   icon:"🏆", desc:"Best/worst setups ranked"},
-    {id:"session",     label:"Session Heatmap",     icon:"🌡️", desc:"AM/Mid/PM performance breakdown"},
-    {id:"timeof",      label:"Time of Day",         icon:"🕐", desc:"Best hours to trade"},
-    {id:"cumulative",  label:"Daily & Cumulative",  icon:"📉", desc:"Daily bars + cumulative line"},
-    {id:"drawdown",    label:"Drawdown",             icon:"⚠️", desc:"Drawdown chart over time"},
-    {id:"winAvg",      label:"Win%/Avg Win/Loss",   icon:"💹", desc:"Win rate and averages over time"},
-    {id:"duration",    label:"Trade Duration",       icon:"⏱️", desc:"Performance by trade duration"},
-    {id:"leaderboard", label:"Setup Leaderboard",   icon:"🥇", desc:"Setups ranked by P&L"},
-    {id:"yearly",      label:"Yearly Calendar",      icon:"🗓️", desc:"Full year heatmap"},
-    {id:"progress",    label:"Progress Tracker",     icon:"✅", desc:"Daily rule consistency tracker"},
-    {id:"report",      label:"Report",               icon:"📋", desc:"Custom 3-metric report"},
-    {id:"aicoach",     label:"AI Trade Coach",       icon:"🧠", desc:"AI-powered trade analysis"},
+    {id:"gauges",     label:"Performance Gauges",   icon:"🎯", desc:"Win%, Profit Factor, Day Win%, Streak", defaultCols:12},
+    {id:"calendar",   label:"Calendar",              icon:"📅", desc:"Monthly calendar with daily P&L",       defaultCols:8},
+    {id:"equity",     label:"Equity Curve",          icon:"📈", desc:"Account balance over time",             defaultCols:6},
+    {id:"dailypnl",   label:"Daily P&L",             icon:"📊", desc:"Daily P&L bar chart",                   defaultCols:4},
+    {id:"setups",     label:"Setup Performance",     icon:"🏆", desc:"Best/worst setups ranked",              defaultCols:4},
+    {id:"session",    label:"Session Heatmap",       icon:"🌡️", desc:"AM/Mid/PM breakdown",                   defaultCols:4},
+    {id:"timeof",     label:"Time of Day",           icon:"🕐", desc:"Best hours to trade",                   defaultCols:4},
+    {id:"cumulative", label:"Daily & Cumulative",    icon:"📉", desc:"Daily bars + cumulative line",          defaultCols:6},
+    {id:"drawdown",   label:"Drawdown",              icon:"⚠️", desc:"Drawdown chart",                        defaultCols:6},
+    {id:"winAvg",     label:"Win%/Avg Win/Loss",     icon:"💹", desc:"Win rate and averages over time",       defaultCols:6},
+    {id:"duration",   label:"Trade Duration",        icon:"⏱️", desc:"Performance by trade duration",        defaultCols:4},
+    {id:"leaderboard",label:"Setup Leaderboard",     icon:"🥇", desc:"Setups ranked by P&L",                 defaultCols:4},
+    {id:"yearly",     label:"Yearly Calendar",       icon:"🗓️", desc:"Full year heatmap",                    defaultCols:12},
+    {id:"progress",   label:"Progress Tracker",      icon:"✅", desc:"Daily rule consistency tracker",        defaultCols:4},
+    {id:"report",     label:"Report",                icon:"📋", desc:"Custom 3-metric report",                defaultCols:4},
+    {id:"aicoach",    label:"AI Trade Coach",        icon:"🧠", desc:"AI-powered trade analysis",            defaultCols:8},
   ];
 
   const DEFAULT_LAYOUT=["gauges","calendar","equity","session","setups"];
   const [activeWidgets,setActiveWidgets]=useState(DEFAULT_LAYOUT);
-  const [loaded,setLoaded]=useState(false);
   const [widgetSizes,setWidgetSizes]=useState({});
+  const [loaded,setLoaded]=useState(false);
 
   useEffect(()=>{
     (async()=>{
       try{
         const r=await window.storage.get(WIDGET_KEY);
         if(r?.value)setActiveWidgets(JSON.parse(r.value));
-        const s=await window.storage.get("tca_widget_sizes_v1");
+        const s=await window.storage.get(SIZE_KEY);
         if(s?.value)setWidgetSizes(JSON.parse(s.value));
       }catch(e){}
       setLoaded(true);
     })();
   },[]);
 
-  const saveWidgets=async(widgets)=>{
-    setActiveWidgets(widgets);
-    try{await window.storage.set(WIDGET_KEY,JSON.stringify(widgets));}catch(e){}
+  const persistLayout=async(widgets,sizes)=>{
+    setSaveStatus("saving");
+    try{
+      await window.storage.set(WIDGET_KEY,JSON.stringify(widgets));
+      await window.storage.set(SIZE_KEY,JSON.stringify(sizes));
+      setSaveStatus("saved");
+    }catch(e){setSaveStatus("unsaved");}
   };
 
+  const saveWidgets=(widgets)=>{setActiveWidgets(widgets);setSaveStatus("unsaved");persistLayout(widgets,widgetSizes);};
+  const saveSizes=(sizes)=>{setWidgetSizes(sizes);setSaveStatus("unsaved");persistLayout(activeWidgets,sizes);};
   const removeWidget=(id)=>saveWidgets(activeWidgets.filter(w=>w!==id));
   const addWidget=(id)=>{if(!activeWidgets.includes(id))saveWidgets([...activeWidgets,id]);setShowWidgetPicker(false);};
+  const resizeWidget=(id,cols)=>{const n={...widgetSizes,[id]:cols};saveSizes(n);};
 
   // Drag and drop
-  const dragRef=useRef(null);
   const handleDragStart=(e,id)=>{dragRef.current=id;e.dataTransfer.effectAllowed="move";};
   const handleDrop=(e,targetId)=>{
     e.preventDefault();
@@ -1072,6 +1082,7 @@ function Overview({trades}){
     newOrder.splice(toIdx,0,dragId);
     saveWidgets(newOrder);
     setDragOver(null);
+    dragRef.current=null;
   };
 
   // Calendar state
@@ -1083,8 +1094,8 @@ function Overview({trades}){
   useEffect(()=>{if(manualNav)return;const dates=trades.map(t=>t.date).sort();const ld=dates[dates.length-1];if(ld){setCalYear(parseInt(ld.slice(0,4)));setCalMonth(parseInt(ld.slice(5,7))-1);}},[trades,manualNav]);
   const prevMonth=()=>{setManualNav(true);if(calMonth===0){setCalMonth(11);setCalYear(y=>y-1);}else setCalMonth(m=>m-1);};
   const nextMonth=()=>{setManualNav(true);if(calMonth===11){setCalMonth(0);setCalYear(y=>y+1);}else setCalMonth(m=>m+1);};
-  const now=new Date();
-  const canGoForward=!(calYear===now.getFullYear()&&calMonth===now.getMonth());
+  const nowDate=new Date();
+  const canGoForward=!(calYear===nowDate.getFullYear()&&calMonth===nowDate.getMonth());
   const calMap=buildCalendar(trades);
   const yr=calYear,mo=calMonth;
   const mn=new Date(yr,mo,1).toLocaleString("default",{month:"long",year:"numeric"}).toUpperCase();
@@ -1097,15 +1108,21 @@ function Overview({trades}){
   const monthPnl=monthTrades.reduce((a,t)=>a+t.pnl,0);
   const greenDays=Object.entries(calMap).filter(([k,v])=>k.startsWith(monthKey)&&v.pnl>0).length;
   const redDays=Object.entries(calMap).filter(([k,v])=>k.startsWith(monthKey)&&v.pnl<0).length;
-  // Weekly pnl
   const weeklyPnl=weeks.map((week,wi)=>{let wpnl=0,wdays=0;week.forEach(day=>{if(!day)return;const ds=`${yr}-${String(mo+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`;if(calMap[ds]){wpnl+=calMap[ds].pnl;wdays++;}});return{week:wi+1,pnl:wpnl,days:wdays};});
 
-  // Render individual widget by id
+  const SIZE_OPTIONS=[
+    {label:"1/4",cols:3,desc:"Quarter"},
+    {label:"1/3",cols:4,desc:"Third"},
+    {label:"1/2",cols:6,desc:"Half"},
+    {label:"2/3",cols:8,desc:"Two thirds"},
+    {label:"Full",cols:12,desc:"Full width"},
+  ];
+
   const renderWidget=(id)=>{
     switch(id){
       case "gauges": return(
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr 1fr",gap:14}}>
-          <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:"20px 22px",position:"relative",overflow:"hidden",gridColumn:"span 1"}}>
+          <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:"20px 22px",position:"relative",overflow:"hidden"}}>
             <div style={{position:"absolute",top:0,left:0,right:0,height:2,background:GTB}}/>
             <div style={{fontSize:10,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",marginBottom:6}}>Account P&L</div>
             <div style={{fontSize:28,fontWeight:800,color:pnlColor(totalPnl),fontFamily:"'Space Mono',monospace",letterSpacing:-1}}>{fmt(totalPnl)}</div>
@@ -1113,7 +1130,7 @@ function Overview({trades}){
           </div>
           <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:"14px 20px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}><GaugeChart value={winRate} label="Trade Win %" color={winRate>=50?B.profit:B.loss}/></div>
           <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:"14px 20px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}><GaugeChart value={profitFactor} max={3} label="Profit Factor" color={profitFactor>=1?B.teal:B.loss}/></div>
-          <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:"14px 20px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}><GaugeChart value={(() =>{const td=Object.values(calMap);const g=td.filter(d=>d.pnl>0).length;return td.length?Math.round((g/td.length)*100):0;})()} label="Day Win %" color={B.blue}/></div>
+          <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:"14px 20px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}><GaugeChart value={(()=>{const td=Object.values(calMap);const g=td.filter(d=>d.pnl>0).length;return td.length?Math.round((g/td.length)*100):0;})()} label="Day Win %" color={B.blue}/></div>
           <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:"14px 20px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}><StreakBadge trades={trades}/></div>
         </div>
       );
@@ -1187,9 +1204,7 @@ function Overview({trades}){
               <XAxis dataKey="date" tick={{fill:B.textDim,fontSize:9}} axisLine={false} tickLine={false}/>
               <YAxis tick={{fill:B.textDim,fontSize:9}} axisLine={false} tickLine={false} tickFormatter={v=>`$${v}`}/>
               <Tooltip content={<CTip/>}/><ReferenceLine y={0} stroke="rgba(255,255,255,0.1)"/>
-              <Bar dataKey="pnl" name="P&L" radius={[3,3,0,0]}>
-                {Object.entries(trades.reduce((m,t)=>{m[t.date]=(m[t.date]||0)+t.pnl;return m;},{})).map(([d,p],i)=>(<Cell key={i} fill={p>=0?B.teal:B.loss}/>))}
-              </Bar>
+              <Bar dataKey="pnl" name="P&L" radius={[3,3,0,0]}>{Object.entries(trades.reduce((m,t)=>{m[t.date]=(m[t.date]||0)+t.pnl;return m;},{})).map(([d,p],i)=>(<Cell key={i} fill={p>=0?B.teal:B.loss}/>))}</Bar>
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -1232,12 +1247,12 @@ function Overview({trades}){
       {/* Widget Picker Modal */}
       {showWidgetPicker&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",zIndex:150,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(8px)"}} onClick={()=>setShowWidgetPicker(false)}>
-          <div style={{background:"#13121A",border:`1px solid ${B.border}`,borderRadius:20,width:600,maxHeight:"80vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
+          <div style={{background:"#13121A",border:`1px solid ${B.border}`,borderRadius:20,width:620,maxHeight:"80vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
             <div style={{height:3,background:GL,borderRadius:"20px 20px 0 0"}}/>
             <div style={{padding:"22px 28px 0",display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
               <div>
                 <div style={{fontSize:18,fontWeight:800,color:B.text}}>Add Widget</div>
-                <div style={{fontSize:12,color:B.textMuted,marginTop:3}}>Click any widget to add it to your Overview</div>
+                <div style={{fontSize:12,color:B.textMuted,marginTop:3}}>Select widgets to add to your Overview dashboard</div>
               </div>
               <button onClick={()=>setShowWidgetPicker(false)} style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${B.border}`,borderRadius:8,color:B.textMuted,cursor:"pointer",fontSize:18,width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
             </div>
@@ -1247,7 +1262,7 @@ function Overview({trades}){
                 return(
                   <div key={w.id} onClick={()=>!active&&addWidget(w.id)} style={{
                     padding:"14px 16px",borderRadius:12,cursor:active?"default":"pointer",
-                    background:active?`${B.teal}08`:`${B.surface}`,
+                    background:active?`${B.teal}08`:B.surface,
                     border:`1px solid ${active?`${B.teal}40`:B.border}`,
                     opacity:active?0.6:1,transition:"all 0.15s",
                     display:"flex",alignItems:"center",gap:12
@@ -1257,7 +1272,10 @@ function Overview({trades}){
                       <div style={{fontSize:13,fontWeight:700,color:B.text}}>{w.label}</div>
                       <div style={{fontSize:11,color:B.textMuted,marginTop:2}}>{w.desc}</div>
                     </div>
-                    {active?<span style={{fontSize:10,color:B.teal,fontWeight:700}}>Added</span>:<span style={{fontSize:16,color:B.textMuted}}>+</span>}
+                    {active
+                      ?<span style={{fontSize:10,color:B.teal,fontWeight:700,whiteSpace:"nowrap"}}>✓ Added</span>
+                      :<span style={{fontSize:20,color:B.textMuted,lineHeight:1}}>+</span>
+                    }
                   </div>
                 );
               })}
@@ -1266,51 +1284,34 @@ function Overview({trades}){
         </div>
       )}
 
-      {/* Widget toolbar */}
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 16px",borderRadius:12,background:B.surface,border:`1px solid ${B.border}`}}>
-        <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <span style={{fontSize:11,color:B.textMuted}}>⠿ Drag to reorder · Resize with size buttons</span>
-          <span style={{fontSize:11,color:B.textDim}}>·</span>
-          <span style={{fontSize:11,color:B.textMuted}}>{activeWidgets.length} widget{activeWidgets.length!==1?"s":""} active</span>
+      {/* Dashboard toolbar */}
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 18px",borderRadius:12,background:B.surface,border:`1px solid ${B.border}`}}>
+        <div style={{display:"flex",alignItems:"center",gap:12}}>
+          <span style={{fontSize:12,color:B.textMuted}}>
+            {activeWidgets.length} widget{activeWidgets.length!==1?"s":""} · drag to reorder · hover to resize
+          </span>
+          {/* Save status indicator */}
+          <div style={{display:"flex",alignItems:"center",gap:5,padding:"3px 10px",borderRadius:20,
+            background:saveStatus==="saved"?`${B.teal}10`:saveStatus==="saving"?`${B.blue}10`:`${B.loss}10`,
+            border:`1px solid ${saveStatus==="saved"?B.borderTeal:saveStatus==="saving"?`${B.blue}30`:`${B.loss}30`}`}}>
+            <div style={{width:6,height:6,borderRadius:"50%",
+              background:saveStatus==="saved"?B.teal:saveStatus==="saving"?B.blue:B.loss}}/>
+            <span style={{fontSize:10,fontWeight:600,
+              color:saveStatus==="saved"?B.teal:saveStatus==="saving"?B.blue:B.loss}}>
+              {saveStatus==="saved"?"Layout saved":saveStatus==="saving"?"Saving...":"Unsaved changes"}
+            </span>
+          </div>
         </div>
-        <button onClick={()=>setShowWidgetPicker(true)} style={{padding:"7px 16px",borderRadius:9,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:12,fontWeight:800,display:"flex",alignItems:"center",gap:6}}>
+        <button onClick={()=>setShowWidgetPicker(true)} style={{padding:"8px 18px",borderRadius:9,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:12,fontWeight:800,display:"flex",alignItems:"center",gap:6}}>
           + Add Widget
         </button>
       </div>
 
-      {/* Responsive widget grid */}
+      {/* Widget grid - 12 column */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(12,1fr)",gap:16,alignItems:"start"}}>
         {activeWidgets.map((wid)=>{
-          const SIZES={
-            gauges:    {cols:12,label:"Full"},
-            calendar:  {cols:8, label:"Large"},
-            equity:    {cols:8, label:"Large"},
-            dailypnl:  {cols:4, label:"Medium"},
-            setups:    {cols:4, label:"Medium"},
-            session:   {cols:4, label:"Medium"},
-            timeof:    {cols:4, label:"Medium"},
-            cumulative:{cols:6, label:"Half"},
-            drawdown:  {cols:6, label:"Half"},
-            winAvg:    {cols:6, label:"Half"},
-            duration:  {cols:4, label:"Medium"},
-            leaderboard:{cols:4,label:"Medium"},
-            yearly:    {cols:12,label:"Full"},
-            progress:  {cols:4, label:"Medium"},
-            report:    {cols:4, label:"Medium"},
-            aicoach:   {cols:8, label:"Large"},
-          };
-          // Get saved size or default
-          const savedSize=widgetSizes[wid];
-          const defaultCols=(SIZES[wid]||{cols:6}).cols;
-          const cols=savedSize||defaultCols;
-
-          const SIZE_OPTIONS=[
-            {label:"S",cols:3},
-            {label:"M",cols:4},
-            {label:"½",cols:6},
-            {label:"L",cols:8},
-            {label:"Full",cols:12},
-          ];
+          const info=ALL_WIDGETS.find(w=>w.id===wid)||{defaultCols:6,label:wid,icon:"◈"};
+          const cols=widgetSizes[wid]||info.defaultCols||6;
 
           return(
             <div key={wid}
@@ -1321,47 +1322,73 @@ function Overview({trades}){
               onDrop={e=>handleDrop(e,wid)}
               style={{
                 gridColumn:`span ${cols}`,
-                outline:dragOver===wid?`2px dashed ${B.teal}`:"none",
-                borderRadius:14,
-                transition:"outline 0.15s",
                 position:"relative",
+                borderRadius:14,
+                outline:dragOver===wid?`2px dashed ${B.teal}`:"none",
+                outlineOffset:4,
+                transition:"outline 0.15s",
               }}
             >
-              {/* Widget control bar - visible on hover */}
-              <div className="widget-bar" style={{
-                position:"absolute",top:-14,left:0,right:0,zIndex:20,
+              {/* Floating control bar - appears on hover */}
+              <div style={{
+                position:"absolute",top:-44,left:0,right:0,zIndex:30,
                 display:"flex",alignItems:"center",justifyContent:"space-between",
-                padding:"2px 8px",borderRadius:"8px 8px 0 0",
-                background:"rgba(0,0,0,0.7)",border:`1px solid ${B.border}`,
-                opacity:0,transition:"opacity 0.2s",pointerEvents:"none",
-              }}>
-                <div style={{display:"flex",gap:3}}>
+                padding:"6px 12px",
+                background:"rgba(14,14,16,0.95)",
+                border:`1px solid ${B.border}`,
+                borderRadius:10,
+                boxShadow:"0 4px 20px rgba(0,0,0,0.5)",
+                opacity:0,
+                transition:"opacity 0.2s",
+                pointerEvents:"none",
+              }} id={`ctrl-${wid}`}>
+                {/* Size selector */}
+                <div style={{display:"flex",gap:4,alignItems:"center"}}>
+                  <span style={{fontSize:9,color:B.textMuted,marginRight:4,letterSpacing:1}}>WIDTH</span>
                   {SIZE_OPTIONS.map(s=>(
-                    <button key={s.label} onClick={e=>{e.stopPropagation();setWidgetSizes(prev=>{const n={...prev,[wid]:s.cols};(async()=>{try{await window.storage.set("tca_widget_sizes_v1",JSON.stringify(n));}catch(e){}})();return n;});}}
-                      style={{padding:"1px 6px",borderRadius:4,border:`1px solid ${cols===s.cols?B.teal:B.border}`,background:cols===s.cols?`${B.teal}20`:"transparent",color:cols===s.cols?B.teal:B.textMuted,cursor:"pointer",fontSize:9,fontWeight:700}}>
+                    <button key={s.cols} onClick={e=>{e.stopPropagation();resizeWidget(wid,s.cols);}}
+                      style={{
+                        padding:"5px 10px",borderRadius:6,
+                        border:`1px solid ${cols===s.cols?B.teal:B.border}`,
+                        background:cols===s.cols?`${B.teal}20`:"rgba(255,255,255,0.04)",
+                        color:cols===s.cols?B.teal:B.textMuted,
+                        cursor:"pointer",fontSize:11,fontWeight:700,
+                        minWidth:36,
+                      }}>
                       {s.label}
                     </button>
                   ))}
                 </div>
-                <div style={{display:"flex",gap:4,alignItems:"center"}}>
-                  <span style={{fontSize:9,color:B.textMuted}}>⠿ drag</span>
-                  <button onClick={e=>{e.stopPropagation();removeWidget(wid);}}
-                    style={{padding:"1px 6px",borderRadius:4,border:`1px solid ${B.loss}40`,background:`${B.loss}15`,color:B.loss,cursor:"pointer",fontSize:9,fontWeight:700}}>
-                    ✕ remove
+                {/* Actions */}
+                <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                  <span style={{fontSize:9,color:B.textMuted}}>⠿ drag to move</span>
+                  <button onClick={()=>removeWidget(wid)}
+                    style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${B.loss}40`,background:`${B.loss}15`,color:B.loss,cursor:"pointer",fontSize:11,fontWeight:700}}>
+                    Remove
                   </button>
                 </div>
               </div>
-              {/* Widget content */}
+
+              {/* Widget content with hover trigger */}
               <div
-                style={{cursor:"grab",borderRadius:14}}
-                onMouseEnter={e=>{const bar=e.currentTarget.parentElement.querySelector(".widget-bar");if(bar){bar.style.opacity=1;bar.style.pointerEvents="auto";}}}
-                onMouseLeave={e=>{const bar=e.currentTarget.parentElement.querySelector(".widget-bar");if(bar){bar.style.opacity=0;bar.style.pointerEvents="none";}}}
+                onMouseEnter={()=>{const el=document.getElementById(`ctrl-${wid}`);if(el){el.style.opacity=1;el.style.pointerEvents="auto";}}}
+                onMouseLeave={()=>{const el=document.getElementById(`ctrl-${wid}`);if(el){el.style.opacity=0;el.style.pointerEvents="none";}}}
+                style={{cursor:"grab",borderRadius:14,userSelect:"none"}}
+                onMouseDown={e=>e.currentTarget.style.cursor="grabbing"}
+                onMouseUp={e=>e.currentTarget.style.cursor="grab"}
               >
                 {renderWidget(wid)}
               </div>
             </div>
           );
         })}
+
+        {/* Empty drop zone hint when dragging */}
+        {dragRef.current&&(
+          <div style={{gridColumn:"span 12",height:80,borderRadius:14,border:`2px dashed ${B.border}`,display:"flex",alignItems:"center",justifyContent:"center"}}>
+            <span style={{fontSize:12,color:B.textMuted}}>Drop here to move to end</span>
+          </div>
+        )}
       </div>
     </div>
   );
