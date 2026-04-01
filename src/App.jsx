@@ -368,10 +368,185 @@ function TradeFormModal({onClose,onSave,editTrade}){
   return(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.82)",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(6px)"}}><div style={{background:"#13121A",border:`1px solid ${B.border}`,borderRadius:18,padding:32,width:580,maxHeight:"90vh",overflowY:"auto"}}><div style={{height:3,background:GL,borderRadius:3,marginBottom:24}}/><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:24}}><div style={{fontSize:18,fontWeight:800,color:B.text}}>{editTrade?"Edit Trade":"Log New Trade"}</div><button onClick={onClose} style={{background:"none",border:"none",color:B.textMuted,cursor:"pointer",fontSize:22}}>x</button></div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}><div><label style={lS}>Date</label><input type="date" value={form.date} onChange={e=>set("date",e.target.value)} style={iS}/></div><div><label style={lS}>Instrument</label><select value={form.instrument} onChange={e=>set("instrument",e.target.value)} style={iS}>{INSTRUMENTS.map(i=><option key={i}>{i}</option>)}</select></div><div><label style={lS}>Direction</label><div style={{display:"flex",gap:8}}>{["Long","Short"].map(d=>(<button key={d} onClick={()=>set("direction",d)} style={{flex:1,padding:"9px",borderRadius:8,border:"1px solid",cursor:"pointer",fontWeight:700,fontSize:13,borderColor:form.direction===d?(d==="Long"?"#4ade80":"#f87171"):B.border,background:form.direction===d?(d==="Long"?"rgba(74,222,128,0.1)":"rgba(248,113,113,0.1)"):"transparent",color:form.direction===d?(d==="Long"?"#4ade80":"#f87171"):B.textMuted}}>{d}</button>))}</div></div><div><label style={lS}>Contracts</label><input type="number" value={form.contracts} onChange={e=>set("contracts",e.target.value)} style={iS} min="1"/></div><div><label style={lS}>Entry Price</label><input type="number" step="0.01" value={form.entry} onChange={e=>set("entry",e.target.value)} style={iS} placeholder="e.g. 5780.25"/></div><div><label style={lS}>Exit Price</label><input type="number" step="0.01" value={form.exit} onChange={e=>set("exit",e.target.value)} style={iS} placeholder="e.g. 5794.00"/></div><div><label style={lS}>P&L ($) <span onClick={()=>setAuto(a=>!a)} style={{marginLeft:8,cursor:"pointer",color:auto?B.teal:B.textMuted,fontSize:9}}>{auto?"AUTO":"MANUAL"}</span></label><input type="number" step="0.01" value={form.pnl} onChange={e=>{set("pnl",e.target.value);setAuto(false);}} style={{...iS,color:parseFloat(form.pnl)>=0?B.profit:B.loss,fontWeight:700}} placeholder="0.00"/></div><div><label style={lS}>R:R Ratio</label><input value={form.rr} onChange={e=>set("rr",e.target.value)} style={iS} placeholder="e.g. 2.1R"/></div><div><label style={lS}>Setup</label><select value={form.setup} onChange={e=>set("setup",e.target.value)} style={iS}>{SETUPS.map(s=><option key={s}>{s}</option>)}</select></div><div><label style={lS}>Session</label><select value={form.session} onChange={e=>set("session",e.target.value)} style={iS}>{SESSIONS.map(s=><option key={s}>{s}</option>)}</select></div><div style={{gridColumn:"1/-1"}}><label style={lS}>Grade</label><div style={{display:"flex",gap:6}}>{GRADES.map(g=>(<button key={g} onClick={()=>set("grade",g)} style={{flex:1,padding:"7px 0",borderRadius:8,border:"1px solid",cursor:"pointer",fontWeight:800,fontSize:12,borderColor:form.grade===g?GRADE_COLOR[g]:B.border,background:form.grade===g?`${GRADE_COLOR[g]}18`:"transparent",color:form.grade===g?GRADE_COLOR[g]:B.textMuted}}>{g}</button>))}</div></div><div style={{gridColumn:"1/-1"}}><label style={lS}>Notes</label><textarea value={form.notes} onChange={e=>set("notes",e.target.value)} rows={3} style={{...iS,resize:"vertical"}} placeholder="What happened?"/></div></div><div style={{display:"flex",gap:10,marginTop:24,justifyContent:"flex-end"}}><button onClick={onClose} style={{padding:"10px 22px",borderRadius:10,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:13,fontWeight:600}}>Cancel</button><button onClick={handleSave} style={{padding:"10px 28px",borderRadius:10,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:13,fontWeight:800}}>{editTrade?"Save Changes":"Log Trade"}</button></div></div></div>);
 }
 
-function ImportModal({onClose,onImport}){
-  const [step,setStep]=useState("upload");const [parsed,setParsed]=useState([]);const [error,setError]=useState("");const [drag,setDrag]=useState(false);const ref=useRef();
-  const handle=(file)=>{if(!file)return;setError("");const r=new FileReader();r.onload=(e)=>{try{const t=e.target.result;let tr=parseTradovateCSV(t);if(tr.length===0)tr=parseGenericCSV(t);if(tr.length===0){setError("No valid trades found.");return;}setParsed(tr);setStep("preview");}catch(err){setError("Failed to parse: "+err.message);}};r.readAsText(file);};
-  return(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(6px)"}}><div style={{background:"#13121A",border:`1px solid ${B.border}`,borderRadius:18,padding:32,width:620,maxHeight:"85vh",overflowY:"auto"}}><div style={{height:3,background:GL,borderRadius:3,marginBottom:24}}/><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:24}}><div><div style={{fontSize:18,fontWeight:800,color:B.text}}>Import Trades</div><div style={{fontSize:12,color:B.textMuted,marginTop:3}}>Tradovate, Apex, Rithmic, or generic CSV</div></div><button onClick={onClose} style={{background:"none",border:"none",color:B.textMuted,cursor:"pointer",fontSize:22}}>x</button></div>{step==="upload"&&(<><div onDragOver={e=>{e.preventDefault();setDrag(true);}} onDragLeave={()=>setDrag(false)} onDrop={e=>{e.preventDefault();setDrag(false);handle(e.dataTransfer.files[0]);}} onClick={()=>ref.current.click()} style={{border:`2px dashed ${drag?B.teal:B.border}`,borderRadius:14,padding:"48px 24px",textAlign:"center",cursor:"pointer",background:drag?`${B.teal}08`:"rgba(0,0,0,0.2)"}}><div style={{fontSize:36,marginBottom:12}}>📁</div><div style={{fontSize:14,fontWeight:700,color:B.text,marginBottom:6}}>Drop your CSV file here</div><div style={{fontSize:12,color:B.textMuted}}>or click to browse</div><input ref={ref} type="file" accept=".csv,.txt" style={{display:"none"}} onChange={e=>handle(e.target.files[0])}/></div>{error&&<div style={{marginTop:12,padding:"10px 14px",borderRadius:8,background:"rgba(240,90,126,0.1)",border:"1px solid rgba(240,90,126,0.3)",color:B.loss,fontSize:12}}>{error}</div>}</>)}{step==="preview"&&(<><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}><div style={{fontSize:13,color:B.textMuted}}><span style={{color:B.teal,fontWeight:700}}>{parsed.length}</span> trades ready</div><button onClick={()=>setStep("upload")} style={{fontSize:11,color:B.textMuted,background:"none",border:"none",cursor:"pointer"}}>Back</button></div><div style={{maxHeight:300,overflowY:"auto",borderRadius:10,border:`1px solid ${B.border}`}}><div style={{display:"grid",gridTemplateColumns:"90px 70px 60px 70px 80px 1fr",padding:"8px 14px",fontSize:10,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",borderBottom:`1px solid ${B.border}`,background:"rgba(0,0,0,0.4)",position:"sticky",top:0}}>{["Date","Symbol","Dir","Qty","P&L","Setup"].map(h=><div key={h}>{h}</div>)}</div>{parsed.map((t,i)=>(<div key={i} style={{display:"grid",gridTemplateColumns:"90px 70px 60px 70px 80px 1fr",padding:"10px 14px",borderBottom:`1px solid ${B.border}`,fontSize:12,borderLeft:`2px solid ${t.pnl>=0?B.teal:B.loss}`}}><div style={{color:B.textMuted}}>{t.date}</div><div style={{color:INST_COLOR[t.instrument]||B.teal,fontWeight:700}}>{t.instrument}</div><div style={{color:t.direction==="Long"?"#4ade80":"#f87171"}}>{t.direction}</div><div style={{color:B.textMuted}}>{t.contracts}</div><div style={{color:pnlColor(t.pnl),fontWeight:700,fontFamily:"monospace"}}>{fmt(t.pnl)}</div><div style={{color:B.textMuted}}>{t.setup}</div></div>))}</div><div style={{display:"flex",gap:10,marginTop:20,justifyContent:"flex-end"}}><button onClick={onClose} style={{padding:"10px 22px",borderRadius:10,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:13,fontWeight:600}}>Cancel</button><button onClick={()=>{onImport(parsed);onClose();}} style={{padding:"10px 28px",borderRadius:10,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:13,fontWeight:800}}>Import {parsed.length} Trades</button></div></>)}</div></div>);
+function ImportModal({onClose,onImport,existingTrades}){
+  const [step,setStep]=useState("upload");
+  const [parsed,setParsed]=useState([]);
+  const [error,setError]=useState("");
+  const [drag,setDrag]=useState(false);
+  const [mode,setMode]=useState("add"); // "add" | "replace"
+  const [fileType,setFileType]=useState("");
+  const ref=useRef();
+
+  const handle=(file)=>{
+    if(!file)return;
+    setError("");
+    const r=new FileReader();
+    r.onload=(e)=>{
+      try{
+        const t=e.target.result;
+        const firstLine=t.split("
+")[0].toLowerCase();
+        let tr=[];
+        let type="";
+        if(firstLine.includes("buyprice")||firstLine.includes("soldtimestamp")){
+          tr=parseTradovatePerformanceCSV(t);
+          type="Performance CSV";
+        }else{
+          tr=parseTradovateOrdersCSV(t);
+          type="Orders CSV";
+        }
+        if(tr.length===0){setError("No valid trades found. Make sure you're uploading a Tradovate Performance.csv or Orders.csv file.");return;}
+        setParsed(tr);
+        setFileType(type);
+        setStep("preview");
+      }catch(err){setError("Failed to parse: "+err.message);}
+    };
+    r.readAsText(file);
+  };
+
+  const totalPnl=parsed.reduce((a,t)=>a+t.pnl,0);
+  const wins=parsed.filter(t=>t.pnl>0).length;
+
+  // Check for duplicates against existing trades
+  const existingDates=new Set(existingTrades.map(t=>t.date));
+  const newTrades=parsed.filter(t=>!existingDates.has(t.date)||mode==="replace");
+  const duplicates=parsed.length-newTrades.length;
+
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(6px)"}}>
+      <div style={{background:"#13121A",border:`1px solid ${B.border}`,borderRadius:20,width:640,maxHeight:"88vh",overflowY:"auto"}}>
+        <div style={{height:3,background:GL,borderRadius:"20px 20px 0 0"}}/>
+
+        {/* Header */}
+        <div style={{padding:"24px 28px 0",display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+          <div>
+            <div style={{fontSize:18,fontWeight:800,color:B.text}}>Import Trades</div>
+            <div style={{fontSize:12,color:B.textMuted,marginTop:3}}>Tradovate Performance.csv or Orders.csv</div>
+          </div>
+          <button onClick={onClose} style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${B.border}`,borderRadius:8,color:B.textMuted,cursor:"pointer",fontSize:18,width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
+        </div>
+
+        <div style={{padding:"0 28px 28px"}}>
+          {step==="upload"&&(
+            <>
+              {/* Drop zone */}
+              <div
+                onDragOver={e=>{e.preventDefault();setDrag(true);}}
+                onDragLeave={()=>setDrag(false)}
+                onDrop={e=>{e.preventDefault();setDrag(false);handle(e.dataTransfer.files[0]);}}
+                onClick={()=>ref.current.click()}
+                style={{border:`2px dashed ${drag?B.teal:B.border}`,borderRadius:14,padding:"48px 24px",textAlign:"center",cursor:"pointer",background:drag?`${B.teal}08`:"rgba(0,0,0,0.2)",transition:"all 0.2s",marginBottom:20}}>
+                <div style={{fontSize:40,marginBottom:12}}>📊</div>
+                <div style={{fontSize:15,fontWeight:700,color:B.text,marginBottom:6}}>Drop your Tradovate CSV here</div>
+                <div style={{fontSize:12,color:B.textMuted,marginBottom:16}}>or click to browse</div>
+                <div style={{display:"inline-flex",gap:8}}>
+                  {["Performance.csv","Orders.csv"].map(f=>(
+                    <span key={f} style={{fontSize:11,padding:"3px 10px",borderRadius:20,background:`${B.teal}12`,border:`1px solid ${B.borderTeal}`,color:B.teal,fontWeight:700}}>{f}</span>
+                  ))}
+                </div>
+                <input ref={ref} type="file" accept=".csv,.txt" style={{display:"none"}} onChange={e=>handle(e.target.files[0])}/>
+              </div>
+
+              {error&&<div style={{padding:"12px 16px",borderRadius:10,background:`${B.loss}10`,border:`1px solid ${B.loss}30`,color:B.loss,fontSize:12,marginBottom:16}}>{error}</div>}
+
+              {/* How to export guide */}
+              <div style={{padding:16,borderRadius:12,background:"rgba(0,0,0,0.3)",border:`1px solid ${B.border}`}}>
+                <div style={{fontSize:10,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:10}}>How to export from Tradovate</div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+                  <div>
+                    <div style={{fontSize:11,fontWeight:700,color:B.teal,marginBottom:6}}>Performance.csv (Recommended)</div>
+                    {["Open Tradovate platform","Go to Account → Performance","Set your date range","Click Export → Performance CSV"].map((s,i)=>(
+                      <div key={i} style={{fontSize:11,color:"#9CA0BC",marginBottom:4,display:"flex",gap:6}}>
+                        <span style={{color:B.teal,fontWeight:700,minWidth:14}}>{i+1}.</span>{s}
+                      </div>
+                    ))}
+                  </div>
+                  <div>
+                    <div style={{fontSize:11,fontWeight:700,color:B.blue,marginBottom:6}}>Orders.csv (Alternative)</div>
+                    {["Open Tradovate platform","Go to Account → Orders","Set your date range","Click Export → Orders CSV"].map((s,i)=>(
+                      <div key={i} style={{fontSize:11,color:"#9CA0BC",marginBottom:4,display:"flex",gap:6}}>
+                        <span style={{color:B.blue,fontWeight:700,minWidth:14}}>{i+1}.</span>{s}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+
+          {step==="preview"&&(
+            <>
+              {/* File type badge */}
+              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
+                <span style={{fontSize:11,padding:"3px 12px",borderRadius:20,background:`${B.teal}15`,border:`1px solid ${B.borderTeal}`,color:B.teal,fontWeight:700}}>✓ {fileType} detected</span>
+                <button onClick={()=>{setStep("upload");setParsed([]);setError("");}} style={{fontSize:11,color:B.textMuted,background:"none",border:"none",cursor:"pointer",textDecoration:"underline"}}>Upload different file</button>
+              </div>
+
+              {/* Summary stats */}
+              <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginBottom:16}}>
+                {[
+                  {label:"Total Trades",value:parsed.length,color:B.text},
+                  {label:"Net P&L",value:fmt(Math.round(totalPnl*100)/100),color:pnlColor(totalPnl)},
+                  {label:"Win Rate",value:`${parsed.length?Math.round((wins/parsed.length)*100):0}%`,color:B.teal},
+                  {label:"New Trades",value:newTrades.length,color:B.blue},
+                ].map(s=>(
+                  <div key={s.label} style={{background:"rgba(0,0,0,0.3)",borderRadius:10,padding:"12px 14px",border:`1px solid ${B.border}`,textAlign:"center"}}>
+                    <div style={{fontSize:9,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:5}}>{s.label}</div>
+                    <div style={{fontSize:18,fontWeight:800,color:s.color,fontFamily:"monospace"}}>{s.value}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Import mode */}
+              <div style={{marginBottom:16}}>
+                <div style={{fontSize:10,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:8}}>Import Mode</div>
+                <div style={{display:"flex",gap:8}}>
+                  {[
+                    {id:"add",label:"Add New Only",desc:`Skip ${duplicates} duplicate dates`},
+                    {id:"replace",label:"Replace All",desc:"Overwrite existing trades"},
+                  ].map(m=>(
+                    <button key={m.id} onClick={()=>setMode(m.id)} style={{
+                      flex:1,padding:"10px 14px",borderRadius:10,border:"1px solid",cursor:"pointer",textAlign:"left",
+                      borderColor:mode===m.id?B.teal:B.border,
+                      background:mode===m.id?`${B.teal}10`:"transparent",
+                    }}>
+                      <div style={{fontSize:12,fontWeight:700,color:mode===m.id?B.teal:B.text,marginBottom:3}}>{m.label}</div>
+                      <div style={{fontSize:10,color:B.textMuted}}>{m.desc}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Trade preview table */}
+              <div style={{borderRadius:12,overflow:"hidden",border:`1px solid ${B.border}`,marginBottom:20,maxHeight:260,overflowY:"auto"}}>
+                <div style={{display:"grid",gridTemplateColumns:"90px 60px 60px 60px 90px 1fr",padding:"8px 14px",fontSize:10,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",borderBottom:`1px solid ${B.border}`,background:"rgba(0,0,0,0.5)",position:"sticky",top:0}}>
+                  {["Date","Symbol","Dir","Qty","P&L","Notes"].map(h=><div key={h}>{h}</div>)}
+                </div>
+                {parsed.map((t,i)=>(
+                  <div key={i} style={{display:"grid",gridTemplateColumns:"90px 60px 60px 60px 90px 1fr",padding:"9px 14px",borderBottom:`1px solid ${B.border}`,fontSize:12,borderLeft:`2px solid ${t.pnl>=0?B.teal:B.loss}`,background:i%2===0?"transparent":"rgba(255,255,255,0.01)"}}>
+                    <div style={{color:B.textMuted}}>{t.date.slice(5)}</div>
+                    <div style={{color:INST_COLOR[t.instrument]||B.teal,fontWeight:700}}>{t.instrument}</div>
+                    <div style={{color:t.direction==="Long"?"#4ade80":"#f87171"}}>{t.direction}</div>
+                    <div style={{color:B.textMuted}}>{t.contracts}</div>
+                    <div style={{color:pnlColor(t.pnl),fontWeight:700,fontFamily:"monospace"}}>{fmt(t.pnl)}</div>
+                    <div style={{color:B.textMuted,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis",fontSize:10}}>{t.notes}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Action buttons */}
+              <div style={{display:"flex",gap:10}}>
+                <button onClick={onClose} style={{flex:1,padding:"11px",borderRadius:10,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:13,fontWeight:600}}>Cancel</button>
+                <button onClick={()=>{onImport(mode==="replace"?parsed:newTrades,mode);onClose();}} style={{flex:2,padding:"11px",borderRadius:10,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:13,fontWeight:800}}>
+                  Import {mode==="replace"?parsed.length:newTrades.length} Trades →
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function DeleteConfirm({trade,onConfirm,onCancel}){return(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:110,display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{background:"#13121A",border:"1px solid rgba(240,90,126,0.3)",borderRadius:16,padding:28,width:360,textAlign:"center"}}><div style={{fontSize:16,fontWeight:700,color:B.text,marginBottom:8}}>Delete Trade?</div><div style={{fontSize:13,color:B.textMuted,marginBottom:6}}>{trade.date} - {trade.instrument} - {trade.direction}</div><div style={{fontSize:15,fontWeight:700,fontFamily:"monospace",color:pnlColor(trade.pnl),marginBottom:20}}>{fmt(trade.pnl)}</div><div style={{display:"flex",gap:10,justifyContent:"center"}}><button onClick={onCancel} style={{padding:"9px 22px",borderRadius:9,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontWeight:600}}>Cancel</button><button onClick={onConfirm} style={{padding:"9px 22px",borderRadius:9,background:"rgba(240,90,126,0.15)",color:B.loss,cursor:"pointer",fontWeight:700,border:"1px solid rgba(240,90,126,0.3)"}}>Delete</button></div></div></div>);}
@@ -1966,7 +2141,8 @@ export default function App(){
   const [showImport,setShowImport]=useState(false);
   const [toast,setToast]=useState(null);
   const [loading,setLoading]=useState(true);
-  const [syncStatus,setSyncStatus]=useState("idle"); // idle | syncing | connected | error
+  const [syncStatus,setSyncStatus]=useState("idle");
+  const [lastImport,setLastImport]=useState(null); // idle | syncing | connected | error
   const [showSyncModal,setShowSyncModal]=useState(false);
   const [syncRange,setSyncRange]=useState({from:"",to:""});
 
@@ -2067,8 +2243,11 @@ export default function App(){
     setEditTrade(null);
   };
 
-  const handleImport=async(imported)=>{
-    // Strip client-side ids so Supabase generates proper UUIDs
+  const handleImport=async(imported, mode="add")=>{
+    if(mode==="replace"){
+      // Delete all existing trades first
+      await supabase.from("trades").delete().eq("user_id",session.user.id);
+    }
     const rows=imported.map(t=>{
       const{id,...rest}=t;
       return{...rest,user_id:session.user.id,day:dayName(t.date)};
@@ -2079,8 +2258,14 @@ export default function App(){
       showT("Import failed: "+error.message,"error");
       return;
     }
-    setTrades(ts=>[...(ts.filter(t=>!t.id?.startsWith("s"))),...(data||[])]);
-    showT(`${data?.length||imported.length} trades imported and saved ✓`);
+    const newData=data||[];
+    if(mode==="replace"){
+      setTrades(newData);
+    }else{
+      setTrades(ts=>[...(ts.filter(t=>!t.id?.startsWith("s"))),...newData]);
+    }
+    setLastImport(new Date().toLocaleString("en-US",{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"}));
+    showT(`${newData.length} trades imported and saved ✓`);
   };
 
   const handleManualSync=async(from,to)=>{
@@ -2110,7 +2295,7 @@ export default function App(){
     {toast&&(<div style={{position:"fixed",top:20,right:24,zIndex:200,padding:"12px 20px",borderRadius:10,background:toast.type==="error"?`${B.loss}18`:`${B.teal}15`,border:`1px solid ${toast.type==="error"?`${B.loss}40`:`${B.teal}40`}`,color:toast.type==="error"?B.loss:B.teal,fontWeight:700,fontSize:13,boxShadow:"0 8px 32px rgba(0,0,0,0.5)"}}>{toast.msg}</div>)}
     {showSyncModal&&<TradovateSyncModal onClose={()=>setShowSyncModal(false)} onSync={handleManualSync} syncing={syncStatus==="syncing"}/>}
     {showForm&&<TradeFormModal onClose={()=>{setShowForm(false);setEditTrade(null);}} onSave={handleSave} editTrade={editTrade}/>}
-    {showImport&&<ImportModal onClose={()=>setShowImport(false)} onImport={handleImport}/>}
+    {showImport&&<ImportModal onClose={()=>setShowImport(false)} onImport={handleImport} existingTrades={trades}/>}
     {delTrade&&<DeleteConfirm trade={delTrade} onConfirm={handleDelete} onCancel={()=>setDelTrade(null)}/>}
     <div style={{position:"fixed",top:0,left:0,bottom:0,width:216,background:"rgba(8,8,10,0.98)",borderRight:`1px solid ${B.border}`,display:"flex",flexDirection:"column",zIndex:10,backdropFilter:"blur(24px)"}}>
       <div style={{padding:"22px 18px 18px",borderBottom:`1px solid ${B.border}`}}><div style={{display:"flex",alignItems:"center",gap:12}}><TCAIcon size={40}/><div><div style={{fontSize:10,fontWeight:800,color:B.text,letterSpacing:1,lineHeight:1.3,textTransform:"uppercase"}}>The Candlestick</div><div style={{fontSize:10,fontWeight:800,color:B.text,letterSpacing:1,lineHeight:1.3,textTransform:"uppercase"}}>Academy</div><div style={{marginTop:4,display:"inline-block",padding:"2px 8px",borderRadius:20,background:GL,fontSize:8,fontWeight:800,letterSpacing:2,color:"#0E0E10"}}>TRADE JOURNAL</div></div></div></div>
@@ -2126,6 +2311,7 @@ export default function App(){
         </div>
         <div style={{marginTop:10,padding:"12px 14px",borderRadius:10,background:`${B.teal}08`,border:`1px solid ${B.teal}22`,position:"relative",overflow:"hidden"}}><div style={{position:"absolute",top:0,left:0,right:0,height:2,background:GTB}}/><div style={{fontSize:9,color:B.textMuted,marginBottom:3,letterSpacing:1}}>MONTH P&L</div><div style={{fontSize:20,fontWeight:800,fontFamily:"monospace",color:pnlColor(totalPnl)}}>{fmt(totalPnl)}</div></div>
         <div style={{marginTop:10,fontSize:10,color:B.textMuted,textAlign:"center"}}>{trades.filter(t=>!t.id?.startsWith("s")).length} trades logged</div>
+        {lastImport&&<div style={{fontSize:9,color:B.textDim,textAlign:"center",marginTop:3}}>Last import: {lastImport}</div>}
         <button onClick={()=>supabase.auth.signOut()} style={{marginTop:10,width:"100%",padding:"7px",borderRadius:8,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:11,fontWeight:600}}>Sign Out</button>
       </div>
     </div>
