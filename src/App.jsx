@@ -2154,8 +2154,14 @@ export default function App(){
   useEffect(()=>{
     if(!session){setLoading(false);return;}
     (async()=>{
-      const{data}=await supabase.from("trades").select("*").order("date",{ascending:false});
-      setTrades(data||[]);
+      try{
+        const{data,error}=await supabase.from("trades").select("*").order("date",{ascending:false});
+        if(error)console.error("Load error:",error);
+        setTrades(data||[]);
+      }catch(e){
+        console.error("Failed to load trades:",e);
+        setTrades([]);
+      }
       setLoading(false);
     })();
   },[session]);
@@ -2214,13 +2220,21 @@ export default function App(){
     }
   }, [session]);
 
-  // Auto sync every 30 seconds
+  // Check connection on load, but don't auto-import trades
   useEffect(() => {
     if (!session || loading) return;
-    syncTradovate();
-    const interval = setInterval(syncTradovate, 30000);
-    return () => clearInterval(interval);
-  }, [session, loading, syncTradovate]);
+    // Just verify connection on load
+    (async () => {
+      setSyncStatus("syncing");
+      try {
+        sessionStorage.removeItem("tv_token");
+        sessionStorage.removeItem("tv_expiry");
+        const token = await getToken();
+        if (token) setSyncStatus("connected");
+        else setSyncStatus("error");
+      } catch(e) { setSyncStatus("error"); }
+    })();
+  }, [session, loading]);
 
   useEffect(()=>{const t=setInterval(()=>setTime(new Date()),1000);return()=>clearInterval(t);},[]);
 
@@ -2269,6 +2283,7 @@ export default function App(){
 
   const handleManualSync=async(from,to)=>{
     setShowSyncModal(false);
+    showT("Connecting to Tradovate...");
     await syncTradovate(from,to);
   };
 
@@ -2319,7 +2334,7 @@ export default function App(){
         <div><h1 style={{margin:0,fontSize:20,fontWeight:800,color:B.text,letterSpacing:-0.5}}>{NAV.find(n=>n.id===active)?.label}</h1><div style={{fontSize:12,color:B.textMuted,marginTop:4}}>{session.user.email} - {trades.filter(t=>!t.id?.startsWith("s")).length} trades logged</div></div>
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
           {hasSample&&(<button onClick={()=>setTrades([])} style={{padding:"8px 14px",borderRadius:9,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:11,fontWeight:600}}>Clear Sample Data</button>)}
-          <button onClick={()=>setShowImport(true)} style={{padding:"8px 16px",borderRadius:9,border:`1px solid ${B.blue}40`,background:`${B.blue}12`,color:B.blue,cursor:"pointer",fontSize:12,fontWeight:700}}>Import CSV</button>
+          <button onClick={()=>setShowImport(true)} style={{padding:"8px 16px",borderRadius:9,border:`1px solid ${B.blue}40`,background:`${B.blue}12`,color:B.blue,cursor:"pointer",fontSize:12,fontWeight:700}}>⬆ Import CSV</button>
           <button onClick={()=>{setEditTrade(null);setShowForm(true);}} style={{padding:"8px 18px",borderRadius:9,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:12,fontWeight:800}}>+ Log Trade</button>
         </div>
       </div>
