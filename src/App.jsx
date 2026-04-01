@@ -8,28 +8,12 @@ const supabase = createClient(
 );
 
 // ── Tradovate Sync ────────────────────────────────────────────────────────────
-const TV_URL = "https://live.tradovateapi.com/v1";
-const TV_USERNAME = import.meta.env.VITE_TV_USERNAME;
-const TV_PASSWORD = import.meta.env.VITE_TV_PASSWORD;
-const TV_CID      = import.meta.env.VITE_TV_CID;
-const TV_SECRET   = import.meta.env.VITE_TV_SECRET;
-const TV_DEVICE   = import.meta.env.VITE_TV_DEVICE_ID;
+// ── Tradovate via Vercel Proxy (avoids CORS) ─────────────────────────────────
+const PROXY = "/api/tradovate";
 
 async function tvAuth() {
   try {
-    const res = await fetch(`${TV_URL}/auth/accesstokenrequest`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "accept": "application/json" },
-      body: JSON.stringify({
-        name: TV_USERNAME,
-        password: TV_PASSWORD,
-        appId: "TCA Journal",
-        appVersion: "0.0.1",
-        deviceId: TV_DEVICE,
-        cid: parseInt(TV_CID),
-        sec: TV_SECRET,
-      }),
-    });
+    const res = await fetch(`${PROXY}?action=auth`);
     const data = await res.json();
     if (data.accessToken) {
       sessionStorage.setItem("tv_token", data.accessToken);
@@ -46,16 +30,14 @@ async function tvAuth() {
 
 async function getToken() {
   const expiry = sessionStorage.getItem("tv_expiry");
-  const token = sessionStorage.getItem("tv_token");
+  const token  = sessionStorage.getItem("tv_token");
   if (token && expiry && Date.now() < parseInt(expiry)) return token;
   return await tvAuth();
 }
 
 async function fetchClosedTrades(token) {
   try {
-    const res = await fetch(`${TV_URL}/executionreport/list`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const res  = await fetch(`${PROXY}?action=fills&token=${token}`);
     const data = await res.json();
     return Array.isArray(data) ? data.filter(e => e.execType === "Fill") : [];
   } catch (e) { return []; }
