@@ -2513,7 +2513,11 @@ function AICoachWidget({trades}){
             </div>
           )}
         </div>
- 
+      )}
+    </div>
+  );
+}
+
 // ── Win% / Avg Win / Avg Loss Chart ─────────────────────────────────────────
 function WinAvgWidget({trades}){
   const sorted=[...trades].sort((a,b)=>a.date.localeCompare(b.date));
