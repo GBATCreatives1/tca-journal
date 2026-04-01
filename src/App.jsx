@@ -115,6 +115,93 @@ function buildCalendar(trades){const m={};trades.forEach(t=>{if(!m[t.date])m[t.d
 function buildEquity(trades){const s=[...trades].sort((a,b)=>a.date.localeCompare(b.date));let c=0;return s.map(t=>{c+=t.pnl;return{date:t.date.slice(5),equity:c};});}
 
 function parseTradovateCSV(text){
+  // Detect if this is a Performance CSV (has buyPrice, sellPrice, pnl columns)
+  const firstLine = text.trim().split("\n")[0].toLowerCase();
+  if(firstLine.includes("buyprice") || firstLine.includes("buyfillid") || firstLine.includes("soldtimestamp")){
+    return parseTradovatePerformanceCSV(text);
+  }
+  // Otherwise fall through to Orders CSV parser below
+  return parseTradovateOrdersCSV(text);
+}
+
+function parseTradovatePerformanceCSV(text){
+  // Parse CSV respecting quoted fields
+  function parseCSVLine(line){
+    const result=[];let cur="";let inQ=false;
+    for(let i=0;i<line.length;i++){
+      if(line[i]==='"'){inQ=!inQ;}
+      else if(line[i]===","&&!inQ){result.push(cur.trim());cur="";}
+      else cur+=line[i];
+    }
+    result.push(cur.trim());
+    return result;
+  }
+
+  const lines=text.trim().split("\n").filter(l=>l.trim());
+  const headers=parseCSVLine(lines[0]).map(h=>h.replace(/"/g,"").trim().toLowerCase());
+  const trades=[];
+
+  for(let i=1;i<lines.length;i++){
+    const vals=parseCSVLine(lines[i]);
+    const row={};
+    headers.forEach((h,idx)=>{row[h]=(vals[idx]||"").replace(/"/g,"").trim();});
+
+    // Parse P&L — handles "$6.25" and "$(51.25)" formats
+    const rawPnl=row["pnl"]||"0";
+    const isNeg=rawPnl.includes("(");
+    const pnl=parseFloat(rawPnl.replace(/[$(),]/g,""))*(isNeg?-1:1)||0;
+
+    // Parse dates
+    const rawDate=row["boughttimestamp"]||row["soldtimestamp"]||"";
+    let dateStr=new Date().toISOString().slice(0,10);
+    try{if(rawDate)dateStr=new Date(rawDate).toISOString().slice(0,10);}catch(e){}
+
+    // Parse prices
+    const buyPrice=parseFloat(row["buyprice"]||"0")||0;
+    const sellPrice=parseFloat(row["sellprice"]||"0")||0;
+    const qty=parseInt(row["qty"]||"1")||1;
+
+    // Determine direction: if buyTimestamp < sellTimestamp = Long, else Short
+    const buyTime=new Date(row["boughttimestamp"]||"").getTime();
+    const sellTime=new Date(row["soldtimestamp"]||"").getTime();
+    const direction=buyTime<=sellTime?"Long":"Short";
+    const entryPrice=direction==="Long"?buyPrice:sellPrice;
+    const exitPrice=direction==="Long"?sellPrice:buyPrice;
+
+    // Product
+    const rawSymbol=row["symbol"]||"MES";
+    const product=rawSymbol.replace(/[FGHJKMNQUVXZ]\d+$/,"").replace(/\d+/g,"").toUpperCase()||"MES";
+
+    // Session
+    const hr=rawDate?new Date(rawDate).getHours():9;
+    const session=hr<10?"AM":hr<13?"Mid":hr<16?"PM":"After";
+
+    // Duration
+    const duration=row["duration"]||"";
+
+    if(!dateStr)continue;
+
+    trades.push({
+      id:`perf_${Date.now()}_${i}`,
+      date:dateStr,
+      instrument:product,
+      direction,
+      contracts:qty,
+      entry:entryPrice,
+      exit:exitPrice,
+      pnl:Math.round(pnl*100)/100,
+      rr:"--",
+      setup:"Imported",
+      grade:"B",
+      notes:`${rawSymbol} | ${duration} | Entry: ${entryPrice} → Exit: ${exitPrice}`,
+      session,
+      result:pnl>=0?"Win":"Loss",
+    });
+  }
+  return trades;
+}
+
+function parseTradovateOrdersCSV(text){
   // Parse CSV respecting quoted fields
   function parseCSVLine(line){
     const result=[];let cur="";let inQ=false;
