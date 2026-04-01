@@ -900,18 +900,329 @@ function Analytics({trades}){
   return(<div style={{display:"flex",flexDirection:"column",gap:20}}><div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14}}><StatCard label="Profit Factor" value={pf} sub="Gross win / Gross loss" grad={GTB} accent={B.teal}/><StatCard label="Expectancy" value={`+$${exp}`} sub="Per trade avg" grad={GBP} accent={B.blue}/><StatCard label="Max Drawdown" value={`$${maxDD}`} sub="Peak to trough" accent={B.loss}/><StatCard label="Total Trades" value={trades.length} sub={`${wins.length}W - ${losses.length}L`} accent={B.spark}/></div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}><PBar label="P&L by Instrument" data={byInst} grads={[GL,GTB,GBP]}/><PBar label="P&L by Session" data={bySess} grads={[GTB,GBP,GL]}/></div><div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:22}}><div style={{fontSize:10,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",marginBottom:16}}>P&L by Day of Week</div><ResponsiveContainer width="100%" height={160}><BarChart data={dayData} barSize={44}><CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false}/><XAxis dataKey="day" tick={{fill:"#6B6880",fontSize:12}} axisLine={false} tickLine={false}/><YAxis tick={{fill:B.textDim,fontSize:10}} axisLine={false} tickLine={false} tickFormatter={v=>`$${v}`}/><Tooltip content={<CTip/>}/><ReferenceLine y={0} stroke="rgba(255,255,255,0.08)"/><Bar dataKey="pnl" name="P&L" radius={[5,5,0,0]} fill={B.teal} isAnimationActive/></BarChart></ResponsiveContainer></div></div>);
 }
 
+function DayJournalModal({date, trades, onClose}){
+  const STORAGE_KEY=`tca_dayjournal_${date}`;
+  const [notes,setNotes]=useState("");
+  const [checklist,setChecklist]=useState([]);
+  const [newItem,setNewItem]=useState("");
+  const [loaded,setLoaded]=useState(false);
+  const [saving,setSaving]=useState(false);
+  const [tab,setTab]=useState("notes");
+
+  const dayTrades=trades.filter(t=>t.date===date);
+  const dayPnl=dayTrades.reduce((a,t)=>a+t.pnl,0);
+  const dateLabel=new Date(date+"T12:00:00").toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric",year:"numeric"});
+
+  // Default pre-market checklist items
+  const DEFAULT_CHECKLIST=[
+    "Reviewed economic calendar for today",
+    "Checked overnight globex session range",
+    "Identified PDH and PDL levels",
+    "Noted key support and resistance levels",
+    "Checked /ES bias on 3H and 90M",
+    "Set daily loss limit in mind",
+    "Reviewed yesterday's trades",
+    "Mental state check — ready to trade?",
+  ];
+
+  useEffect(()=>{
+    (async()=>{
+      try{
+        const r=await window.storage.get(STORAGE_KEY);
+        if(r?.value){
+          const saved=JSON.parse(r.value);
+          setNotes(saved.notes||"");
+          setChecklist(saved.checklist||DEFAULT_CHECKLIST.map(item=>({text:item,checked:false})));
+        }else{
+          setChecklist(DEFAULT_CHECKLIST.map(item=>({text:item,checked:false})));
+        }
+      }catch(e){
+        setChecklist(DEFAULT_CHECKLIST.map(item=>({text:item,checked:false})));
+      }
+      setLoaded(true);
+    })();
+  },[date]);
+
+  const save=async(newNotes,newChecklist)=>{
+    setSaving(true);
+    try{
+      await window.storage.set(STORAGE_KEY,JSON.stringify({notes:newNotes??notes,checklist:newChecklist??checklist}));
+    }catch(e){}
+    setSaving(false);
+  };
+
+  const toggleCheck=(i)=>{
+    const updated=checklist.map((item,idx)=>idx===i?{...item,checked:!item.checked}:item);
+    setChecklist(updated);
+    save(undefined,updated);
+  };
+
+  const addItem=()=>{
+    if(!newItem.trim())return;
+    const updated=[...checklist,{text:newItem.trim(),checked:false}];
+    setChecklist(updated);
+    setNewItem("");
+    save(undefined,updated);
+  };
+
+  const removeItem=(i)=>{
+    const updated=checklist.filter((_,idx)=>idx!==i);
+    setChecklist(updated);
+    save(undefined,updated);
+  };
+
+  const completed=checklist.filter(i=>i.checked).length;
+  const pct=checklist.length?Math.round((completed/checklist.length)*100):0;
+
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",zIndex:150,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(8px)"}}
+      onClick={onClose}>
+      <div style={{background:"#13121A",border:`1px solid ${B.border}`,borderRadius:20,width:680,maxHeight:"90vh",overflowY:"auto"}}
+        onClick={e=>e.stopPropagation()}>
+        <div style={{height:3,background:dayPnl>0?GTB:dayPnl<0?"linear-gradient(90deg,#F05A7E,#8B5CF6)":GL,borderRadius:"20px 20px 0 0"}}/>
+
+        {/* Header */}
+        <div style={{padding:"22px 28px 0",display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+          <div>
+            <div style={{fontSize:12,color:B.textMuted,marginBottom:3}}>{dateLabel}</div>
+            <div style={{display:"flex",alignItems:"center",gap:12}}>
+              <div style={{fontSize:22,fontWeight:800,color:dayTrades.length?pnlColor(dayPnl):B.textMuted,fontFamily:"monospace"}}>
+                {dayTrades.length?fmt(dayPnl):"No trades"}
+              </div>
+              {dayTrades.length>0&&<div style={{fontSize:12,color:B.textMuted}}>{dayTrades.length} trade{dayTrades.length!==1?"s":""}</div>}
+            </div>
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            {saving&&<div style={{fontSize:11,color:B.textMuted}}>Saving...</div>}
+            <button onClick={onClose} style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${B.border}`,borderRadius:8,color:B.textMuted,cursor:"pointer",fontSize:18,width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div style={{padding:"0 28px",display:"flex",gap:6,marginBottom:20}}>
+          {[
+            {id:"checklist",label:`Pre-Market Checklist ${checklist.length?`(${completed}/${checklist.length})`:""}` },
+            {id:"notes",label:"Trading Notes"},
+            {id:"trades",label:`Trades (${dayTrades.length})`},
+          ].map(t=>(
+            <button key={t.id} onClick={()=>setTab(t.id)} style={{
+              padding:"8px 16px",borderRadius:9,border:"1px solid",cursor:"pointer",fontSize:12,fontWeight:700,
+              borderColor:tab===t.id?B.teal:B.border,
+              background:tab===t.id?`${B.teal}15`:"transparent",
+              color:tab===t.id?B.teal:B.textMuted,
+            }}>{t.label}</button>
+          ))}
+        </div>
+
+        <div style={{padding:"0 28px 28px"}}>
+
+          {/* Pre-Market Checklist Tab */}
+          {tab==="checklist"&&(
+            <div>
+              {/* Progress bar */}
+              <div style={{marginBottom:16}}>
+                <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+                  <div style={{fontSize:12,color:B.textMuted}}>Pre-market preparation</div>
+                  <div style={{fontSize:12,fontWeight:700,color:pct===100?B.teal:B.textMuted}}>{pct}% complete</div>
+                </div>
+                <div style={{height:6,background:"rgba(255,255,255,0.05)",borderRadius:3,overflow:"hidden"}}>
+                  <div style={{height:"100%",width:`${pct}%`,background:pct===100?GTB:GBP,borderRadius:3,transition:"width 0.4s"}}/>
+                </div>
+                {pct===100&&<div style={{fontSize:11,color:B.teal,marginTop:6,fontWeight:700}}>✅ Pre-market prep complete — ready to trade!</div>}
+              </div>
+
+              {/* Checklist items */}
+              <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16}}>
+                {checklist.map((item,i)=>(
+                  <div key={i} style={{
+                    display:"flex",alignItems:"center",gap:12,padding:"12px 16px",borderRadius:10,
+                    background:item.checked?"rgba(0,212,168,0.06)":"rgba(255,255,255,0.02)",
+                    border:`1px solid ${item.checked?`${B.teal}30`:B.border}`,
+                    transition:"all 0.2s",cursor:"pointer"
+                  }} onClick={()=>toggleCheck(i)}>
+                    <div style={{
+                      width:20,height:20,borderRadius:6,border:`2px solid ${item.checked?B.teal:B.textMuted}`,
+                      background:item.checked?B.teal:"transparent",flexShrink:0,
+                      display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.2s"
+                    }}>
+                      {item.checked&&<span style={{color:"#0E0E10",fontSize:12,fontWeight:900}}>✓</span>}
+                    </div>
+                    <div style={{flex:1,fontSize:13,color:item.checked?B.textMuted:B.text,textDecoration:item.checked?"line-through":"none"}}>{item.text}</div>
+                    <button onClick={e=>{e.stopPropagation();removeItem(i);}} style={{background:"none",border:"none",color:B.textDim,cursor:"pointer",fontSize:14,padding:"0 4px",opacity:0.5}}>×</button>
+                  </div>
+                ))}
+              </div>
+
+              {/* Add new item */}
+              <div style={{display:"flex",gap:8}}>
+                <input value={newItem} onChange={e=>setNewItem(e.target.value)}
+                  onKeyDown={e=>e.key==="Enter"&&addItem()}
+                  style={{...iS,flex:1}} placeholder="Add a checklist item..."/>
+                <button onClick={addItem} style={{padding:"9px 18px",borderRadius:8,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:12,fontWeight:800,whiteSpace:"nowrap"}}>+ Add</button>
+              </div>
+            </div>
+          )}
+
+          {/* Notes Tab */}
+          {tab==="notes"&&(
+            <div>
+              <div style={{fontSize:11,color:B.textMuted,marginBottom:10}}>Your trading journal for this day — thoughts, observations, lessons learned.</div>
+              <textarea
+                value={notes}
+                onChange={e=>{setNotes(e.target.value);}}
+                onBlur={()=>save(notes,undefined)}
+                rows={14}
+                style={{...iS,resize:"vertical",lineHeight:1.7,fontSize:13}}
+                placeholder={`Journal entry for ${dateLabel}...
+
+What was your plan going into the session?
+What did you do well?
+What would you do differently?
+Any key observations about market structure?`}
+              />
+              <div style={{display:"flex",justifyContent:"flex-end",marginTop:10}}>
+                <button onClick={()=>save(notes,undefined)} style={{padding:"8px 20px",borderRadius:8,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:12,fontWeight:800}}>Save Notes</button>
+              </div>
+            </div>
+          )}
+
+          {/* Trades Tab */}
+          {tab==="trades"&&(
+            <div>
+              {dayTrades.length===0?(
+                <div style={{textAlign:"center",padding:"40px 0",color:B.textMuted,fontSize:13}}>No trades on this day.</div>
+              ):(
+                <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                  {dayTrades.map((t,i)=>(
+                    <div key={t.id} style={{padding:"14px 16px",borderRadius:12,background:"rgba(0,0,0,0.3)",border:`1px solid ${t.result==="Win"?`${B.teal}30`:`${B.loss}30`}`,borderLeft:`4px solid ${t.result==="Win"?B.teal:B.loss}`}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+                        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                          <span style={{fontSize:11,padding:"2px 9px",borderRadius:5,fontWeight:700,background:`${INST_COLOR[t.instrument]||B.teal}20`,color:INST_COLOR[t.instrument]||B.teal}}>{t.instrument}</span>
+                          <span style={{fontSize:13,fontWeight:700,color:t.direction==="Long"?"#4ade80":"#f87171"}}>{t.direction}</span>
+                          <span style={{fontSize:11,color:B.textMuted}}>{t.contracts} contract{t.contracts!==1?"s":""}</span>
+                        </div>
+                        <span style={{fontSize:18,fontWeight:800,fontFamily:"monospace",color:pnlColor(t.pnl)}}>{fmt(t.pnl)}</span>
+                      </div>
+                      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:8}}>
+                        {[{l:"Entry",v:t.entry||"--"},{l:"Exit",v:t.exit||"--"},{l:"R:R",v:t.rr||"--"},{l:"Session",v:t.session||"--"}].map(s=>(
+                          <div key={s.l} style={{background:"rgba(255,255,255,0.03)",borderRadius:8,padding:"8px 10px"}}>
+                            <div style={{fontSize:9,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:3}}>{s.l}</div>
+                            <div style={{fontSize:13,fontWeight:700,color:B.text,fontFamily:"monospace"}}>{s.v}</div>
+                          </div>
+                        ))}
+                      </div>
+                      <div style={{display:"flex",gap:8}}>
+                        <span style={{fontSize:10,padding:"2px 10px",borderRadius:20,background:`${B.purple}15`,color:B.purple,fontWeight:700}}>{t.setup}</span>
+                        <span style={{fontSize:10,padding:"2px 10px",borderRadius:20,background:`${GRADE_COLOR[t.grade]||"#aaa"}15`,color:GRADE_COLOR[t.grade]||"#aaa",fontWeight:700}}>Grade: {t.grade}</span>
+                        <span style={{fontSize:10,padding:"2px 10px",borderRadius:20,background:t.result==="Win"?`${B.profit}15`:`${B.loss}15`,color:t.result==="Win"?B.profit:B.loss,fontWeight:700}}>{t.result}</span>
+                      </div>
+                      {t.notes&&<div style={{marginTop:8,fontSize:12,color:B.textMuted,fontStyle:"italic"}}>📝 {t.notes}</div>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function CalendarView({trades}){
   const calMap=buildCalendar(trades);
   const allDates=trades.map(t=>t.date).sort();
-  const ld=allDates[allDates.length-1]||new Date().toISOString().slice(0,10);
-  const yr=parseInt(ld.slice(0,4)),mo=parseInt(ld.slice(5,7))-1;
+  const latestDate=allDates[allDates.length-1]||new Date().toISOString().slice(0,10);
+  const [calYear,setCalYear]=useState(parseInt(latestDate.slice(0,4)));
+  const [calMonth,setCalMonth]=useState(parseInt(latestDate.slice(5,7))-1);
+  const [selectedDay,setSelectedDay]=useState(null);
+
+  const prevMonth=()=>{ if(calMonth===0){setCalMonth(11);setCalYear(y=>y-1);}else setCalMonth(m=>m-1); };
+  const nextMonth=()=>{ if(calMonth===11){setCalMonth(0);setCalYear(y=>y+1);}else setCalMonth(m=>m+1); };
+  const canGoNext=new Date(calYear,calMonth+1,1)>new Date();
+
+  const yr=calYear,mo=calMonth;
   const mn=new Date(yr,mo,1).toLocaleString("default",{month:"long",year:"numeric"}).toUpperCase();
   const fd=new Date(yr,mo,1).getDay(),dim=new Date(yr,mo+1,0).getDate();
   const cells=[];for(let i=0;i<fd;i++)cells.push(null);for(let d=1;d<=dim;d++)cells.push(d);
   const weeks=[];for(let i=0;i<cells.length;i+=7)weeks.push(cells.slice(i,i+7));
   const calDays=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
-  const vals=Object.values(calMap);
-  return(<div style={{display:"flex",flexDirection:"column",gap:20}}><div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14}}><StatCard label="Green Days" value={vals.filter(d=>d.pnl>0).length} accent={B.profit} sub="Profitable days"/><StatCard label="Red Days" value={vals.filter(d=>d.pnl<0).length} accent={B.loss} sub="Losing days"/><StatCard label="Best Day" value={vals.length?fmt(Math.max(...vals.map(d=>d.pnl))):"--"} grad={GTB} accent={B.teal} sub="Single day high"/><StatCard label="Worst Day" value={vals.length?fmt(Math.min(...vals.map(d=>d.pnl))):"--"} accent="#f97316" sub="Single day low"/></div><div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:26}}><div style={{textAlign:"center",marginBottom:22}}><span style={{fontSize:14,fontWeight:800,background:GL,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",letterSpacing:4}}>{mn}</span></div><div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:8,marginBottom:10}}>{calDays.map(d=><div key={d} style={{textAlign:"center",fontSize:10,color:B.textMuted,letterSpacing:1.5}}>{d}</div>)}</div>{weeks.map((w,wi)=>(<div key={wi} style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:8,marginBottom:8}}>{w.map((day,di)=>{if(!day)return <div key={di}/>;const ds=`${yr}-${String(mo+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`;const data=calMap[ds];return(<div key={di} style={{minHeight:72,borderRadius:10,padding:10,background:data?(data.pnl>0?`${B.teal}0C`:`${B.loss}0C`):"rgba(255,255,255,0.01)",border:`1px solid ${data?(data.pnl>0?`${B.teal}30`:`${B.loss}30`):B.border}`,cursor:data?"pointer":"default"}}><div style={{fontSize:12,color:data?B.text:B.textDim,fontWeight:700,marginBottom:5}}>{day}</div>{data&&<><div style={{fontSize:13,fontWeight:800,fontFamily:"monospace",color:pnlColor(data.pnl),lineHeight:1}}>{fmt(data.pnl)}</div><div style={{fontSize:9,color:B.textMuted,marginTop:4}}>{data.count} trade{data.count>1?"s":""}</div></>}</div>);})}</div>))}</div></div>);
+
+  const monthKey=`${yr}-${String(mo+1).padStart(2,"0")}`;
+  const monthTrades=trades.filter(t=>t.date.startsWith(monthKey));
+  const monthPnl=monthTrades.reduce((a,t)=>a+t.pnl,0);
+  const vals=Object.values(calMap).filter((_,i)=>Object.keys(calMap)[i].startsWith(monthKey));
+  const greenDays=Object.entries(calMap).filter(([k,v])=>k.startsWith(monthKey)&&v.pnl>0).length;
+  const redDays=Object.entries(calMap).filter(([k,v])=>k.startsWith(monthKey)&&v.pnl<0).length;
+
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:20}}>
+      {selectedDay&&<DayJournalModal date={selectedDay} trades={trades} onClose={()=>setSelectedDay(null)}/>}
+
+      {/* Stats */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14}}>
+        <StatCard label="Month P&L" value={monthTrades.length?fmt(monthPnl):"--"} grad={monthPnl>=0?GTB:undefined} accent={monthPnl>=0?B.teal:B.loss} sub={`${monthTrades.length} trades`}/>
+        <StatCard label="Green Days" value={greenDays} accent={B.profit} sub="Profitable days"/>
+        <StatCard label="Red Days" value={redDays} accent={B.loss} sub="Losing days"/>
+        <StatCard label="Best Day" value={Object.entries(calMap).filter(([k])=>k.startsWith(monthKey)).length?fmt(Math.max(...Object.entries(calMap).filter(([k])=>k.startsWith(monthKey)).map(([,v])=>v.pnl))):"--"} grad={GTB} accent={B.teal} sub="Single day high"/>
+      </div>
+
+      {/* Calendar */}
+      <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:26}}>
+        {/* Header with navigation */}
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
+          <div style={{display:"flex",alignItems:"center",gap:12}}>
+            <button onClick={prevMonth} style={{background:"none",border:`1px solid ${B.border}`,borderRadius:8,color:B.textMuted,cursor:"pointer",fontSize:18,width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center"}}>‹</button>
+            <span style={{fontSize:14,fontWeight:800,background:GL,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",letterSpacing:3,minWidth:200,textAlign:"center"}}>{mn}</span>
+            <button onClick={nextMonth} disabled={canGoNext} style={{background:"none",border:`1px solid ${B.border}`,borderRadius:8,color:canGoNext?B.textDim:B.textMuted,cursor:canGoNext?"default":"pointer",fontSize:18,width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center"}}>›</button>
+          </div>
+          <div style={{display:"flex",gap:16,alignItems:"center"}}>
+            <span style={{fontSize:13,fontWeight:700,fontFamily:"monospace",color:pnlColor(monthPnl)}}>{monthTrades.length?fmt(monthPnl):"$0"}</span>
+            <span style={{fontSize:11,color:B.textMuted}}><span style={{color:B.profit,fontWeight:700}}>{greenDays}</span> green · <span style={{color:B.loss,fontWeight:700}}>{redDays}</span> red</span>
+          </div>
+        </div>
+
+        {/* Day headers */}
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:6,marginBottom:8}}>
+          {calDays.map(d=><div key={d} style={{textAlign:"center",fontSize:10,color:B.textMuted,letterSpacing:1.5,paddingBottom:6}}>{d}</div>)}
+        </div>
+
+        {/* Weeks */}
+        {weeks.map((w,wi)=>(
+          <div key={wi} style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:6,marginBottom:6}}>
+            {w.map((day,di)=>{
+              if(!day)return <div key={di}/>;
+              const ds=`${yr}-${String(mo+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
+              const data=calMap[ds];
+              const isToday=ds===new Date().toISOString().slice(0,10);
+              const isWeekend=di===0||di===6;
+              return(
+                <div key={di} onClick={()=>setSelectedDay(ds)} style={{
+                  minHeight:72,borderRadius:10,padding:"8px 10px",
+                  background:data?(data.pnl>0?`${B.teal}10`:`${B.loss}10`):isWeekend?"rgba(255,255,255,0.005)":"rgba(255,255,255,0.015)",
+                  border:`1px solid ${data?(data.pnl>0?`${B.teal}35`:`${B.loss}35`):B.border}`,
+                  outline:isToday?`2px solid ${B.blue}60`:"none",
+                  cursor:"pointer",transition:"all 0.15s",
+                  opacity:isWeekend&&!data?0.4:1,
+                }}>
+                  <div style={{fontSize:11,color:data?B.text:B.textDim,fontWeight:700,marginBottom:4}}>{day}</div>
+                  {data?(
+                    <>
+                      <div style={{fontSize:12,fontWeight:800,fontFamily:"monospace",color:pnlColor(data.pnl),lineHeight:1}}>{fmt(data.pnl)}</div>
+                      <div style={{fontSize:9,color:B.textMuted,marginTop:3}}>{data.count} trade{data.count!==1?"s":""}</div>
+                      <div style={{fontSize:9,color:data.pnl>0?B.profit:B.loss,marginTop:2}}>{data.pnl>0?"▲":"▼"}</div>
+                    </>
+                  ):(
+                    <div style={{fontSize:9,color:B.textDim,marginTop:4}}>click to journal</div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function PlaybookView(){
@@ -1607,10 +1918,19 @@ export default function App(){
   };
 
   const handleImport=async(imported)=>{
-    const rows=imported.map(t=>({...t,user_id:session.user.id,day:dayName(t.date)}));
-    const{data}=await supabase.from("trades").insert(rows).select();
-    setTrades(ts=>[...(ts.filter(t=>!t.id?.startsWith("s"))),...(data||rows)]);
-    showT(`${imported.length} trades imported`);
+    // Strip client-side ids so Supabase generates proper UUIDs
+    const rows=imported.map(t=>{
+      const{id,...rest}=t;
+      return{...rest,user_id:session.user.id,day:dayName(t.date)};
+    });
+    const{data,error}=await supabase.from("trades").insert(rows).select();
+    if(error){
+      console.error("Import error:",error);
+      showT("Import failed: "+error.message,"error");
+      return;
+    }
+    setTrades(ts=>[...(ts.filter(t=>!t.id?.startsWith("s"))),...(data||[])]);
+    showT(`${data?.length||imported.length} trades imported and saved ✓`);
   };
 
   const handleDelete=async()=>{
