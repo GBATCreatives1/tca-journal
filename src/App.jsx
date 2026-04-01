@@ -1009,89 +1009,100 @@ function Overview({trades}){
   const equity=buildEquity(trades);
 
   const [selectedDay,setSelectedDay]=useState(null);
-  const [showWidgetPicker,setShowWidgetPicker]=useState(false);
+  const [editMode,setEditMode]=useState(false);
+  const [saveStatus,setSaveStatus]=useState("saved");
+  const [dragWidget,setDragWidget]=useState(null);
   const [dragOver,setDragOver]=useState(null);
-  const [saveStatus,setSaveStatus]=useState("saved"); // "saved"|"unsaved"|"saving"
-  const dragRef=useRef(null);
 
-  // Widget sizes: S=3, M=4, Half=6, L=8, Full=12
-  const WIDGET_KEY="tca_overview_widgets_v2";
-  const SIZE_KEY="tca_widget_sizes_v2";
+  // Fixed grid: 9 slots, each slot holds a widget id or null
+  // Layout is saved as array of 9 slots
+  const LAYOUT_KEY="tca_grid_layout_v3";
+  const DEFAULT_LAYOUT=["gauges",null,null,"calendar","equity","session","setups","timeof",null];
 
-  const ALL_WIDGETS=[
-    {id:"gauges",     label:"Performance Gauges",   icon:"🎯", desc:"Win%, Profit Factor, Day Win%, Streak", defaultCols:12},
-    {id:"calendar",   label:"Calendar",              icon:"📅", desc:"Monthly calendar with daily P&L",       defaultCols:8},
-    {id:"equity",     label:"Equity Curve",          icon:"📈", desc:"Account balance over time",             defaultCols:6},
-    {id:"dailypnl",   label:"Daily P&L",             icon:"📊", desc:"Daily P&L bar chart",                   defaultCols:4},
-    {id:"setups",     label:"Setup Performance",     icon:"🏆", desc:"Best/worst setups ranked",              defaultCols:4},
-    {id:"session",    label:"Session Heatmap",       icon:"🌡️", desc:"AM/Mid/PM breakdown",                   defaultCols:4},
-    {id:"timeof",     label:"Time of Day",           icon:"🕐", desc:"Best hours to trade",                   defaultCols:4},
-    {id:"cumulative", label:"Daily & Cumulative",    icon:"📉", desc:"Daily bars + cumulative line",          defaultCols:6},
-    {id:"drawdown",   label:"Drawdown",              icon:"⚠️", desc:"Drawdown chart",                        defaultCols:6},
-    {id:"winAvg",     label:"Win%/Avg Win/Loss",     icon:"💹", desc:"Win rate and averages over time",       defaultCols:6},
-    {id:"duration",   label:"Trade Duration",        icon:"⏱️", desc:"Performance by trade duration",        defaultCols:4},
-    {id:"leaderboard",label:"Setup Leaderboard",     icon:"🥇", desc:"Setups ranked by P&L",                 defaultCols:4},
-    {id:"yearly",     label:"Yearly Calendar",       icon:"🗓️", desc:"Full year heatmap",                    defaultCols:12},
-    {id:"progress",   label:"Progress Tracker",      icon:"✅", desc:"Daily rule consistency tracker",        defaultCols:4},
-    {id:"report",     label:"Report",                icon:"📋", desc:"Custom 3-metric report",                defaultCols:4},
-    {id:"aicoach",    label:"AI Trade Coach",        icon:"🧠", desc:"AI-powered trade analysis",            defaultCols:8},
-  ];
-
-  const DEFAULT_LAYOUT=["gauges","calendar","equity","session","setups"];
-  const [activeWidgets,setActiveWidgets]=useState(DEFAULT_LAYOUT);
-  const [widgetSizes,setWidgetSizes]=useState({});
+  const [layout,setLayout]=useState(DEFAULT_LAYOUT);
   const [loaded,setLoaded]=useState(false);
 
   useEffect(()=>{
     (async()=>{
       try{
-        const r=await window.storage.get(WIDGET_KEY);
-        if(r?.value)setActiveWidgets(JSON.parse(r.value));
-        const s=await window.storage.get(SIZE_KEY);
-        if(s?.value)setWidgetSizes(JSON.parse(s.value));
+        const r=await window.storage.get(LAYOUT_KEY);
+        if(r?.value){const saved=JSON.parse(r.value);if(Array.isArray(saved)&&saved.length===9)setLayout(saved);}
       }catch(e){}
       setLoaded(true);
     })();
   },[]);
 
-  const persistLayout=async(widgets,sizes)=>{
+  const persist=async(newLayout)=>{
     setSaveStatus("saving");
-    try{
-      await window.storage.set(WIDGET_KEY,JSON.stringify(widgets));
-      await window.storage.set(SIZE_KEY,JSON.stringify(sizes));
-      setSaveStatus("saved");
-    }catch(e){setSaveStatus("unsaved");}
+    try{await window.storage.set(LAYOUT_KEY,JSON.stringify(newLayout));setSaveStatus("saved");}
+    catch(e){setSaveStatus("unsaved");}
   };
 
-  const saveWidgets=(widgets)=>{setActiveWidgets(widgets);setSaveStatus("unsaved");persistLayout(widgets,widgetSizes);};
-  const saveSizes=(sizes)=>{setWidgetSizes(sizes);setSaveStatus("unsaved");persistLayout(activeWidgets,sizes);};
-  const removeWidget=(id)=>saveWidgets(activeWidgets.filter(w=>w!==id));
-  const addWidget=(id)=>{if(!activeWidgets.includes(id))saveWidgets([...activeWidgets,id]);setShowWidgetPicker(false);};
-  const resizeWidget=(id,cols)=>{const n={...widgetSizes,[id]:cols};saveSizes(n);};
+  const updateLayout=(newLayout)=>{setLayout(newLayout);persist(newLayout);};
 
-  // Drag and drop
-  const handleDragStart=(e,id)=>{dragRef.current=id;e.dataTransfer.effectAllowed="move";};
-  const handleDrop=(e,targetId)=>{
+  const removeFromSlot=(slotIdx)=>{
+    const n=[...layout];n[slotIdx]=null;updateLayout(n);
+  };
+
+  const addToSlot=(slotIdx,widgetId)=>{
+    const n=[...layout];
+    // If widget already in another slot, clear it first
+    const existing=n.indexOf(widgetId);
+    if(existing!==-1)n[existing]=null;
+    n[slotIdx]=widgetId;
+    updateLayout(n);
+  };
+
+  // Drag from slot to slot
+  const handleSlotDragStart=(e,slotIdx)=>{
+    if(!layout[slotIdx])return;
+    setDragWidget({type:"slot",slotIdx,widgetId:layout[slotIdx]});
+    e.dataTransfer.effectAllowed="move";
+  };
+
+  const handleSlotDrop=(e,targetSlot)=>{
     e.preventDefault();
-    const dragId=dragRef.current;
-    if(!dragId||dragId===targetId)return;
-    const newOrder=[...activeWidgets];
-    const fromIdx=newOrder.indexOf(dragId);
-    const toIdx=newOrder.indexOf(targetId);
-    newOrder.splice(fromIdx,1);
-    newOrder.splice(toIdx,0,dragId);
-    saveWidgets(newOrder);
+    if(!dragWidget)return;
+    if(dragWidget.type==="slot"){
+      const n=[...layout];
+      const fromId=n[dragWidget.slotIdx];
+      const toId=n[targetSlot];
+      n[dragWidget.slotIdx]=toId;
+      n[targetSlot]=fromId;
+      updateLayout(n);
+    } else if(dragWidget.type==="picker"){
+      addToSlot(targetSlot,dragWidget.widgetId);
+    }
+    setDragWidget(null);
     setDragOver(null);
-    dragRef.current=null;
   };
 
-  // Calendar state
+  const ALL_WIDGETS=[
+    {id:"gauges",     label:"Performance Gauges",   icon:"🎯"},
+    {id:"calendar",   label:"Calendar",              icon:"📅"},
+    {id:"equity",     label:"Equity Curve",          icon:"📈"},
+    {id:"dailypnl",   label:"Daily P&L",             icon:"📊"},
+    {id:"setups",     label:"Setup Performance",     icon:"🏆"},
+    {id:"session",    label:"Session Heatmap",       icon:"🌡️"},
+    {id:"timeof",     label:"Time of Day",           icon:"🕐"},
+    {id:"cumulative", label:"Daily & Cumulative",    icon:"📉"},
+    {id:"drawdown",   label:"Drawdown",              icon:"⚠️"},
+    {id:"winAvg",     label:"Win%/Avg Win/Loss",     icon:"💹"},
+    {id:"duration",   label:"Trade Duration",        icon:"⏱️"},
+    {id:"leaderboard",label:"Setup Leaderboard",     icon:"🥇"},
+    {id:"yearly",     label:"Yearly Calendar",       icon:"🗓️"},
+    {id:"progress",   label:"Progress Tracker",      icon:"✅"},
+    {id:"report",     label:"Report",                icon:"📋"},
+    {id:"aicoach",    label:"AI Trade Coach",        icon:"🧠"},
+  ];
+
+  // Calendar
   const allDates=trades.map(t=>t.date).sort();
   const latestDate=allDates[allDates.length-1]||new Date().toISOString().slice(0,10);
   const [calYear,setCalYear]=useState(parseInt(latestDate.slice(0,4)));
   const [calMonth,setCalMonth]=useState(parseInt(latestDate.slice(5,7))-1);
   const [manualNav,setManualNav]=useState(false);
-  useEffect(()=>{if(manualNav)return;const dates=trades.map(t=>t.date).sort();const ld=dates[dates.length-1];if(ld){setCalYear(parseInt(ld.slice(0,4)));setCalMonth(parseInt(ld.slice(5,7))-1);}},[trades,manualNav]);
+  useEffect(()=>{if(manualNav)return;const d=trades.map(t=>t.date).sort();const l=d[d.length-1];if(l){setCalYear(parseInt(l.slice(0,4)));setCalMonth(parseInt(l.slice(5,7))-1);}},[trades,manualNav]);
   const prevMonth=()=>{setManualNav(true);if(calMonth===0){setCalMonth(11);setCalYear(y=>y-1);}else setCalMonth(m=>m-1);};
   const nextMonth=()=>{setManualNav(true);if(calMonth===11){setCalMonth(0);setCalYear(y=>y+1);}else setCalMonth(m=>m+1);};
   const nowDate=new Date();
@@ -1110,112 +1121,111 @@ function Overview({trades}){
   const redDays=Object.entries(calMap).filter(([k,v])=>k.startsWith(monthKey)&&v.pnl<0).length;
   const weeklyPnl=weeks.map((week,wi)=>{let wpnl=0,wdays=0;week.forEach(day=>{if(!day)return;const ds=`${yr}-${String(mo+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`;if(calMap[ds]){wpnl+=calMap[ds].pnl;wdays++;}});return{week:wi+1,pnl:wpnl,days:wdays};});
 
-  const SIZE_OPTIONS=[
-    {label:"1/4",cols:3,desc:"Quarter"},
-    {label:"1/3",cols:4,desc:"Third"},
-    {label:"1/2",cols:6,desc:"Half"},
-    {label:"2/3",cols:8,desc:"Two thirds"},
-    {label:"Full",cols:12,desc:"Full width"},
-  ];
-
   const renderWidget=(id)=>{
+    if(!id)return null;
     switch(id){
       case "gauges": return(
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr 1fr",gap:14}}>
-          <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:"20px 22px",position:"relative",overflow:"hidden"}}>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:10,height:"100%"}}>
+          <div style={{background:"rgba(0,0,0,0.3)",border:`1px solid ${B.border}`,borderRadius:12,padding:"16px",position:"relative",overflow:"hidden"}}>
             <div style={{position:"absolute",top:0,left:0,right:0,height:2,background:GTB}}/>
-            <div style={{fontSize:10,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",marginBottom:6}}>Account P&L</div>
-            <div style={{fontSize:28,fontWeight:800,color:pnlColor(totalPnl),fontFamily:"'Space Mono',monospace",letterSpacing:-1}}>{fmt(totalPnl)}</div>
-            <div style={{fontSize:11,color:B.textMuted,marginTop:4}}>{trades.length} trades total</div>
+            <div style={{fontSize:9,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",marginBottom:6}}>Account P&L</div>
+            <div style={{fontSize:22,fontWeight:800,color:pnlColor(totalPnl),fontFamily:"monospace"}}>{fmt(totalPnl)}</div>
+            <div style={{fontSize:10,color:B.textMuted,marginTop:3}}>{trades.length} trades</div>
           </div>
-          <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:"14px 20px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}><GaugeChart value={winRate} label="Trade Win %" color={winRate>=50?B.profit:B.loss}/></div>
-          <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:"14px 20px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}><GaugeChart value={profitFactor} max={3} label="Profit Factor" color={profitFactor>=1?B.teal:B.loss}/></div>
-          <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:"14px 20px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}><GaugeChart value={(()=>{const td=Object.values(calMap);const g=td.filter(d=>d.pnl>0).length;return td.length?Math.round((g/td.length)*100):0;})()} label="Day Win %" color={B.blue}/></div>
-          <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:"14px 20px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}><StreakBadge trades={trades}/></div>
+          <div style={{background:"rgba(0,0,0,0.3)",border:`1px solid ${B.border}`,borderRadius:12,padding:"12px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}><GaugeChart value={winRate} label="Win %" color={winRate>=50?B.profit:B.loss} size={90}/></div>
+          <div style={{background:"rgba(0,0,0,0.3)",border:`1px solid ${B.border}`,borderRadius:12,padding:"12px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}><GaugeChart value={profitFactor} max={3} label="Profit Factor" color={profitFactor>=1?B.teal:B.loss} size={90}/></div>
+          <div style={{background:"rgba(0,0,0,0.3)",border:`1px solid ${B.border}`,borderRadius:12,padding:"12px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}><GaugeChart value={(()=>{const td=Object.values(calMap);const g=td.filter(d=>d.pnl>0).length;return td.length?Math.round((g/td.length)*100):0;})()} label="Day Win %" color={B.blue} size={90}/></div>
+          <div style={{background:"rgba(0,0,0,0.3)",border:`1px solid ${B.border}`,borderRadius:12,padding:"12px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}><StreakBadge trades={trades}/></div>
         </div>
       );
       case "calendar": return(
-        <div style={{display:"grid",gridTemplateColumns:"1fr 180px",gap:14}}>
-          <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:22}}>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:18}}>
-              <div style={{display:"flex",alignItems:"center",gap:12}}>
-                <button onClick={prevMonth} style={{background:"none",border:`1px solid ${B.border}`,borderRadius:8,color:B.textMuted,cursor:"pointer",fontSize:16,width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center"}}>‹</button>
-                <span style={{fontSize:13,fontWeight:800,background:GL,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",letterSpacing:3,minWidth:180,textAlign:"center"}}>{mn}</span>
-                <button onClick={nextMonth} disabled={!canGoForward} style={{background:"none",border:`1px solid ${B.border}`,borderRadius:8,color:!canGoForward?B.textDim:B.textMuted,cursor:!canGoForward?"default":"pointer",fontSize:16,width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center"}}>›</button>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 160px",gap:12,height:"100%"}}>
+          <div style={{background:"rgba(0,0,0,0.3)",border:`1px solid ${B.border}`,borderRadius:12,padding:16}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <button onClick={prevMonth} style={{background:"none",border:`1px solid ${B.border}`,borderRadius:6,color:B.textMuted,cursor:"pointer",fontSize:14,width:26,height:26,display:"flex",alignItems:"center",justifyContent:"center"}}>‹</button>
+                <span style={{fontSize:11,fontWeight:800,background:GL,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",letterSpacing:2}}>{mn}</span>
+                <button onClick={nextMonth} disabled={!canGoForward} style={{background:"none",border:`1px solid ${B.border}`,borderRadius:6,color:!canGoForward?B.textDim:B.textMuted,cursor:!canGoForward?"default":"pointer",fontSize:14,width:26,height:26,display:"flex",alignItems:"center",justifyContent:"center"}}>›</button>
               </div>
-              <div style={{display:"flex",gap:16,alignItems:"center"}}>
-                <span style={{fontSize:12,fontWeight:700,fontFamily:"monospace",color:pnlColor(monthPnl)}}>{monthTrades.length?fmt(monthPnl):"$0"}</span>
-                <span style={{fontSize:11,color:B.textMuted}}><span style={{color:B.profit,fontWeight:700}}>{greenDays}</span> green · <span style={{color:B.loss,fontWeight:700}}>{redDays}</span> red</span>
+              <div style={{display:"flex",gap:10,fontSize:10}}>
+                <span style={{color:pnlColor(monthPnl),fontWeight:700,fontFamily:"monospace"}}>{fmt(monthPnl)}</span>
+                <span style={{color:B.textMuted}}><span style={{color:B.profit}}>{greenDays}</span>g·<span style={{color:B.loss}}>{redDays}</span>r</span>
               </div>
             </div>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:6,marginBottom:8}}>
-              {calDays.map(d=><div key={d} style={{textAlign:"center",fontSize:10,color:B.textMuted,letterSpacing:1,paddingBottom:6}}>{d}</div>)}
+            <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:3,marginBottom:4}}>
+              {calDays.map(d=><div key={d} style={{textAlign:"center",fontSize:8,color:B.textMuted}}>{d}</div>)}
             </div>
             {weeks.map((w,wi)=>(
-              <div key={wi} style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:6,marginBottom:6}}>
+              <div key={wi} style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:3,marginBottom:3}}>
                 {w.map((day,di)=>{
                   if(!day)return <div key={di}/>;
                   const ds=`${yr}-${String(mo+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
                   const data=calMap[ds];
                   const isToday=ds===new Date().toISOString().slice(0,10);
                   return(
-                    <div key={di} onClick={()=>setSelectedDay(ds)} style={{minHeight:68,borderRadius:10,padding:"8px 10px",background:data?(data.pnl>0?`${B.teal}10`:`${B.loss}10`):"rgba(255,255,255,0.015)",border:`1px solid ${data?(data.pnl>0?`${B.teal}35`:`${B.loss}35`):B.border}`,outline:isToday?`2px solid ${B.blue}60`:"none",cursor:"pointer",transition:"all 0.15s"}}>
-                      <div style={{fontSize:11,color:data?B.text:B.textDim,fontWeight:700,marginBottom:4}}>{day}</div>
-                      {data?<><div style={{fontSize:12,fontWeight:800,fontFamily:"monospace",color:pnlColor(data.pnl),lineHeight:1}}>{fmt(data.pnl)}</div><div style={{fontSize:9,color:B.textMuted,marginTop:3}}>{data.count} trade{data.count>1?"s":""}</div><div style={{fontSize:9,color:data.pnl>0?B.profit:B.loss,marginTop:2}}>{data.pnl>0?"▲":"▼"}</div></>:<div style={{fontSize:8,color:B.textDim,marginTop:6,lineHeight:1.5,textAlign:"center"}}>click to<br/>journal</div>}
+                    <div key={di} onClick={()=>setSelectedDay(ds)} style={{minHeight:52,borderRadius:6,padding:"4px 6px",background:data?(data.pnl>0?`${B.teal}12`:`${B.loss}12`):"rgba(255,255,255,0.01)",border:`1px solid ${data?(data.pnl>0?`${B.teal}35`:`${B.loss}35`):B.border}`,outline:isToday?`2px solid ${B.blue}50`:"none",cursor:"pointer"}}>
+                      <div style={{fontSize:9,color:data?B.text:B.textDim,fontWeight:700}}>{day}</div>
+                      {data&&<><div style={{fontSize:10,fontWeight:800,fontFamily:"monospace",color:pnlColor(data.pnl)}}>{fmt(data.pnl)}</div><div style={{fontSize:8,color:B.textMuted}}>{data.count}t</div></>}
+                      {!data&&<div style={{fontSize:7,color:B.textDim,marginTop:2,lineHeight:1.3}}>journal</div>}
                     </div>
                   );
                 })}
               </div>
             ))}
           </div>
-          <div style={{display:"flex",flexDirection:"column",gap:8}}>
-            <div style={{fontSize:10,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",marginBottom:4}}>Weekly P&L</div>
+          <div style={{display:"flex",flexDirection:"column",gap:6}}>
+            <div style={{fontSize:9,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:2}}>Weekly P&L</div>
             {weeklyPnl.map(w=>(
-              <div key={w.week} style={{background:B.surface,border:`1px solid ${w.pnl>0?`${B.teal}25`:w.pnl<0?`${B.loss}25`:B.border}`,borderRadius:10,padding:"12px 14px",borderLeft:`3px solid ${w.pnl>0?B.teal:w.pnl<0?B.loss:B.border}`}}>
-                <div style={{fontSize:10,color:B.textMuted,marginBottom:4}}>Week {w.week}</div>
-                <div style={{fontSize:15,fontWeight:800,fontFamily:"monospace",color:w.pnl>0?B.profit:w.pnl<0?B.loss:B.textMuted}}>{w.pnl===0?"$0":fmt(w.pnl)}</div>
-                <div style={{fontSize:9,color:B.textMuted,marginTop:2}}>{w.days} day{w.days!==1?"s":""}</div>
+              <div key={w.week} style={{background:"rgba(0,0,0,0.3)",border:`1px solid ${w.pnl>0?`${B.teal}25`:w.pnl<0?`${B.loss}25`:B.border}`,borderRadius:8,padding:"8px 10px",borderLeft:`2px solid ${w.pnl>0?B.teal:w.pnl<0?B.loss:B.border}`}}>
+                <div style={{fontSize:9,color:B.textMuted}}>Wk {w.week}</div>
+                <div style={{fontSize:13,fontWeight:800,fontFamily:"monospace",color:w.pnl>0?B.profit:w.pnl<0?B.loss:B.textMuted}}>{w.pnl===0?"$0":fmt(w.pnl)}</div>
               </div>
             ))}
           </div>
         </div>
       );
       case "equity": return(
-        <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:22}}>
-          <div style={{fontSize:10,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",marginBottom:16}}>Account Balance Curve</div>
-          <ResponsiveContainer width="100%" height={160}>
-            <AreaChart data={equity}>
-              <defs><linearGradient id="eqF2" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#00D4A8" stopOpacity={0.25}/><stop offset="100%" stopColor="#8B5CF6" stopOpacity={0}/></linearGradient><linearGradient id="eqL2" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stopColor="#00D4A8"/><stop offset="50%" stopColor="#4F8EF7"/><stop offset="100%" stopColor="#8B5CF6"/></linearGradient></defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)"/>
-              <XAxis dataKey="date" tick={{fill:B.textDim,fontSize:10}} axisLine={false} tickLine={false} interval={Math.ceil(equity.length/8)}/>
-              <YAxis tick={{fill:B.textDim,fontSize:10}} axisLine={false} tickLine={false} tickFormatter={v=>`$${v}`}/>
-              <Tooltip content={<CTip/>}/><ReferenceLine y={0} stroke="rgba(255,255,255,0.07)"/>
-              <Area type="monotone" dataKey="equity" stroke="url(#eqL2)" strokeWidth={2.5} fill="url(#eqF2)" name="Balance"/>
-            </AreaChart>
-          </ResponsiveContainer>
+        <div style={{height:"100%",display:"flex",flexDirection:"column"}}>
+          <div style={{fontSize:9,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",marginBottom:10}}>Equity Curve</div>
+          <div style={{flex:1,minHeight:140}}>
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={equity}>
+                <defs><linearGradient id="eqOv" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#00D4A8" stopOpacity={0.25}/><stop offset="100%" stopColor="#8B5CF6" stopOpacity={0}/></linearGradient><linearGradient id="eqLOv" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stopColor="#00D4A8"/><stop offset="100%" stopColor="#8B5CF6"/></linearGradient></defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)"/>
+                <XAxis dataKey="date" tick={{fill:B.textDim,fontSize:8}} axisLine={false} tickLine={false} interval={Math.ceil(equity.length/6)}/>
+                <YAxis tick={{fill:B.textDim,fontSize:8}} axisLine={false} tickLine={false} tickFormatter={v=>`$${v}`}/>
+                <Tooltip content={<CTip/>}/><ReferenceLine y={0} stroke="rgba(255,255,255,0.07)"/>
+                <Area type="monotone" dataKey="equity" stroke="url(#eqLOv)" strokeWidth={2} fill="url(#eqOv)" name="Balance"/>
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
         </div>
       );
       case "dailypnl": return(
-        <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:22}}>
-          <div style={{fontSize:10,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",marginBottom:16}}>Daily P&L</div>
-          <ResponsiveContainer width="100%" height={160}>
-            <BarChart data={Object.entries(trades.reduce((m,t)=>{m[t.date]=(m[t.date]||0)+t.pnl;return m;},{})).sort((a,b)=>a[0].localeCompare(b[0])).map(([d,p])=>({date:d.slice(5),pnl:Math.round(p*100)/100}))}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false}/>
-              <XAxis dataKey="date" tick={{fill:B.textDim,fontSize:9}} axisLine={false} tickLine={false}/>
-              <YAxis tick={{fill:B.textDim,fontSize:9}} axisLine={false} tickLine={false} tickFormatter={v=>`$${v}`}/>
-              <Tooltip content={<CTip/>}/><ReferenceLine y={0} stroke="rgba(255,255,255,0.1)"/>
-              <Bar dataKey="pnl" name="P&L" radius={[3,3,0,0]}>{Object.entries(trades.reduce((m,t)=>{m[t.date]=(m[t.date]||0)+t.pnl;return m;},{})).map(([d,p],i)=>(<Cell key={i} fill={p>=0?B.teal:B.loss}/>))}</Bar>
-            </BarChart>
-          </ResponsiveContainer>
+        <div style={{height:"100%",display:"flex",flexDirection:"column"}}>
+          <div style={{fontSize:9,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",marginBottom:10}}>Daily P&L</div>
+          <div style={{flex:1,minHeight:140}}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={Object.entries(trades.reduce((m,t)=>{m[t.date]=(m[t.date]||0)+t.pnl;return m;},{})).sort((a,b)=>a[0].localeCompare(b[0])).map(([d,p])=>({date:d.slice(5),pnl:Math.round(p*100)/100}))}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false}/>
+                <XAxis dataKey="date" tick={{fill:B.textDim,fontSize:8}} axisLine={false} tickLine={false}/>
+                <YAxis tick={{fill:B.textDim,fontSize:8}} axisLine={false} tickLine={false} tickFormatter={v=>`$${v}`}/>
+                <Tooltip content={<CTip/>}/><ReferenceLine y={0} stroke="rgba(255,255,255,0.1)"/>
+                <Bar dataKey="pnl" radius={[3,3,0,0]}>{Object.entries(trades.reduce((m,t)=>{m[t.date]=(m[t.date]||0)+t.pnl;return m;},{})).map(([d,p],i)=>(<Cell key={i} fill={p>=0?B.teal:B.loss}/>))}</Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
         </div>
       );
       case "setups": return(
-        <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:22}}>
-          <div style={{fontSize:10,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",marginBottom:16}}>Setup Performance</div>
-          {Object.entries(trades.reduce((m,t)=>{if(!m[t.setup])m[t.setup]={wins:0,total:0,pnl:0};m[t.setup].total++;m[t.setup].pnl+=t.pnl;if(t.result==="Win")m[t.setup].wins++;return m;},{})).sort((a,b)=>b[1].pnl-a[1].pnl).slice(0,5).map(([s,d],i)=>{
-            const sg=[GL,GTB,GBP,GTB,GL];
-            return(<div key={s} style={{marginBottom:12}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:5}}><span style={{fontSize:12,color:B.text}}>{s}</span><div style={{display:"flex",gap:12}}><span style={{fontSize:11,color:B.textMuted}}>{Math.round((d.wins/d.total)*100)}% WR</span><span style={{fontSize:12,fontFamily:"monospace",color:pnlColor(d.pnl),fontWeight:700}}>{fmt(d.pnl)}</span></div></div><div style={{height:5,background:"rgba(255,255,255,0.05)",borderRadius:3}}><div style={{height:"100%",width:Math.round((d.wins/d.total)*100)+"%",background:sg[i],borderRadius:3}}/></div></div>);
-          })}
+        <div style={{height:"100%",display:"flex",flexDirection:"column"}}>
+          <div style={{fontSize:9,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",marginBottom:10}}>Setup Performance</div>
+          <div style={{flex:1,overflowY:"auto"}}>
+            {Object.entries(trades.reduce((m,t)=>{if(!m[t.setup])m[t.setup]={wins:0,total:0,pnl:0};m[t.setup].total++;m[t.setup].pnl+=t.pnl;if(t.result==="Win")m[t.setup].wins++;return m;},{})).sort((a,b)=>b[1].pnl-a[1].pnl).slice(0,5).map(([s,d],i)=>{
+              const sg=[GL,GTB,GBP,GTB,GL];
+              return(<div key={s} style={{marginBottom:10}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{fontSize:11,color:B.text}}>{s}</span><span style={{fontSize:11,fontFamily:"monospace",color:pnlColor(d.pnl),fontWeight:700}}>{fmt(d.pnl)}</span></div><div style={{height:4,background:"rgba(255,255,255,0.05)",borderRadius:2}}><div style={{height:"100%",width:Math.round((d.wins/d.total)*100)+"%",background:sg[i],borderRadius:2}}/></div><div style={{fontSize:9,color:B.textMuted,marginTop:2}}>{Math.round((d.wins/d.total)*100)}% WR · {d.total} trades</div></div>);
+            })}
+          </div>
         </div>
       );
       case "session":    return <SessionHeatmapWidget trades={trades}/>;
@@ -1233,6 +1243,14 @@ function Overview({trades}){
     }
   };
 
+  // Slot sizes: slot 0 is full-width, slots 1-2 side by side, 3-4-5 three col, 6-7-8 three col
+  const SLOT_CONFIGS=[
+    {cols:12,label:"Row 1 — Full width"},
+    {cols:6},{cols:6},
+    {cols:4},{cols:4},{cols:4},
+    {cols:4},{cols:4},{cols:4},
+  ];
+
   if(!trades.length)return(
     <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:400,gap:16}}>
       <TCAIcon size={64}/>
@@ -1241,41 +1259,129 @@ function Overview({trades}){
   );
 
   return(
-    <div style={{display:"flex",flexDirection:"column",gap:18}}>
+    <div style={{display:"flex",flexDirection:"column",gap:16}}>
       {selectedDay&&<DayJournalModal date={selectedDay} trades={trades} onClose={()=>setSelectedDay(null)} onGradeUpdate={handleGradeUpdate}/>}
 
-      {/* Widget Picker Modal */}
-      {showWidgetPicker&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",zIndex:150,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(8px)"}} onClick={()=>setShowWidgetPicker(false)}>
-          <div style={{background:"#13121A",border:`1px solid ${B.border}`,borderRadius:20,width:620,maxHeight:"80vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
+      {/* Toolbar */}
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 16px",borderRadius:12,background:B.surface,border:`1px solid ${B.border}`}}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <button onClick={()=>setEditMode(e=>!e)} style={{padding:"6px 14px",borderRadius:8,border:`1px solid ${editMode?B.teal:B.border}`,background:editMode?`${B.teal}15`:"transparent",color:editMode?B.teal:B.textMuted,cursor:"pointer",fontSize:12,fontWeight:700}}>
+            {editMode?"✓ Done Editing":"✏ Edit Layout"}
+          </button>
+          {editMode&&(
+            <div style={{display:"flex",alignItems:"center",gap:6,padding:"4px 10px",borderRadius:20,background:saveStatus==="saved"?`${B.teal}10`:`${B.blue}10`,border:`1px solid ${saveStatus==="saved"?B.borderTeal:`${B.blue}30`}`}}>
+              <div style={{width:5,height:5,borderRadius:"50%",background:saveStatus==="saved"?B.teal:B.blue}}/>
+              <span style={{fontSize:10,color:saveStatus==="saved"?B.teal:B.blue,fontWeight:600}}>{saveStatus==="saved"?"Saved":"Saving..."}</span>
+            </div>
+          )}
+          {editMode&&<span style={{fontSize:11,color:B.textMuted}}>Drag widgets between slots · Click empty slots to add</span>}
+        </div>
+      </div>
+
+      {/* Slot-based grid */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(12,1fr)",gap:14,alignItems:"start"}}>
+        {SLOT_CONFIGS.map((cfg,slotIdx)=>{
+          const widgetId=layout[slotIdx];
+          const isEmpty=!widgetId;
+          const isDragTarget=dragOver===slotIdx;
+          const slotHeight=slotIdx===0?220:300;
+
+          return(
+            <div key={slotIdx}
+              style={{gridColumn:`span ${cfg.cols}`}}
+              onDragOver={e=>{e.preventDefault();setDragOver(slotIdx);}}
+              onDragLeave={()=>setDragOver(null)}
+              onDrop={e=>handleSlotDrop(e,slotIdx)}
+            >
+              {isEmpty?(
+                // Empty slot
+                <div
+                  onClick={()=>editMode&&setDragWidget({type:"picker",slotIdx})}
+                  style={{
+                    height:slotHeight,
+                    borderRadius:14,
+                    border:`2px dashed ${isDragTarget?B.teal:editMode?"rgba(255,255,255,0.12)":"rgba(255,255,255,0.04)"}`,
+                    background:isDragTarget?`${B.teal}08`:editMode?"rgba(255,255,255,0.02)":"transparent",
+                    display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
+                    gap:8,cursor:editMode?"pointer":"default",
+                    transition:"all 0.2s",
+                  }}
+                >
+                  {editMode&&(
+                    <>
+                      <div style={{fontSize:22,opacity:0.3}}>+</div>
+                      <div style={{fontSize:11,color:B.textDim}}>Click to add widget</div>
+                    </>
+                  )}
+                </div>
+              ):(
+                // Filled slot
+                <div style={{position:"relative",height:slotHeight}}>
+                  {/* Edit overlay */}
+                  {editMode&&(
+                    <div style={{position:"absolute",inset:0,zIndex:20,borderRadius:14,border:`2px solid ${isDragTarget?B.teal:B.teal+"40"}`,background:"rgba(0,0,0,0.15)",display:"flex",flexDirection:"column",alignItems:"flex-end",justifyContent:"flex-start",padding:10,gap:6,backdropFilter:isDragTarget?"blur(2px)":"none"}}>
+                      <div style={{display:"flex",gap:6}}>
+                        <button
+                          onClick={()=>{const n=[...layout];n[slotIdx]=null;updateLayout(n);}}
+                          style={{padding:"4px 10px",borderRadius:6,border:`1px solid ${B.loss}50`,background:`${B.loss}20`,color:B.loss,cursor:"pointer",fontSize:11,fontWeight:700}}>
+                          Remove
+                        </button>
+                      </div>
+                      <div
+                        draggable
+                        onDragStart={e=>handleSlotDragStart(e,slotIdx)}
+                        style={{position:"absolute",bottom:10,left:10,fontSize:10,color:B.textMuted,cursor:"grab",background:"rgba(0,0,0,0.6)",padding:"4px 10px",borderRadius:6,border:`1px solid ${B.border}`}}>
+                        ⠿ drag to move
+                      </div>
+                    </div>
+                  )}
+                  <div style={{height:"100%",borderRadius:14,overflow:"hidden",background:B.surface,border:`1px solid ${B.border}`,padding:18}}>
+                    {renderWidget(widgetId)}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Widget picker panel - shows when clicking empty slot in edit mode */}
+      {editMode&&dragWidget?.type==="picker"&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",zIndex:150,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(8px)"}}
+          onClick={()=>setDragWidget(null)}>
+          <div style={{background:"#13121A",border:`1px solid ${B.border}`,borderRadius:20,width:620,maxHeight:"80vh",overflowY:"auto"}}
+            onClick={e=>e.stopPropagation()}>
             <div style={{height:3,background:GL,borderRadius:"20px 20px 0 0"}}/>
             <div style={{padding:"22px 28px 0",display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
               <div>
-                <div style={{fontSize:18,fontWeight:800,color:B.text}}>Add Widget</div>
-                <div style={{fontSize:12,color:B.textMuted,marginTop:3}}>Select widgets to add to your Overview dashboard</div>
+                <div style={{fontSize:18,fontWeight:800,color:B.text}}>Choose a Widget</div>
+                <div style={{fontSize:12,color:B.textMuted,marginTop:3}}>Select a widget to place in this slot</div>
               </div>
-              <button onClick={()=>setShowWidgetPicker(false)} style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${B.border}`,borderRadius:8,color:B.textMuted,cursor:"pointer",fontSize:18,width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
+              <button onClick={()=>setDragWidget(null)} style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${B.border}`,borderRadius:8,color:B.textMuted,cursor:"pointer",fontSize:18,width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
             </div>
-            <div style={{padding:"0 28px 28px",display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            <div style={{padding:"0 28px 28px",display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
               {ALL_WIDGETS.map(w=>{
-                const active=activeWidgets.includes(w.id);
+                const alreadyPlaced=layout.includes(w.id);
                 return(
-                  <div key={w.id} onClick={()=>!active&&addWidget(w.id)} style={{
-                    padding:"14px 16px",borderRadius:12,cursor:active?"default":"pointer",
-                    background:active?`${B.teal}08`:B.surface,
-                    border:`1px solid ${active?`${B.teal}40`:B.border}`,
-                    opacity:active?0.6:1,transition:"all 0.15s",
-                    display:"flex",alignItems:"center",gap:12
-                  }}>
-                    <span style={{fontSize:22}}>{w.icon}</span>
-                    <div style={{flex:1}}>
-                      <div style={{fontSize:13,fontWeight:700,color:B.text}}>{w.label}</div>
-                      <div style={{fontSize:11,color:B.textMuted,marginTop:2}}>{w.desc}</div>
+                  <div key={w.id}
+                    onClick={()=>{if(!alreadyPlaced){addToSlot(dragWidget.slotIdx,w.id);setDragWidget(null);}}}
+                    style={{
+                      padding:"12px 14px",borderRadius:10,
+                      cursor:alreadyPlaced?"not-allowed":"pointer",
+                      background:alreadyPlaced?"rgba(255,255,255,0.02)":B.surface,
+                      border:`1px solid ${alreadyPlaced?B.border:B.border}`,
+                      opacity:alreadyPlaced?0.4:1,
+                      display:"flex",alignItems:"center",gap:10,
+                      transition:"all 0.15s",
+                    }}
+                    onMouseEnter={e=>{if(!alreadyPlaced)e.currentTarget.style.borderColor=B.teal;}}
+                    onMouseLeave={e=>{e.currentTarget.style.borderColor=B.border;}}
+                  >
+                    <span style={{fontSize:20}}>{w.icon}</span>
+                    <div>
+                      <div style={{fontSize:12,fontWeight:700,color:B.text}}>{w.label}</div>
+                      {alreadyPlaced&&<div style={{fontSize:10,color:B.textMuted}}>Already on dashboard</div>}
                     </div>
-                    {active
-                      ?<span style={{fontSize:10,color:B.teal,fontWeight:700,whiteSpace:"nowrap"}}>✓ Added</span>
-                      :<span style={{fontSize:20,color:B.textMuted,lineHeight:1}}>+</span>
-                    }
                   </div>
                 );
               })}
@@ -1283,113 +1389,6 @@ function Overview({trades}){
           </div>
         </div>
       )}
-
-      {/* Dashboard toolbar */}
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 18px",borderRadius:12,background:B.surface,border:`1px solid ${B.border}`}}>
-        <div style={{display:"flex",alignItems:"center",gap:12}}>
-          <span style={{fontSize:12,color:B.textMuted}}>
-            {activeWidgets.length} widget{activeWidgets.length!==1?"s":""} · drag to reorder · hover to resize
-          </span>
-          {/* Save status indicator */}
-          <div style={{display:"flex",alignItems:"center",gap:5,padding:"3px 10px",borderRadius:20,
-            background:saveStatus==="saved"?`${B.teal}10`:saveStatus==="saving"?`${B.blue}10`:`${B.loss}10`,
-            border:`1px solid ${saveStatus==="saved"?B.borderTeal:saveStatus==="saving"?`${B.blue}30`:`${B.loss}30`}`}}>
-            <div style={{width:6,height:6,borderRadius:"50%",
-              background:saveStatus==="saved"?B.teal:saveStatus==="saving"?B.blue:B.loss}}/>
-            <span style={{fontSize:10,fontWeight:600,
-              color:saveStatus==="saved"?B.teal:saveStatus==="saving"?B.blue:B.loss}}>
-              {saveStatus==="saved"?"Layout saved":saveStatus==="saving"?"Saving...":"Unsaved changes"}
-            </span>
-          </div>
-        </div>
-        <button onClick={()=>setShowWidgetPicker(true)} style={{padding:"8px 18px",borderRadius:9,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:12,fontWeight:800,display:"flex",alignItems:"center",gap:6}}>
-          + Add Widget
-        </button>
-      </div>
-
-      {/* Widget grid - 12 column */}
-      <div style={{display:"grid",gridTemplateColumns:"repeat(12,1fr)",gap:16,alignItems:"start"}}>
-        {activeWidgets.map((wid)=>{
-          const info=ALL_WIDGETS.find(w=>w.id===wid)||{defaultCols:6,label:wid,icon:"◈"};
-          const cols=widgetSizes[wid]||info.defaultCols||6;
-
-          return(
-            <div key={wid}
-              draggable
-              onDragStart={e=>handleDragStart(e,wid)}
-              onDragOver={e=>{e.preventDefault();setDragOver(wid);}}
-              onDragLeave={()=>setDragOver(null)}
-              onDrop={e=>handleDrop(e,wid)}
-              style={{
-                gridColumn:`span ${cols}`,
-                position:"relative",
-                borderRadius:14,
-                outline:dragOver===wid?`2px dashed ${B.teal}`:"none",
-                outlineOffset:4,
-                transition:"outline 0.15s",
-              }}
-            >
-              {/* Floating control bar - appears on hover */}
-              <div style={{
-                position:"absolute",top:-44,left:0,right:0,zIndex:30,
-                display:"flex",alignItems:"center",justifyContent:"space-between",
-                padding:"6px 12px",
-                background:"rgba(14,14,16,0.95)",
-                border:`1px solid ${B.border}`,
-                borderRadius:10,
-                boxShadow:"0 4px 20px rgba(0,0,0,0.5)",
-                opacity:0,
-                transition:"opacity 0.2s",
-                pointerEvents:"none",
-              }} id={`ctrl-${wid}`}>
-                {/* Size selector */}
-                <div style={{display:"flex",gap:4,alignItems:"center"}}>
-                  <span style={{fontSize:9,color:B.textMuted,marginRight:4,letterSpacing:1}}>WIDTH</span>
-                  {SIZE_OPTIONS.map(s=>(
-                    <button key={s.cols} onClick={e=>{e.stopPropagation();resizeWidget(wid,s.cols);}}
-                      style={{
-                        padding:"5px 10px",borderRadius:6,
-                        border:`1px solid ${cols===s.cols?B.teal:B.border}`,
-                        background:cols===s.cols?`${B.teal}20`:"rgba(255,255,255,0.04)",
-                        color:cols===s.cols?B.teal:B.textMuted,
-                        cursor:"pointer",fontSize:11,fontWeight:700,
-                        minWidth:36,
-                      }}>
-                      {s.label}
-                    </button>
-                  ))}
-                </div>
-                {/* Actions */}
-                <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                  <span style={{fontSize:9,color:B.textMuted}}>⠿ drag to move</span>
-                  <button onClick={()=>removeWidget(wid)}
-                    style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${B.loss}40`,background:`${B.loss}15`,color:B.loss,cursor:"pointer",fontSize:11,fontWeight:700}}>
-                    Remove
-                  </button>
-                </div>
-              </div>
-
-              {/* Widget content with hover trigger */}
-              <div
-                onMouseEnter={()=>{const el=document.getElementById(`ctrl-${wid}`);if(el){el.style.opacity=1;el.style.pointerEvents="auto";}}}
-                onMouseLeave={()=>{const el=document.getElementById(`ctrl-${wid}`);if(el){el.style.opacity=0;el.style.pointerEvents="none";}}}
-                style={{cursor:"grab",borderRadius:14,userSelect:"none"}}
-                onMouseDown={e=>e.currentTarget.style.cursor="grabbing"}
-                onMouseUp={e=>e.currentTarget.style.cursor="grab"}
-              >
-                {renderWidget(wid)}
-              </div>
-            </div>
-          );
-        })}
-
-        {/* Empty drop zone hint when dragging */}
-        {dragRef.current&&(
-          <div style={{gridColumn:"span 12",height:80,borderRadius:14,border:`2px dashed ${B.border}`,display:"flex",alignItems:"center",justifyContent:"center"}}>
-            <span style={{fontSize:12,color:B.textMuted}}>Drop here to move to end</span>
-          </div>
-        )}
-      </div>
     </div>
   );
 }
