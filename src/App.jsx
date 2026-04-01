@@ -832,24 +832,53 @@ function GaugeChart({value, max=100, label, color, size=110}){
 }
 
 function StreakBadge({trades}){
-  const sorted=[...trades].sort((a,b)=>b.date.localeCompare(a.date));
+  if(!trades.length)return(
+    <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+      <div style={{fontSize:28,fontWeight:800,color:B.textMuted,fontFamily:"'Space Mono',monospace"}}>--</div>
+      <div style={{fontSize:10,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase"}}>Current Streak</div>
+    </div>
+  );
+
+  // Sort by date descending, then group by trading day to get day results
+  const dayResults = {};
+  trades.forEach(t=>{
+    if(!dayResults[t.date]) dayResults[t.date] = {wins:0, losses:0};
+    if(t.result==="Win") dayResults[t.date].wins++;
+    else dayResults[t.date].losses++;
+  });
+
+  // Get sorted days
+  const days = Object.entries(dayResults)
+    .sort((a,b)=>b[0].localeCompare(a[0]))
+    .map(([date,d])=>({date, result: d.wins>d.losses?"Win":"Loss"}));
+
+  // Count consecutive streak from most recent day
   let streak=0, type="";
-  for(const t of sorted){
-    if(streak===0){type=t.result;streak=1;}
-    else if(t.result===type)streak++;
+  for(const day of days){
+    if(streak===0){type=day.result;streak=1;}
+    else if(day.result===type)streak++;
     else break;
   }
+
   if(!streak)return null;
   const isWin=type==="Win";
+  const dots=Math.min(streak,7);
+
   return(
     <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
-      <div style={{fontSize:28,fontWeight:800,color:isWin?B.profit:B.loss,fontFamily:"'Space Mono',monospace"}}>{streak}</div>
-      <div style={{fontSize:10,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase"}}>{isWin?"Win":"Loss"} Streak</div>
-      <div style={{display:"flex",gap:3,marginTop:2}}>
-        {Array.from({length:Math.min(streak,7)}).map((_,i)=>(
-          <div key={i} style={{width:8,height:8,borderRadius:"50%",background:isWin?B.profit:B.loss,opacity:1-(i*0.08)}}/>
+      <div style={{fontSize:36,fontWeight:800,color:isWin?B.profit:B.loss,fontFamily:"'Space Mono',monospace",lineHeight:1}}>{streak}</div>
+      <div style={{fontSize:10,color:isWin?B.profit:B.loss,letterSpacing:1.5,textTransform:"uppercase",fontWeight:700}}>{isWin?"🔥 Win Streak":"📉 Loss Streak"}</div>
+      <div style={{display:"flex",gap:4,marginTop:4}}>
+        {Array.from({length:dots}).map((_,i)=>(
+          <div key={i} style={{
+            width:8,height:8,borderRadius:"50%",
+            background:isWin?B.profit:B.loss,
+            opacity:1-((dots-1-i)*0.12),
+            transform:`scale(${1-((dots-1-i)*0.06)})`,
+          }}/>
         ))}
       </div>
+      <div style={{fontSize:9,color:B.textMuted,marginTop:2}}>consecutive {isWin?"winning":"losing"} days</div>
     </div>
   );
 }
@@ -998,13 +1027,13 @@ function Overview({trades}){
                   cursor:"pointer",transition:"all 0.15s",
                 }}>
                   <div style={{fontSize:11,color:data?B.text:B.textDim,fontWeight:700,marginBottom:4}}>{day}</div>
-                  {data&&<>
+                  {data?<>
                     <div style={{fontSize:12,fontWeight:800,fontFamily:"monospace",color:pnlColor(data.pnl),lineHeight:1}}>{fmt(data.pnl)}</div>
                     <div style={{fontSize:9,color:B.textMuted,marginTop:3}}>{data.count} trade{data.count>1?"s":""}</div>
                     <div style={{fontSize:9,color:data.pnl>0?B.profit:B.loss,marginTop:2}}>
                       {data.pnl>0?"▲":"▼"}
                     </div>
-                  </>}
+                  </>:<div style={{fontSize:8,color:B.textDim,marginTop:6,lineHeight:1.5,textAlign:"center"}}>click to<br/>journal</div>}
                 </div>
               );
             })}
@@ -1083,6 +1112,356 @@ function Analytics({trades}){
   const exp=Math.round(trades.reduce((a,t)=>a+t.pnl,0)/trades.length);
   const PBar=({label,data,grads})=>(<div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:22}}><div style={{fontSize:10,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",marginBottom:18}}>{label}</div>{Object.entries(data).map(([k,d],i)=>{const g=grads[i%grads.length];return(<div key={k} style={{marginBottom:16}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:7}}><span style={{fontSize:13,color:B.text,fontWeight:600}}>{k}</span><span style={{fontSize:12,fontFamily:"monospace",color:pnlColor(d.pnl),fontWeight:700}}>{fmt(d.pnl)}</span></div><div style={{height:6,background:"rgba(255,255,255,0.05)",borderRadius:4,overflow:"hidden"}}><div style={{height:"100%",width:`${(d.wins/d.total)*100}%`,background:g,borderRadius:4,transition:"width 0.8s"}}/></div><div style={{fontSize:10,color:B.textMuted,marginTop:4}}>{Math.round((d.wins/d.total)*100)}% WR - {d.total} trades</div></div>);})}</div>);
   return(<div style={{display:"flex",flexDirection:"column",gap:20}}><div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14}}><StatCard label="Profit Factor" value={pf} sub="Gross win / Gross loss" grad={GTB} accent={B.teal}/><StatCard label="Expectancy" value={`+$${exp}`} sub="Per trade avg" grad={GBP} accent={B.blue}/><StatCard label="Max Drawdown" value={`$${maxDD}`} sub="Peak to trough" accent={B.loss}/><StatCard label="Total Trades" value={trades.length} sub={`${wins.length}W - ${losses.length}L`} accent={B.spark}/></div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}><PBar label="P&L by Instrument" data={byInst} grads={[GL,GTB,GBP]}/><PBar label="P&L by Session" data={bySess} grads={[GTB,GBP,GL]}/></div><div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:22}}><div style={{fontSize:10,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",marginBottom:16}}>P&L by Day of Week</div><ResponsiveContainer width="100%" height={160}><BarChart data={dayData} barSize={44}><CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false}/><XAxis dataKey="day" tick={{fill:"#6B6880",fontSize:12}} axisLine={false} tickLine={false}/><YAxis tick={{fill:B.textDim,fontSize:10}} axisLine={false} tickLine={false} tickFormatter={v=>`$${v}`}/><Tooltip content={<CTip/>}/><ReferenceLine y={0} stroke="rgba(255,255,255,0.08)"/><Bar dataKey="pnl" name="P&L" radius={[5,5,0,0]} fill={B.teal} isAnimationActive/></BarChart></ResponsiveContainer></div></div>);
+}
+
+// ── Journal Templates System ──────────────────────────────────────────────────
+const DEFAULT_TEMPLATES = [
+  {
+    id: "premarket",
+    name: "Pre-Market Plan",
+    icon: "🌅",
+    color: "#4F8EF7",
+    locked: true,
+    content: `📋 PRE-MARKET PLAN — {date}
+
+🔍 MARKET CONTEXT
+• Overnight range:
+• Key levels to watch:
+• Bias (Bull/Bear/Neutral):
+
+📌 TRADE SETUPS TO WATCH
+Setup 1:
+• Instrument:
+• Trigger:
+• Entry zone:
+• Target:
+• Stop:
+• R:R:
+
+Setup 2:
+• Instrument:
+• Trigger:
+• Entry zone:
+• Target:
+• Stop:
+• R:R:
+
+⚠️ RULES FOR TODAY
+• Max contracts:
+• Daily loss limit:
+• Max trades:
+
+🧠 MENTAL STATE CHECK
+• Energy level (1-10):
+• Focus level (1-10):
+• Notes on mindset:
+
+🎯 GOAL FOR TODAY:
+`
+  },
+  {
+    id: "posttrade",
+    name: "Post-Trade Review",
+    icon: "📊",
+    color: "#00D4A8",
+    locked: true,
+    content: `📊 POST-TRADE REVIEW — {date}
+
+✅ WHAT I DID WELL
+•
+•
+
+❌ WHAT I NEED TO IMPROVE
+•
+•
+
+🔍 TRADE BREAKDOWN
+• Did I follow my plan? (Y/N):
+• Did I respect my stop? (Y/N):
+• Did I size correctly? (Y/N):
+• Emotional state during trading:
+
+📈 STATISTICS
+• Trades taken:
+• Winners:
+• Losers:
+• Net P&L:
+• Best trade:
+• Worst trade:
+
+💡 KEY LESSON FROM TODAY:
+
+🎯 FOCUS FOR TOMORROW:
+`
+  },
+  {
+    id: "weekly",
+    name: "Weekly Review",
+    icon: "📅",
+    color: "#8B5CF6",
+    locked: true,
+    content: `📅 WEEKLY REVIEW — Week of {date}
+
+📊 PERFORMANCE SUMMARY
+• Total trades:
+• Win rate:
+• Net P&L:
+• Best day:
+• Worst day:
+
+✅ WINS THIS WEEK (trading habits)
+•
+•
+
+❌ AREAS TO IMPROVE
+•
+•
+
+🔍 PATTERN ANALYSIS
+• Best performing setup:
+• Worst performing setup:
+• Best session (AM/Mid/PM):
+• Worst session:
+
+🧠 PSYCHOLOGICAL NOTES
+• Biggest emotional challenge:
+• How I handled losses:
+• Discipline rating (1-10):
+
+📚 WHAT I LEARNED THIS WEEK:
+
+🎯 GOALS FOR NEXT WEEK:
+1.
+2.
+3.
+`
+  },
+];
+
+const TEMPLATES_STORAGE_KEY = "tca_journal_templates_v1";
+
+function useTemplates() {
+  const [templates, setTemplates] = useState(DEFAULT_TEMPLATES);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await window.storage.get(TEMPLATES_STORAGE_KEY);
+        if (r?.value) {
+          const saved = JSON.parse(r.value);
+          // Merge defaults with custom templates
+          const customTemplates = saved.filter(t => !t.locked);
+          setTemplates([...DEFAULT_TEMPLATES, ...customTemplates]);
+        }
+      } catch(e) {}
+      setLoaded(true);
+    })();
+  }, []);
+
+  const saveTemplates = async (newTemplates) => {
+    setTemplates(newTemplates);
+    try {
+      await window.storage.set(TEMPLATES_STORAGE_KEY, JSON.stringify(newTemplates));
+    } catch(e) {}
+  };
+
+  const addTemplate = (template) => {
+    const newTemplates = [...templates, { ...template, id: `custom_${Date.now()}` }];
+    saveTemplates(newTemplates);
+  };
+
+  const updateTemplate = (id, updates) => {
+    const newTemplates = templates.map(t => t.id === id ? { ...t, ...updates } : t);
+    saveTemplates(newTemplates);
+  };
+
+  const deleteTemplate = (id) => {
+    const newTemplates = templates.filter(t => t.id !== id);
+    saveTemplates(newTemplates);
+  };
+
+  return { templates, addTemplate, updateTemplate, deleteTemplate, loaded };
+}
+
+function TemplatePanel({ date, currentNotes, onApply, onClose }) {
+  const { templates, addTemplate, updateTemplate, deleteTemplate } = useTemplates();
+  const [view, setView] = useState("list"); // list | edit | create | preview
+  const [selected, setSelected] = useState(null);
+  const [editForm, setEditForm] = useState({ name: "", icon: "📝", color: B.teal, content: "" });
+  const [saving, setSaving] = useState(false);
+
+  const applyTemplate = (template) => {
+    const filled = template.content.replace(/{date}/g, new Date(date + "T12:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" }));
+    // If notes already exist, ask to append or replace
+    if (currentNotes?.trim()) {
+      const combined = currentNotes + "
+
+---
+
+" + filled;
+      onApply(combined);
+    } else {
+      onApply(filled);
+    }
+    onClose();
+  };
+
+  const handleSave = () => {
+    if (!editForm.name.trim() || !editForm.content.trim()) return;
+    if (selected && !selected.locked) {
+      updateTemplate(selected.id, editForm);
+    } else {
+      addTemplate({ ...editForm, locked: false });
+    }
+    setView("list");
+    setSelected(null);
+  };
+
+  const handleSaveAsTemplate = () => {
+    if (!currentNotes?.trim()) return;
+    addTemplate({
+      name: `Journal ${date}`,
+      icon: "📝",
+      color: B.spark,
+      locked: false,
+      content: currentNotes,
+    });
+    setSaving(true);
+    setTimeout(() => setSaving(false), 1500);
+  };
+
+  const ICONS = ["📝","🌅","📊","📅","🎯","💡","⚡","🔥","📈","🧠","✅","⚠️"];
+  const COLORS = [B.teal, B.blue, B.purple, B.spark, "#f97316", B.loss];
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+      {/* Panel header */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: B.text }}>
+          {view === "list" ? "Journal Templates" : view === "edit" ? "Edit Template" : view === "create" ? "New Template" : "Preview"}
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          {view === "list" && (
+            <button onClick={() => { setView("create"); setEditForm({ name: "", icon: "📝", color: B.teal, content: "" }); }}
+              style={{ padding: "5px 12px", borderRadius: 8, border: "none", background: GL, color: "#0E0E10", cursor: "pointer", fontSize: 11, fontWeight: 800 }}>
+              + New
+            </button>
+          )}
+          {view !== "list" && (
+            <button onClick={() => { setView("list"); setSelected(null); }}
+              style={{ padding: "5px 12px", borderRadius: 8, border: `1px solid ${B.border}`, background: "transparent", color: B.textMuted, cursor: "pointer", fontSize: 11 }}>
+              ← Back
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Save current as template */}
+      {view === "list" && currentNotes?.trim() && (
+        <button onClick={handleSaveAsTemplate}
+          style={{ width: "100%", padding: "9px", borderRadius: 10, border: `1px solid ${B.spark}40`, background: `${B.spark}10`, color: B.spark, cursor: "pointer", fontSize: 12, fontWeight: 700, marginBottom: 12, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+          {saving ? "✓ Saved!" : "💾 Save today's notes as template"}
+        </button>
+      )}
+
+      {/* Template list */}
+      {view === "list" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, overflowY: "auto", flex: 1 }}>
+          {templates.map(t => (
+            <div key={t.id} style={{ borderRadius: 10, border: `1px solid ${B.border}`, overflow: "hidden" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", background: "rgba(0,0,0,0.3)" }}>
+                <span style={{ fontSize: 18 }}>{t.icon}</span>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: B.text }}>{t.name}</div>
+                  <div style={{ fontSize: 10, color: B.textMuted, marginTop: 2 }}>
+                    {t.locked ? "Default template" : "Custom template"} · {t.content.split("
+").length} lines
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <button onClick={() => { setSelected(t); setView("preview"); }}
+                    style={{ padding: "4px 10px", borderRadius: 6, border: `1px solid ${B.border}`, background: "transparent", color: B.textMuted, cursor: "pointer", fontSize: 10 }}>
+                    Preview
+                  </button>
+                  {!t.locked && (
+                    <button onClick={() => { setSelected(t); setEditForm({ name: t.name, icon: t.icon, color: t.color, content: t.content }); setView("edit"); }}
+                      style={{ padding: "4px 10px", borderRadius: 6, border: `1px solid ${B.blue}40`, background: `${B.blue}10`, color: B.blue, cursor: "pointer", fontSize: 10 }}>
+                      Edit
+                    </button>
+                  )}
+                  <button onClick={() => applyTemplate(t)}
+                    style={{ padding: "4px 10px", borderRadius: 6, border: "none", background: `${t.color}20`, color: t.color, cursor: "pointer", fontSize: 10, fontWeight: 700 }}>
+                    Apply →
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Preview */}
+      {view === "preview" && selected && (
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ flex: 1, padding: "14px", borderRadius: 10, background: "rgba(0,0,0,0.3)", border: `1px solid ${B.border}`, overflowY: "auto", fontSize: 12, color: "#C8C4D8", lineHeight: 1.8, whiteSpace: "pre-wrap", fontFamily: "monospace" }}>
+            {selected.content.replace(/{date}/g, date)}
+          </div>
+          <button onClick={() => applyTemplate(selected)}
+            style={{ padding: "11px", borderRadius: 10, border: "none", background: GL, color: "#0E0E10", cursor: "pointer", fontSize: 13, fontWeight: 800 }}>
+            Apply This Template →
+          </button>
+        </div>
+      )}
+
+      {/* Create / Edit form */}
+      {(view === "create" || view === "edit") && (
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 12, overflowY: "auto" }}>
+          <div>
+            <label style={lS}>Template Name</label>
+            <input value={editForm.name} onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))}
+              style={iS} placeholder="e.g. My Morning Routine" />
+          </div>
+          <div>
+            <label style={lS}>Icon</label>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {ICONS.map(icon => (
+                <button key={icon} onClick={() => setEditForm(f => ({ ...f, icon }))}
+                  style={{ width: 36, height: 36, borderRadius: 8, border: `2px solid ${editForm.icon === icon ? B.teal : B.border}`, background: editForm.icon === icon ? `${B.teal}15` : "transparent", cursor: "pointer", fontSize: 18 }}>
+                  {icon}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label style={lS}>Color</label>
+            <div style={{ display: "flex", gap: 6 }}>
+              {COLORS.map(color => (
+                <button key={color} onClick={() => setEditForm(f => ({ ...f, color }))}
+                  style={{ width: 28, height: 28, borderRadius: "50%", border: `3px solid ${editForm.color === color ? "#fff" : "transparent"}`, background: color, cursor: "pointer" }} />
+              ))}
+            </div>
+          </div>
+          <div style={{ flex: 1 }}>
+            <label style={lS}>Template Content <span style={{ color: B.textMuted, fontSize: 9 }}>use {"{date}"} to auto-insert the date</span></label>
+            <textarea value={editForm.content} onChange={e => setEditForm(f => ({ ...f, content: e.target.value }))}
+              rows={10} style={{ ...iS, resize: "vertical", lineHeight: 1.7, fontSize: 12, fontFamily: "monospace" }}
+              placeholder="Write your template here..." />
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={() => { setView("list"); setSelected(null); }}
+              style={{ flex: 1, padding: "10px", borderRadius: 10, border: `1px solid ${B.border}`, background: "transparent", color: B.textMuted, cursor: "pointer", fontSize: 13 }}>
+              Cancel
+            </button>
+            <button onClick={handleSave}
+              style={{ flex: 2, padding: "10px", borderRadius: 10, border: "none", background: GL, color: "#0E0E10", cursor: "pointer", fontSize: 13, fontWeight: 800 }}>
+              {view === "edit" ? "Save Changes" : "Create Template"}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function DayJournalModal({date, trades, onClose}){
@@ -1188,6 +1567,7 @@ function DayJournalModal({date, trades, onClose}){
           {[
             {id:"checklist",label:`Pre-Market Checklist ${checklist.length?`(${completed}/${checklist.length})`:""}` },
             {id:"notes",label:"Trading Notes"},
+            {id:"templates",label:"Templates"},
             {id:"trades",label:`Trades (${dayTrades.length})`},
           ].map(t=>(
             <button key={t.id} onClick={()=>setTab(t.id)} style={{
@@ -1268,6 +1648,18 @@ Any key observations about market structure?`}
               <div style={{display:"flex",justifyContent:"flex-end",marginTop:10}}>
                 <button onClick={()=>save(notes,undefined)} style={{padding:"8px 20px",borderRadius:8,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:12,fontWeight:800}}>Save Notes</button>
               </div>
+            </div>
+          )}
+
+          {/* Templates Tab */}
+          {tab==="templates"&&(
+            <div style={{minHeight:400}}>
+              <TemplatePanel
+                date={date}
+                currentNotes={notes}
+                onApply={(text)=>{setNotes(text);save(text,undefined);setTab("notes");}}
+                onClose={()=>setTab("notes")}
+              />
             </div>
           )}
 
