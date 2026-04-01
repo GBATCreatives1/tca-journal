@@ -253,7 +253,7 @@ export default function App(){
     if(!session){setLoading(false);return;}
     (async()=>{
       const{data}=await supabase.from("trades").select("*").order("date",{ascending:false});
-      setTrades(data?.length>0?data:SAMPLE);
+      setTrades(data||[]);
       setLoading(false);
     })();
   },[session]);
