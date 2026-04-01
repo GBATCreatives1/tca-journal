@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
 import { createClient } from "@supabase/supabase-js";
 
@@ -7,6 +7,75 @@ const supabase = createClient(
   import.meta.env.VITE_SUPABASE_ANON_KEY
 );
 
+// ── Tradovate Sync ────────────────────────────────────────────────────────────
+const TV_URL = "https://live.tradovateapi.com/v1";
+const TV_KEY = import.meta.env.VITE_TRADOVATE_API_KEY;
+const TV_SECRET = import.meta.env.VITE_TRADOVATE_API_SECRET;
+
+async function tvAuth() {
+  try {
+    const res = await fetch(`${TV_URL}/auth/accesstokenrequest`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: TV_KEY, password: TV_SECRET,
+        appId: "TCA Trade Journal", appVersion: "1.0.0",
+        cid: TV_KEY, sec: TV_SECRET,
+      }),
+    });
+    const data = await res.json();
+    if (data.accessToken) {
+      sessionStorage.setItem("tv_token", data.accessToken);
+      sessionStorage.setItem("tv_expiry", Date.now() + 75 * 60 * 1000);
+      return data.accessToken;
+    }
+    return null;
+  } catch (e) { return null; }
+}
+
+async function getToken() {
+  const expiry = sessionStorage.getItem("tv_expiry");
+  const token = sessionStorage.getItem("tv_token");
+  if (token && expiry && Date.now() < parseInt(expiry)) return token;
+  return await tvAuth();
+}
+
+async function fetchClosedTrades(token) {
+  try {
+    const res = await fetch(`${TV_URL}/executionreport/list`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await res.json();
+    return Array.isArray(data) ? data.filter(e => e.execType === "Fill") : [];
+  } catch (e) { return []; }
+}
+
+function execToTrade(exec) {
+  const rawDate = exec.timestamp || new Date().toISOString();
+  const dateStr = new Date(rawDate).toISOString().slice(0, 10);
+  const symbol = (exec.contractId?.name || "MES").replace(/[A-Z]\d+$/, "").replace(/\d+/g, "").toUpperCase() || "MES";
+  const direction = exec.action === "Sell" ? "Short" : "Long";
+  const pnl = Math.round((exec.realizedPnl || 0) * 100) / 100;
+  const hr = new Date(rawDate).getHours();
+  return {
+    date: dateStr,
+    instrument: symbol,
+    direction,
+    contracts: exec.qty || 1,
+    entry: exec.price || 0,
+    exit: 0,
+    pnl,
+    rr: "--",
+    setup: "Auto-synced",
+    grade: "B",
+    notes: `Tradovate auto-sync`,
+    session: hr < 10 ? "AM" : hr < 13 ? "Mid" : "PM",
+    result: pnl >= 0 ? "Win" : "Loss",
+    tradovate_id: String(exec.id),
+  };
+}
+
+// ── Brand ─────────────────────────────────────────────────────────────────────
 const B={teal:"#00D4A8",blue:"#4F8EF7",purple:"#8B5CF6",spark:"#7B61FF",profit:"#00D4A8",loss:"#F05A7E",bg:"#0E0E10",surface:"rgba(255,255,255,0.025)",border:"rgba(255,255,255,0.07)",borderTeal:"rgba(0,212,168,0.25)",borderPurp:"rgba(139,92,246,0.25)",text:"#F0EEF8",textMuted:"#6B6880",textDim:"#2E2C3A"};
 const GL="linear-gradient(135deg,#00D4A8 0%,#4F8EF7 50%,#8B5CF6 100%)";
 const GTB="linear-gradient(90deg,#00D4A8,#4F8EF7)";
@@ -14,7 +83,7 @@ const GBP="linear-gradient(90deg,#4F8EF7,#8B5CF6)";
 const INST_COLOR={MES:B.purple,SPY:B.blue,SPX:B.teal,ES:B.purple,NQ:B.blue,MNQ:"#f97316"};
 const GRADE_COLOR={"A+":B.teal,"A":"#4ade80","B":B.blue,"C":"#f97316","D":B.loss};
 const TAG_COLOR={ICT:B.purple,Strat:B.blue,Confluence:B.teal,CISD:"#f97316",OB:B.purple,FVG:B.blue,OTE:B.teal,PDH:B.blue,VWAP:B.spark,Open:"#f97316",Risky:B.loss};
-const SETUPS=["AM Session CISD","10AM Triple TF","FVG Fill + OTE","PDH Rejection","PDL Bounce","0930 Rejection","Other"];
+const SETUPS=["AM Session CISD","10AM Triple TF","FVG Fill + OTE","PDH Rejection","PDL Bounce","0930 Rejection","Auto-synced","Other"];
 const SESSIONS=["AM","Mid","Open","PM"];
 const GRADES=["A+","A","B","C","D"];
 const INSTRUMENTS=["MES","ES","SPY","SPX","NQ","MNQ"];
@@ -28,11 +97,6 @@ const SAMPLE=[
   {id:"s3",date:"2026-03-05",instrument:"SPX",direction:"Long",contracts:1,entry:5788,exit:5801,pnl:130,rr:"1.9R",setup:"FVG Fill + OTE",grade:"A",notes:"OTE into 0.79 fib",session:"AM",result:"Win"},
   {id:"s4",date:"2026-03-06",instrument:"MES",direction:"Long",contracts:3,entry:5765,exit:5761,pnl:-60,rr:"-0.6R",setup:"PDL Bounce",grade:"C",notes:"Faked below PDL on wick",session:"Open",result:"Loss"},
   {id:"s5",date:"2026-03-07",instrument:"MES",direction:"Short",contracts:2,entry:5820,exit:5805,pnl:150,rr:"2.0R",setup:"AM Session CISD",grade:"A",notes:"Globex high sweep OB",session:"AM",result:"Win"},
-  {id:"s6",date:"2026-03-10",instrument:"SPY",direction:"Short",contracts:4,entry:579.5,exit:577.1,pnl:192,rr:"2.7R",setup:"10AM Triple TF",grade:"A+",notes:"Full confluence held",session:"Mid",result:"Win"},
-  {id:"s7",date:"2026-03-11",instrument:"MES",direction:"Long",contracts:2,entry:5755,exit:5748,pnl:-70,rr:"-0.9R",setup:"FVG Fill + OTE",grade:"B",notes:"FVG no OTE confirm",session:"AM",result:"Loss"},
-  {id:"s8",date:"2026-03-12",instrument:"SPX",direction:"Short",contracts:1,entry:5800,exit:5785,pnl:150,rr:"2.1R",setup:"PDH Rejection",grade:"A",notes:"PDH+VWAP confluence",session:"AM",result:"Win"},
-  {id:"s9",date:"2026-03-13",instrument:"MES",direction:"Long",contracts:2,entry:5770,exit:5788,pnl:180,rr:"2.5R",setup:"10AM Triple TF",grade:"A+",notes:"All TFs green full target",session:"Mid",result:"Win"},
-  {id:"s10",date:"2026-03-14",instrument:"SPY",direction:"Long",contracts:3,entry:578.0,exit:576.5,pnl:-135,rr:"-1.5R",setup:"0930 Rejection",grade:"D",notes:"Revenge trade no setup",session:"Open",result:"Loss"},
 ];
 
 const PLAYBOOKS=[
@@ -63,7 +127,7 @@ function parseTradovateCSV(text){
     const pnlRaw=parseFloat(row["pnl"]||row["realized p&l"]||row["realized pnl"]||row["profit/loss"]||"0")||0;
     if(isNaN(pnlRaw))continue;
     const hr=rawDate?new Date(rawDate).getHours():9;
-    trades.push({id:`imp_${Date.now()}_${i}`,date:dateStr,instrument:symbol||"MES",direction,contracts:qty,entry:0,exit:0,pnl:pnlRaw,rr:"--",setup:"Imported",grade:"B",notes:"Imported from Tradovate",session:hr<10?"AM":hr<13?"Mid":"PM",result:pnlRaw>=0?"Win":"Loss"});
+    trades.push({id:`imp_${Date.now()}_${i}`,date:dateStr,instrument:symbol||"MES",direction,contracts:qty,entry:0,exit:0,pnl:pnlRaw,rr:"--",setup:"Imported",grade:"B",notes:"Imported from Tradovate CSV",session:hr<10?"AM":hr<13?"Mid":"PM",result:pnlRaw>=0?"Win":"Loss"});
   }
   return trades;
 }
@@ -111,7 +175,7 @@ function TradeFormModal({onClose,onSave,editTrade}){
 function ImportModal({onClose,onImport}){
   const [step,setStep]=useState("upload");const [parsed,setParsed]=useState([]);const [error,setError]=useState("");const [drag,setDrag]=useState(false);const ref=useRef();
   const handle=(file)=>{if(!file)return;setError("");const r=new FileReader();r.onload=(e)=>{try{const t=e.target.result;let tr=parseTradovateCSV(t);if(tr.length===0)tr=parseGenericCSV(t);if(tr.length===0){setError("No valid trades found.");return;}setParsed(tr);setStep("preview");}catch(err){setError("Failed to parse: "+err.message);}};r.readAsText(file);};
-  return(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(6px)"}}><div style={{background:"#13121A",border:`1px solid ${B.border}`,borderRadius:18,padding:32,width:620,maxHeight:"85vh",overflowY:"auto"}}><div style={{height:3,background:GL,borderRadius:3,marginBottom:24}}/><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:24}}><div><div style={{fontSize:18,fontWeight:800,color:B.text}}>Import Trades</div><div style={{fontSize:12,color:B.textMuted,marginTop:3}}>Tradovate, Apex, Rithmic, or generic CSV</div></div><button onClick={onClose} style={{background:"none",border:"none",color:B.textMuted,cursor:"pointer",fontSize:22}}>x</button></div>{step==="upload"&&(<><div onDragOver={e=>{e.preventDefault();setDrag(true);}} onDragLeave={()=>setDrag(false)} onDrop={e=>{e.preventDefault();setDrag(false);handle(e.dataTransfer.files[0]);}} onClick={()=>ref.current.click()} style={{border:`2px dashed ${drag?B.teal:B.border}`,borderRadius:14,padding:"48px 24px",textAlign:"center",cursor:"pointer",background:drag?`${B.teal}08`:"rgba(0,0,0,0.2)"}}><div style={{fontSize:36,marginBottom:12}}>📁</div><div style={{fontSize:14,fontWeight:700,color:B.text,marginBottom:6}}>Drop your CSV file here</div><div style={{fontSize:12,color:B.textMuted}}>or click to browse</div><input ref={ref} type="file" accept=".csv,.txt" style={{display:"none"}} onChange={e=>handle(e.target.files[0])}/></div>{error&&<div style={{marginTop:12,padding:"10px 14px",borderRadius:8,background:"rgba(240,90,126,0.1)",border:"1px solid rgba(240,90,126,0.3)",color:B.loss,fontSize:12}}>{error}</div>}<div style={{marginTop:20,padding:16,borderRadius:10,background:"rgba(0,0,0,0.3)",border:`1px solid ${B.border}`}}><div style={{fontSize:10,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:10}}>How to export from Tradovate</div>{["Open Tradovate - Account - Trade History","Set your date range","Click Export - Download CSV","Upload that file here"].map((s,i)=>(<div key={i} style={{fontSize:12,color:"#9CA0BC",marginBottom:5,display:"flex",gap:8}}><span style={{color:B.teal,fontWeight:700}}>{i+1}.</span>{s}</div>))}</div></>)}{step==="preview"&&(<><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}><div style={{fontSize:13,color:B.textMuted}}><span style={{color:B.teal,fontWeight:700}}>{parsed.length}</span> trades ready</div><button onClick={()=>setStep("upload")} style={{fontSize:11,color:B.textMuted,background:"none",border:"none",cursor:"pointer"}}>Back</button></div><div style={{maxHeight:300,overflowY:"auto",borderRadius:10,border:`1px solid ${B.border}`}}><div style={{display:"grid",gridTemplateColumns:"90px 70px 60px 70px 80px 1fr",padding:"8px 14px",fontSize:10,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",borderBottom:`1px solid ${B.border}`,background:"rgba(0,0,0,0.4)",position:"sticky",top:0}}>{["Date","Symbol","Dir","Qty","P&L","Setup"].map(h=><div key={h}>{h}</div>)}</div>{parsed.map((t,i)=>(<div key={i} style={{display:"grid",gridTemplateColumns:"90px 70px 60px 70px 80px 1fr",padding:"10px 14px",borderBottom:`1px solid ${B.border}`,fontSize:12,borderLeft:`2px solid ${t.pnl>=0?B.teal:B.loss}`}}><div style={{color:B.textMuted}}>{t.date}</div><div style={{color:INST_COLOR[t.instrument]||B.teal,fontWeight:700}}>{t.instrument}</div><div style={{color:t.direction==="Long"?"#4ade80":"#f87171"}}>{t.direction}</div><div style={{color:B.textMuted}}>{t.contracts}</div><div style={{color:pnlColor(t.pnl),fontWeight:700,fontFamily:"monospace"}}>{fmt(t.pnl)}</div><div style={{color:B.textMuted}}>{t.setup}</div></div>))}</div><div style={{display:"flex",gap:10,marginTop:20,justifyContent:"flex-end"}}><button onClick={onClose} style={{padding:"10px 22px",borderRadius:10,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:13,fontWeight:600}}>Cancel</button><button onClick={()=>{onImport(parsed);onClose();}} style={{padding:"10px 28px",borderRadius:10,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:13,fontWeight:800}}>Import {parsed.length} Trades</button></div></>)}</div></div>);
+  return(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(6px)"}}><div style={{background:"#13121A",border:`1px solid ${B.border}`,borderRadius:18,padding:32,width:620,maxHeight:"85vh",overflowY:"auto"}}><div style={{height:3,background:GL,borderRadius:3,marginBottom:24}}/><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:24}}><div><div style={{fontSize:18,fontWeight:800,color:B.text}}>Import Trades</div><div style={{fontSize:12,color:B.textMuted,marginTop:3}}>Tradovate, Apex, Rithmic, or generic CSV</div></div><button onClick={onClose} style={{background:"none",border:"none",color:B.textMuted,cursor:"pointer",fontSize:22}}>x</button></div>{step==="upload"&&(<><div onDragOver={e=>{e.preventDefault();setDrag(true);}} onDragLeave={()=>setDrag(false)} onDrop={e=>{e.preventDefault();setDrag(false);handle(e.dataTransfer.files[0]);}} onClick={()=>ref.current.click()} style={{border:`2px dashed ${drag?B.teal:B.border}`,borderRadius:14,padding:"48px 24px",textAlign:"center",cursor:"pointer",background:drag?`${B.teal}08`:"rgba(0,0,0,0.2)"}}><div style={{fontSize:36,marginBottom:12}}>📁</div><div style={{fontSize:14,fontWeight:700,color:B.text,marginBottom:6}}>Drop your CSV file here</div><div style={{fontSize:12,color:B.textMuted}}>or click to browse</div><input ref={ref} type="file" accept=".csv,.txt" style={{display:"none"}} onChange={e=>handle(e.target.files[0])}/></div>{error&&<div style={{marginTop:12,padding:"10px 14px",borderRadius:8,background:"rgba(240,90,126,0.1)",border:"1px solid rgba(240,90,126,0.3)",color:B.loss,fontSize:12}}>{error}</div>}</>)}{step==="preview"&&(<><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}><div style={{fontSize:13,color:B.textMuted}}><span style={{color:B.teal,fontWeight:700}}>{parsed.length}</span> trades ready</div><button onClick={()=>setStep("upload")} style={{fontSize:11,color:B.textMuted,background:"none",border:"none",cursor:"pointer"}}>Back</button></div><div style={{maxHeight:300,overflowY:"auto",borderRadius:10,border:`1px solid ${B.border}`}}><div style={{display:"grid",gridTemplateColumns:"90px 70px 60px 70px 80px 1fr",padding:"8px 14px",fontSize:10,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",borderBottom:`1px solid ${B.border}`,background:"rgba(0,0,0,0.4)",position:"sticky",top:0}}>{["Date","Symbol","Dir","Qty","P&L","Setup"].map(h=><div key={h}>{h}</div>)}</div>{parsed.map((t,i)=>(<div key={i} style={{display:"grid",gridTemplateColumns:"90px 70px 60px 70px 80px 1fr",padding:"10px 14px",borderBottom:`1px solid ${B.border}`,fontSize:12,borderLeft:`2px solid ${t.pnl>=0?B.teal:B.loss}`}}><div style={{color:B.textMuted}}>{t.date}</div><div style={{color:INST_COLOR[t.instrument]||B.teal,fontWeight:700}}>{t.instrument}</div><div style={{color:t.direction==="Long"?"#4ade80":"#f87171"}}>{t.direction}</div><div style={{color:B.textMuted}}>{t.contracts}</div><div style={{color:pnlColor(t.pnl),fontWeight:700,fontFamily:"monospace"}}>{fmt(t.pnl)}</div><div style={{color:B.textMuted}}>{t.setup}</div></div>))}</div><div style={{display:"flex",gap:10,marginTop:20,justifyContent:"flex-end"}}><button onClick={onClose} style={{padding:"10px 22px",borderRadius:10,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:13,fontWeight:600}}>Cancel</button><button onClick={()=>{onImport(parsed);onClose();}} style={{padding:"10px 28px",borderRadius:10,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:13,fontWeight:800}}>Import {parsed.length} Trades</button></div></>)}</div></div>);
 }
 
 function DeleteConfirm({trade,onConfirm,onCancel}){return(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:110,display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{background:"#13121A",border:"1px solid rgba(240,90,126,0.3)",borderRadius:16,padding:28,width:360,textAlign:"center"}}><div style={{fontSize:16,fontWeight:700,color:B.text,marginBottom:8}}>Delete Trade?</div><div style={{fontSize:13,color:B.textMuted,marginBottom:6}}>{trade.date} - {trade.instrument} - {trade.direction}</div><div style={{fontSize:15,fontWeight:700,fontFamily:"monospace",color:pnlColor(trade.pnl),marginBottom:20}}>{fmt(trade.pnl)}</div><div style={{display:"flex",gap:10,justifyContent:"center"}}><button onClick={onCancel} style={{padding:"9px 22px",borderRadius:9,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontWeight:600}}>Cancel</button><button onClick={onConfirm} style={{padding:"9px 22px",borderRadius:9,background:"rgba(240,90,126,0.15)",color:B.loss,cursor:"pointer",fontWeight:700,border:"1px solid rgba(240,90,126,0.3)"}}>Delete</button></div></div></div>);}
@@ -184,6 +248,7 @@ export default function App(){
   const [showImport,setShowImport]=useState(false);
   const [toast,setToast]=useState(null);
   const [loading,setLoading]=useState(true);
+  const [syncStatus,setSyncStatus]=useState("idle"); // idle | syncing | connected | error
 
   useEffect(()=>{
     supabase.auth.getSession().then(({data})=>setSession(data.session));
@@ -200,25 +265,72 @@ export default function App(){
     })();
   },[session]);
 
+  // ── Tradovate Auto Sync ────────────────────────────────────────────────────
+  const syncTradovate = useCallback(async () => {
+    if (!session) return;
+    setSyncStatus("syncing");
+    try {
+      const token = await getToken();
+      if (!token) { setSyncStatus("error"); return; }
+      const execs = await fetchClosedTrades(token);
+      if (!execs.length) { setSyncStatus("connected"); return; }
+
+      // Get existing tradovate_ids to avoid duplicates
+      const { data: existing } = await supabase
+        .from("trades")
+        .select("tradovate_id")
+        .eq("user_id", session.user.id)
+        .not("tradovate_id", "is", null);
+
+      const existingIds = new Set((existing || []).map(e => e.tradovate_id));
+      const newExecs = execs.filter(e => !existingIds.has(String(e.id)));
+
+      if (newExecs.length > 0) {
+        const newTrades = newExecs.map(e => ({
+          ...execToTrade(e),
+          user_id: session.user.id,
+          day: dayName(execToTrade(e).date),
+        }));
+        const { data } = await supabase.from("trades").insert(newTrades).select();
+        if (data?.length) {
+          setTrades(ts => [...(ts.filter(t => !t.id?.startsWith("s"))), ...data]);
+          showT(`${data.length} new trade${data.length > 1 ? "s" : ""} synced from Tradovate`);
+        }
+      }
+      setSyncStatus("connected");
+    } catch (e) {
+      console.error("Sync error:", e);
+      setSyncStatus("error");
+    }
+  }, [session]);
+
+  // Auto sync every 30 seconds
+  useEffect(() => {
+    if (!session || loading) return;
+    syncTradovate();
+    const interval = setInterval(syncTradovate, 30000);
+    return () => clearInterval(interval);
+  }, [session, loading, syncTradovate]);
+
   useEffect(()=>{const t=setInterval(()=>setTime(new Date()),1000);return()=>clearInterval(t);},[]);
 
-  const showT=(msg,type="success")=>{setToast({msg,type});setTimeout(()=>setToast(null),3000);};
+  const showT=(msg,type="success")=>{setToast({msg,type});setTimeout(()=>setToast(null),4000);};
 
-const handleSave=async(trade)=>{
-  const{id,...rest}=trade;
-  const row={...rest,user_id:session.user.id,day:dayName(trade.date)};
-  if(editTrade){
-    await supabase.from("trades").update(row).eq("id",trade.id);
-    setTrades(ts=>ts.map(t=>t.id===trade.id?{...row,id:trade.id}:t));
-    showT("Trade updated");
-  }else{
-    const{data,error}=await supabase.from("trades").insert(row).select();
-    if(error){console.error(error);showT("Save failed","error");return;}
-    setTrades(ts=>[...(ts.filter(t=>!t.id?.startsWith("s"))),data[0]]);
-    showT("Trade logged");
-  }
-  setEditTrade(null);
-};
+  const handleSave=async(trade)=>{
+    const{id,...rest}=trade;
+    const row={...rest,user_id:session.user.id,day:dayName(trade.date)};
+    if(editTrade){
+      await supabase.from("trades").update(row).eq("id",trade.id);
+      setTrades(ts=>ts.map(t=>t.id===trade.id?{...row,id:trade.id}:t));
+      showT("Trade updated");
+    }else{
+      const{data,error}=await supabase.from("trades").insert(row).select();
+      if(error){console.error(error);showT("Save failed","error");return;}
+      setTrades(ts=>[...(ts.filter(t=>!t.id?.startsWith("s"))),data[0]]);
+      showT("Trade logged");
+    }
+    setEditTrade(null);
+  };
 
   const handleImport=async(imported)=>{
     const rows=imported.map(t=>({...t,user_id:session.user.id,day:dayName(t.date)}));
@@ -239,6 +351,9 @@ const handleSave=async(trade)=>{
   const totalPnl=trades.reduce((a,t)=>a+t.pnl,0);
   const hasSample=trades.some(t=>t.id?.startsWith("s"));
 
+  const syncDot = syncStatus==="connected"?B.teal:syncStatus==="syncing"?B.blue:syncStatus==="error"?B.loss:"#444";
+  const syncLabel = syncStatus==="connected"?"Live":syncStatus==="syncing"?"Syncing...":syncStatus==="error"?"Sync Error":"Connecting";
+
   if(!session)return <LoginScreen/>;
   if(loading)return(<div style={{minHeight:"100vh",background:B.bg,display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{fontSize:14,color:B.textMuted}}>Loading your trades...</div></div>);
 
@@ -253,7 +368,13 @@ const handleSave=async(trade)=>{
       <div style={{padding:"16px 18px",borderTop:`1px solid ${B.border}`}}>
         <div style={{fontSize:9,color:B.textDim,letterSpacing:2,marginBottom:3}}>NY SESSION</div>
         <div style={{fontSize:13,fontFamily:"monospace",color:B.textMuted}}>{nyTime}</div>
-        <div style={{marginTop:12,padding:"12px 14px",borderRadius:10,background:`${B.teal}08`,border:`1px solid ${B.teal}22`,position:"relative",overflow:"hidden"}}><div style={{position:"absolute",top:0,left:0,right:0,height:2,background:GTB}}/><div style={{fontSize:9,color:B.textMuted,marginBottom:3,letterSpacing:1}}>MONTH P&L</div><div style={{fontSize:20,fontWeight:800,fontFamily:"monospace",background:GTB,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>{fmt(totalPnl)}</div></div>
+        {/* Tradovate sync status */}
+        <div style={{marginTop:10,display:"flex",alignItems:"center",gap:6,padding:"8px 12px",borderRadius:8,background:"rgba(0,0,0,0.3)",border:`1px solid ${B.border}`}}>
+          <div style={{width:7,height:7,borderRadius:"50%",background:syncDot,boxShadow:syncStatus==="connected"?`0 0 6px ${B.teal}`:"none"}}/>
+          <div style={{fontSize:10,color:syncStatus==="connected"?B.teal:B.textMuted,fontWeight:600}}>Tradovate {syncLabel}</div>
+          <button onClick={syncTradovate} style={{marginLeft:"auto",background:"none",border:"none",color:B.textMuted,cursor:"pointer",fontSize:10,padding:0}}>↻</button>
+        </div>
+        <div style={{marginTop:10,padding:"12px 14px",borderRadius:10,background:`${B.teal}08`,border:`1px solid ${B.teal}22`,position:"relative",overflow:"hidden"}}><div style={{position:"absolute",top:0,left:0,right:0,height:2,background:GTB}}/><div style={{fontSize:9,color:B.textMuted,marginBottom:3,letterSpacing:1}}>MONTH P&L</div><div style={{fontSize:20,fontWeight:800,fontFamily:"monospace",background:GTB,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>{fmt(totalPnl)}</div></div>
         <div style={{marginTop:10,fontSize:10,color:B.textMuted,textAlign:"center"}}>{trades.filter(t=>!t.id?.startsWith("s")).length} trades logged</div>
         <button onClick={()=>supabase.auth.signOut()} style={{marginTop:10,width:"100%",padding:"7px",borderRadius:8,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:11,fontWeight:600}}>Sign Out</button>
       </div>
