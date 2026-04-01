@@ -56,7 +56,11 @@ async function fetchClosedTrades(token, fromDate=null, toDate=null) {
 function execToTrade(exec) {
   // New proxy returns pre-built trade objects - just pass through
   // with any missing fields filled in
-  if (exec.date && exec.instrument) return exec; // already built by proxy
+  if (exec.date && exec.instrument) {
+    // Re-grade synced trades using autoGrade
+    if (!exec.grade || exec.grade === "B") exec.grade = autoGrade(exec);
+    return exec;
+  }
   // Fallback for old format
   const rawDate = exec.timestamp || new Date().toISOString();
   const dateStr = new Date(rawDate).toISOString().slice(0, 10);
@@ -107,6 +111,116 @@ const PLAYBOOKS=[
   {id:4,name:"PDH/PDL Rejection",instruments:["MES","SPY"],winRate:65,avgRR:"1.7R",trades:9,description:"Previous Day High/Low sweep and rejection. Combined with VWAP confluence for higher probability.",tags:["Strat","PDH","VWAP"]},
   {id:5,name:"0930 Open Rejection",instruments:["SPY","SPX"],winRate:55,avgRR:"1.4R",trades:8,description:"First 5-min candle rejection trade. Only A+ setups at key HTF levels. High risk - size down.",tags:["Open","Strat","Risky"]},
 ];
+
+
+// ── Auto-Grade Logic ──────────────────────────────────────────────────────────
+const HIGH_QUALITY_SETUPS = [
+  "10AM Triple TF","AM Session CISD","FVG Fill + OTE",
+  "PDH Rejection","PDL Bounce","10am triple tf","cisd","fvg","ote",
+];
+
+// strategies is optional array of user strategy objects from storage
+function autoGrade(trade, strategies=[]) {
+  const GRADES = ["D","C","B","A","A+"];
+
+  // Step 1: Grade by R:R if available
+  const rrRaw = (trade.rr||"--").toString().replace(/R/gi,"").replace("+","").trim();
+  const rr = parseFloat(rrRaw);
+  let grade = "B";
+
+  if (!isNaN(rr) && rr !== 0 && trade.rr !== "--") {
+    if (rr >= 2.0)       grade = "A+";
+    else if (rr >= 1.5)  grade = "A";
+    else if (rr >= 1.0)  grade = "B";
+    else if (rr >= 0.5)  grade = "C";
+    else                 grade = "D";
+    if (trade.result === "Loss") {
+      grade = rr <= -1 ? "D" : "C";
+    }
+  } else {
+    // No R:R — grade by P&L
+    if (trade.result === "Loss") {
+      grade = trade.pnl < -100 ? "D" : "C";
+    } else {
+      grade = trade.pnl >= 100 ? "A" : trade.pnl >= 50 ? "B" : "C";
+    }
+  }
+
+  // Step 2: Strategy match → A+ if win
+  const setup = (trade.setup||"").toLowerCase();
+  const instrument = (trade.instrument||"").toLowerCase();
+
+  // Check user-created strategies first (highest priority)
+  const matchesUserStrategy = strategies.some(s => {
+    const nameMatch = setup.includes((s.name||"").toLowerCase()) ||
+                      (s.name||"").toLowerCase().includes(setup);
+    const instMatch = !s.instruments?.length ||
+                      s.instruments.some(inst => instrument.includes(inst.toLowerCase()));
+    return nameMatch && instMatch;
+  });
+
+  if (matchesUserStrategy && trade.result === "Win") {
+    return "A+"; // Strategy match + win = always A+
+  }
+  if (matchesUserStrategy && trade.result === "Loss") {
+    // Strategy match but loss - still boost one level (shows you followed the plan)
+    const idx = GRADES.indexOf(grade);
+    if (idx < GRADES.length - 1) grade = GRADES[idx + 1];
+    return grade;
+  }
+
+  // Step 3: Boost by built-in high quality setups
+  const isHighQuality = HIGH_QUALITY_SETUPS.some(s => setup.includes(s.toLowerCase()));
+  if (isHighQuality && trade.result === "Win") {
+    const idx = GRADES.indexOf(grade);
+    if (idx < GRADES.length - 1) grade = GRADES[idx + 1];
+  }
+
+  return grade;
+}
+
+// Inline grade editor component
+function GradeBadge({grade, tradeId, onSave, size="normal"}){
+  const [editing, setEditing] = useState(false);
+  const color = GRADE_COLOR[grade]||"#aaa";
+  const sizes = size==="small"
+    ? {fontSize:10,padding:"2px 8px",borderRadius:20}
+    : {fontSize:12,padding:"3px 12px",borderRadius:20};
+
+  if(editing){
+    return(
+      <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+        {["A+","A","B","C","D"].map(g=>(
+          <button key={g} onClick={()=>{onSave(g);setEditing(false);}} style={{
+            padding:"3px 10px",borderRadius:20,border:"1px solid",cursor:"pointer",
+            fontSize:11,fontWeight:800,
+            borderColor:GRADE_COLOR[g]||"#aaa",
+            background:g===grade?`${GRADE_COLOR[g]||"#aaa"}25`:"transparent",
+            color:GRADE_COLOR[g]||"#aaa"
+          }}>{g}</button>
+        ))}
+        <button onClick={()=>setEditing(false)} style={{padding:"3px 8px",borderRadius:20,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:11}}>✕</button>
+      </div>
+    );
+  }
+
+  return(
+    <span
+      onClick={()=>setEditing(true)}
+      title="Click to change grade"
+      style={{
+        ...sizes,
+        fontWeight:800,cursor:"pointer",
+        background:`${color}18`,
+        border:`1px solid ${color}40`,
+        color,display:"inline-flex",alignItems:"center",gap:4,
+        transition:"all 0.15s",userSelect:"none"
+      }}
+    >
+      {grade} <span style={{fontSize:9,opacity:0.6}}>✏</span>
+    </span>
+  );
+}
 
 function buildCalendar(trades){const m={};trades.forEach(t=>{if(!m[t.date])m[t.date]={pnl:0,count:0};m[t.date].pnl+=t.pnl;m[t.date].count++;});return m;}
 function buildEquity(trades){const s=[...trades].sort((a,b)=>a.date.localeCompare(b.date));let c=0;return s.map(t=>{c+=t.pnl;return{date:t.date.slice(5),equity:c};});}
@@ -178,7 +292,7 @@ function parseTradovatePerformanceCSV(text){
 
     if(!dateStr)continue;
 
-    trades.push({
+    const tradeObj={
       id:`perf_${Date.now()}_${i}`,
       date:dateStr,
       instrument:product,
@@ -193,7 +307,9 @@ function parseTradovatePerformanceCSV(text){
       notes:`${rawSymbol} | ${duration} | Entry: ${entryPrice} → Exit: ${exitPrice}`,
       session,
       result:pnl>=0?"Win":"Loss",
-    });
+    };
+    tradeObj.grade=autoGrade(tradeObj);
+    trades.push(tradeObj);
   }
   return trades;
 }
@@ -307,7 +423,7 @@ function parseTradovateOrdersCSV(text){
     const hr=entry.rawDate?new Date(entry.rawDate).getHours():9;
     const session=hr<10?"AM":hr<13?"Mid":hr<16?"PM":"After";
 
-    trades.push({
+    const ot={
       id:`imp_${Date.now()}_${i}`,
       date:entry.date,
       instrument:entry.product,
@@ -322,7 +438,9 @@ function parseTradovateOrdersCSV(text){
       notes:`${entry.contract} | Entry: ${entry.price} → Exit: ${exit.price}`,
       session,
       result:pnl>=0?"Win":"Loss",
-    });
+    };
+    ot.grade=autoGrade(ot);
+    trades.push(ot);
   }
 
   return trades;
@@ -340,7 +458,7 @@ function parseGenericCSV(text){
     const rawDate=row.date||row["trade date"]||row["closedate"]||"";
     let safeDate=new Date().toISOString().slice(0,10);
     try{if(rawDate)safeDate=new Date(rawDate).toISOString().slice(0,10);}catch(e){}
-    trades.push({id:`imp_${Date.now()}_${i}`,date:safeDate,instrument:(row.symbol||row.instrument||"MES").replace(/\d+/g,"").toUpperCase()||"MES",direction:(row.side||row.direction||"Long").includes("ell")?"Short":"Long",contracts:parseInt(row.qty||row.contracts||"1")||1,entry:0,exit:0,pnl,rr:"--",setup:"Imported",grade:"B",notes:"Imported from CSV",session:"AM",result:pnl>=0?"Win":"Loss"});
+    const gt={id:`imp_${Date.now()}_${i}`,date:safeDate,instrument:(row.symbol||row.instrument||"MES").replace(/\d+/g,"").toUpperCase()||"MES",direction:(row.side||row.direction||"Long").includes("ell")?"Short":"Long",contracts:parseInt(row.qty||row.contracts||"1")||1,entry:0,exit:0,pnl,rr:"--",setup:"Imported",grade:"B",notes:"Imported from CSV",session:"AM",result:pnl>=0?"Win":"Loss"};gt.grade=autoGrade(gt);trades.push(gt);
   }
   return trades;
 }
@@ -918,12 +1036,15 @@ function Overview({trades}){
   const DEFAULT_LAYOUT=["gauges","calendar","equity","session","setups"];
   const [activeWidgets,setActiveWidgets]=useState(DEFAULT_LAYOUT);
   const [loaded,setLoaded]=useState(false);
+  const [widgetSizes,setWidgetSizes]=useState({});
 
   useEffect(()=>{
     (async()=>{
       try{
         const r=await window.storage.get(WIDGET_KEY);
         if(r?.value)setActiveWidgets(JSON.parse(r.value));
+        const s=await window.storage.get("tca_widget_sizes_v1");
+        if(s?.value)setWidgetSizes(JSON.parse(s.value));
       }catch(e){}
       setLoaded(true);
     })();
@@ -1106,7 +1227,7 @@ function Overview({trades}){
 
   return(
     <div style={{display:"flex",flexDirection:"column",gap:18}}>
-      {selectedDay&&<DayJournalModal date={selectedDay} trades={trades} onClose={()=>setSelectedDay(null)}/>}
+      {selectedDay&&<DayJournalModal date={selectedDay} trades={trades} onClose={()=>setSelectedDay(null)} onGradeUpdate={handleGradeUpdate}/>}
 
       {/* Widget Picker Modal */}
       {showWidgetPicker&&(
@@ -1148,7 +1269,7 @@ function Overview({trades}){
       {/* Widget toolbar */}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 16px",borderRadius:12,background:B.surface,border:`1px solid ${B.border}`}}>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <span style={{fontSize:11,color:B.textMuted}}>⠿ Drag widgets to reorder</span>
+          <span style={{fontSize:11,color:B.textMuted}}>⠿ Drag to reorder · Resize with size buttons</span>
           <span style={{fontSize:11,color:B.textDim}}>·</span>
           <span style={{fontSize:11,color:B.textMuted}}>{activeWidgets.length} widget{activeWidgets.length!==1?"s":""} active</span>
         </div>
@@ -1157,59 +1278,103 @@ function Overview({trades}){
         </button>
       </div>
 
-      {/* Draggable widget grid */}
-      <div style={{display:"flex",flexDirection:"column",gap:16}}>
-        {activeWidgets.map((wid)=>(
-          <div key={wid}
-            draggable
-            onDragStart={e=>handleDragStart(e,wid)}
-            onDragOver={e=>{e.preventDefault();setDragOver(wid);}}
-            onDragLeave={()=>setDragOver(null)}
-            onDrop={e=>handleDrop(e,wid)}
-            style={{
-              position:"relative",
-              outline:dragOver===wid?`2px dashed ${B.teal}`:"none",
-              borderRadius:14,
-              transition:"outline 0.15s",
-              opacity:dragRef.current===wid?0.5:1,
-            }}
-          >
-            {/* Widget header bar with drag handle + remove */}
-            <div style={{position:"absolute",top:8,right:8,zIndex:10,display:"flex",gap:4,opacity:0,transition:"opacity 0.2s"}}
-              onMouseEnter={e=>e.currentTarget.style.opacity=1}
-              onMouseLeave={e=>e.currentTarget.style.opacity=0}
-              className="widget-controls">
-            </div>
-            <div style={{position:"relative"}} onMouseEnter={e=>{const ctrl=e.currentTarget.previousSibling;if(ctrl)ctrl.style.opacity=1;}} onMouseLeave={e=>{const ctrl=e.currentTarget.previousSibling;if(ctrl)ctrl.style.opacity=0;}}>
-              {/* Remove button overlay */}
-              <div style={{position:"absolute",top:-8,right:-8,zIndex:20}}>
-                <button
-                  onClick={()=>removeWidget(wid)}
-                  title="Remove widget"
-                  style={{width:22,height:22,borderRadius:"50%",border:`1px solid ${B.border}`,background:"#13121A",color:B.textMuted,cursor:"pointer",fontSize:12,display:"flex",alignItems:"center",justifyContent:"center",opacity:0,transition:"opacity 0.2s"}}
-                  onMouseEnter={e=>e.currentTarget.style.opacity=1}
-                  onMouseLeave={e=>e.currentTarget.style.opacity=0}
-                >×</button>
+      {/* Responsive widget grid */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(12,1fr)",gap:16,alignItems:"start"}}>
+        {activeWidgets.map((wid)=>{
+          const SIZES={
+            gauges:    {cols:12,label:"Full"},
+            calendar:  {cols:8, label:"Large"},
+            equity:    {cols:8, label:"Large"},
+            dailypnl:  {cols:4, label:"Medium"},
+            setups:    {cols:4, label:"Medium"},
+            session:   {cols:4, label:"Medium"},
+            timeof:    {cols:4, label:"Medium"},
+            cumulative:{cols:6, label:"Half"},
+            drawdown:  {cols:6, label:"Half"},
+            winAvg:    {cols:6, label:"Half"},
+            duration:  {cols:4, label:"Medium"},
+            leaderboard:{cols:4,label:"Medium"},
+            yearly:    {cols:12,label:"Full"},
+            progress:  {cols:4, label:"Medium"},
+            report:    {cols:4, label:"Medium"},
+            aicoach:   {cols:8, label:"Large"},
+          };
+          // Get saved size or default
+          const savedSize=widgetSizes[wid];
+          const defaultCols=(SIZES[wid]||{cols:6}).cols;
+          const cols=savedSize||defaultCols;
+
+          const SIZE_OPTIONS=[
+            {label:"S",cols:3},
+            {label:"M",cols:4},
+            {label:"½",cols:6},
+            {label:"L",cols:8},
+            {label:"Full",cols:12},
+          ];
+
+          return(
+            <div key={wid}
+              draggable
+              onDragStart={e=>handleDragStart(e,wid)}
+              onDragOver={e=>{e.preventDefault();setDragOver(wid);}}
+              onDragLeave={()=>setDragOver(null)}
+              onDrop={e=>handleDrop(e,wid)}
+              style={{
+                gridColumn:`span ${cols}`,
+                outline:dragOver===wid?`2px dashed ${B.teal}`:"none",
+                borderRadius:14,
+                transition:"outline 0.15s",
+                position:"relative",
+              }}
+            >
+              {/* Widget control bar - visible on hover */}
+              <div className="widget-bar" style={{
+                position:"absolute",top:-14,left:0,right:0,zIndex:20,
+                display:"flex",alignItems:"center",justifyContent:"space-between",
+                padding:"2px 8px",borderRadius:"8px 8px 0 0",
+                background:"rgba(0,0,0,0.7)",border:`1px solid ${B.border}`,
+                opacity:0,transition:"opacity 0.2s",pointerEvents:"none",
+              }}>
+                <div style={{display:"flex",gap:3}}>
+                  {SIZE_OPTIONS.map(s=>(
+                    <button key={s.label} onClick={e=>{e.stopPropagation();setWidgetSizes(prev=>{const n={...prev,[wid]:s.cols};(async()=>{try{await window.storage.set("tca_widget_sizes_v1",JSON.stringify(n));}catch(e){}})();return n;});}}
+                      style={{padding:"1px 6px",borderRadius:4,border:`1px solid ${cols===s.cols?B.teal:B.border}`,background:cols===s.cols?`${B.teal}20`:"transparent",color:cols===s.cols?B.teal:B.textMuted,cursor:"pointer",fontSize:9,fontWeight:700}}>
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
+                <div style={{display:"flex",gap:4,alignItems:"center"}}>
+                  <span style={{fontSize:9,color:B.textMuted}}>⠿ drag</span>
+                  <button onClick={e=>{e.stopPropagation();removeWidget(wid);}}
+                    style={{padding:"1px 6px",borderRadius:4,border:`1px solid ${B.loss}40`,background:`${B.loss}15`,color:B.loss,cursor:"pointer",fontSize:9,fontWeight:700}}>
+                    ✕ remove
+                  </button>
+                </div>
               </div>
-              <div style={{cursor:"grab"}} onMouseDown={e=>e.currentTarget.style.cursor="grabbing"} onMouseUp={e=>e.currentTarget.style.cursor="grab"}>
+              {/* Widget content */}
+              <div
+                style={{cursor:"grab",borderRadius:14}}
+                onMouseEnter={e=>{const bar=e.currentTarget.parentElement.querySelector(".widget-bar");if(bar){bar.style.opacity=1;bar.style.pointerEvents="auto";}}}
+                onMouseLeave={e=>{const bar=e.currentTarget.parentElement.querySelector(".widget-bar");if(bar){bar.style.opacity=0;bar.style.pointerEvents="none";}}}
+              >
                 {renderWidget(wid)}
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
 }
 
 
-function Journal({trades,onEdit,onDelete}){
+function Journal({trades,onEdit,onDelete,onGradeUpdate}){
   const [filter,setFilter]=useState("All");const [sort,setSort]=useState("date");
   const insts=["All",...[...new Set(trades.map(t=>t.instrument))]];
   const filtered=filter==="All"?trades:trades.filter(t=>t.instrument===filter);
   const sorted=[...filtered].sort((a,b)=>sort==="date"?b.date.localeCompare(a.date):b.pnl-a.pnl);
   if(!trades.length)return(<div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:400,gap:16}}><TCAIcon size={64}/><div style={{fontSize:15,color:B.textMuted}}>No trades yet.</div></div>);
-  return(<div style={{display:"flex",flexDirection:"column",gap:16}}><div style={{display:"flex",gap:8,alignItems:"center"}}><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{insts.map(i=>(<button key={i} onClick={()=>setFilter(i)} style={{padding:"5px 14px",borderRadius:20,border:"1px solid",borderColor:filter===i?B.teal:B.border,background:filter===i?`${B.teal}18`:"transparent",color:filter===i?B.teal:B.textMuted,cursor:"pointer",fontSize:12,fontWeight:700}}>{i}</button>))}</div><div style={{marginLeft:"auto",display:"flex",gap:6}}>{["date","pnl"].map(s=>(<button key={s} onClick={()=>setSort(s)} style={{padding:"5px 12px",borderRadius:8,border:"1px solid",borderColor:sort===s?B.purple:B.border,background:sort===s?`${B.purple}18`:"transparent",color:sort===s?B.purple:B.textMuted,cursor:"pointer",fontSize:11,fontWeight:600}}>{s==="date"?"Date":"P&L"}</button>))}</div></div><div style={{display:"grid",gridTemplateColumns:"70px 72px 68px 52px 110px 72px 56px 56px 1fr 78px",padding:"8px 14px",fontSize:10,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",borderBottom:`1px solid ${B.border}`}}>{["Date","Symbol","Dir","Grade","Setup","P&L","R:R","Result","Notes",""].map((h,i)=><div key={i}>{h}</div>)}</div><div style={{display:"flex",flexDirection:"column",gap:4}}>{sorted.map(t=>(<div key={t.id} style={{display:"grid",gridTemplateColumns:"70px 72px 68px 52px 110px 72px 56px 56px 1fr 78px",padding:"11px 14px",borderRadius:10,background:B.surface,border:`1px solid ${B.border}`,borderLeft:`3px solid ${t.result==="Win"?B.teal:B.loss}`}}><div style={{fontSize:11,color:B.textMuted}}>{t.date.slice(5)}</div><div><span style={{fontSize:11,padding:"2px 7px",borderRadius:5,fontWeight:700,background:`${INST_COLOR[t.instrument]||B.teal}20`,color:INST_COLOR[t.instrument]||B.teal}}>{t.instrument}</span></div><div style={{fontSize:12,color:t.direction==="Long"?"#4ade80":"#f87171"}}>{t.direction}</div><div style={{fontSize:12,fontWeight:800,color:GRADE_COLOR[t.grade]||"#aaa"}}>{t.grade}</div><div style={{fontSize:11,color:"#9CA0BC",overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>{t.setup}</div><div style={{fontSize:13,fontWeight:800,fontFamily:"monospace",color:pnlColor(t.pnl)}}>{fmt(t.pnl)}</div><div style={{fontSize:11,fontFamily:"monospace",color:B.textMuted}}>{t.rr}</div><div style={{fontSize:11,fontWeight:700,color:t.result==="Win"?B.profit:B.loss}}>{t.result}</div><div style={{fontSize:11,color:B.textDim,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>{t.notes}</div><div style={{display:"flex",gap:5}}><button onClick={()=>onEdit(t)} style={{padding:"4px 8px",borderRadius:6,border:`1px solid ${B.blue}40`,background:`${B.blue}12`,color:B.blue,cursor:"pointer",fontSize:10,fontWeight:700}}>Edit</button><button onClick={()=>onDelete(t)} style={{padding:"4px 8px",borderRadius:6,border:`1px solid ${B.loss}40`,background:`${B.loss}12`,color:B.loss,cursor:"pointer",fontSize:10,fontWeight:700}}>Del</button></div></div>))}</div></div>);
+  return(<div style={{display:"flex",flexDirection:"column",gap:16}}><div style={{display:"flex",gap:8,alignItems:"center"}}><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{insts.map(i=>(<button key={i} onClick={()=>setFilter(i)} style={{padding:"5px 14px",borderRadius:20,border:"1px solid",borderColor:filter===i?B.teal:B.border,background:filter===i?`${B.teal}18`:"transparent",color:filter===i?B.teal:B.textMuted,cursor:"pointer",fontSize:12,fontWeight:700}}>{i}</button>))}</div><div style={{marginLeft:"auto",display:"flex",gap:6}}>{["date","pnl"].map(s=>(<button key={s} onClick={()=>setSort(s)} style={{padding:"5px 12px",borderRadius:8,border:"1px solid",borderColor:sort===s?B.purple:B.border,background:sort===s?`${B.purple}18`:"transparent",color:sort===s?B.purple:B.textMuted,cursor:"pointer",fontSize:11,fontWeight:600}}>{s==="date"?"Date":"P&L"}</button>))}</div></div><div style={{display:"grid",gridTemplateColumns:"70px 72px 68px 52px 110px 72px 56px 56px 1fr 78px",padding:"8px 14px",fontSize:10,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",borderBottom:`1px solid ${B.border}`}}>{["Date","Symbol","Dir","Grade","Setup","P&L","R:R","Result","Notes",""].map((h,i)=><div key={i}>{h}</div>)}</div><div style={{display:"flex",flexDirection:"column",gap:4}}>{sorted.map(t=>(<div key={t.id} style={{display:"grid",gridTemplateColumns:"70px 72px 68px 52px 110px 72px 56px 56px 1fr 78px",padding:"11px 14px",borderRadius:10,background:B.surface,border:`1px solid ${B.border}`,borderLeft:`3px solid ${t.result==="Win"?B.teal:B.loss}`}}><div style={{fontSize:11,color:B.textMuted}}>{t.date.slice(5)}</div><div><span style={{fontSize:11,padding:"2px 7px",borderRadius:5,fontWeight:700,background:`${INST_COLOR[t.instrument]||B.teal}20`,color:INST_COLOR[t.instrument]||B.teal}}>{t.instrument}</span></div><div style={{fontSize:12,color:t.direction==="Long"?"#4ade80":"#f87171"}}>{t.direction}</div><GradeBadge grade={t.grade||"B"} tradeId={t.id} onSave={g=>onGradeUpdate&&onGradeUpdate(t.id,g)} size="small"/><div style={{fontSize:11,color:"#9CA0BC",overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>{t.setup}</div><div style={{fontSize:13,fontWeight:800,fontFamily:"monospace",color:pnlColor(t.pnl)}}>{fmt(t.pnl)}</div><div style={{fontSize:11,fontFamily:"monospace",color:B.textMuted}}>{t.rr}</div><div style={{fontSize:11,fontWeight:700,color:t.result==="Win"?B.profit:B.loss}}>{t.result}</div><div style={{fontSize:11,color:B.textDim,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>{t.notes}</div><div style={{display:"flex",gap:5}}><button onClick={()=>onEdit(t)} style={{padding:"4px 8px",borderRadius:6,border:`1px solid ${B.blue}40`,background:`${B.blue}12`,color:B.blue,cursor:"pointer",fontSize:10,fontWeight:700}}>Edit</button><button onClick={()=>onDelete(t)} style={{padding:"4px 8px",borderRadius:6,border:`1px solid ${B.loss}40`,background:`${B.loss}12`,color:B.loss,cursor:"pointer",fontSize:10,fontWeight:700}}>Del</button></div></div>))}</div></div>);
 }
 
 function Analytics({trades}){
@@ -1227,7 +1392,7 @@ function Analytics({trades}){
 }
 
 // ── Trade Detail Modal ────────────────────────────────────────────────────────
-function TradeDetailModal({trade, onClose, onEdit}){
+function TradeDetailModal({trade, onClose, onEdit, onGradeUpdate}){
   const isWin = trade.result === "Win";
   const pts = trade.entry && trade.exit
     ? trade.direction === "Long"
@@ -1244,7 +1409,7 @@ function TradeDetailModal({trade, onClose, onEdit}){
     {label:"Gross P&L",   value:fmt(trade.pnl),     color:pnlColor(trade.pnl)},
     {label:"R:R",         value:trade.rr||"--",     color:B.blue},
     {label:"Session",     value:trade.session||"--",color:B.text},
-    {label:"Grade",       value:trade.grade||"--",  color:GRADE_COLOR[trade.grade]||B.textMuted},
+    {label:"Grade",       value:trade.grade||"--",  color:GRADE_COLOR[trade.grade]||B.textMuted,isGrade:true},
     {label:"Setup",       value:trade.setup||"--",  color:B.purple},
   ];
 
@@ -1282,7 +1447,10 @@ function TradeDetailModal({trade, onClose, onEdit}){
             {stats.map((s,i)=>(
               <div key={s.label} style={{padding:"14px 16px",background:"#13121A",borderRight:i%5!==4?`1px solid ${B.border}`:"none",borderBottom:i<5?`1px solid ${B.border}`:"none"}}>
                 <div style={{fontSize:9,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:6}}>{s.label}</div>
-                <div style={{fontSize:15,fontWeight:700,color:s.color,fontFamily:"monospace"}}>{String(s.value)}</div>
+                {s.isGrade
+                  ? <GradeBadge grade={trade.grade||"B"} tradeId={trade.id} onSave={g=>{if(onGradeUpdate)onGradeUpdate(trade.id,g);}}/>
+                  : <div style={{fontSize:15,fontWeight:700,color:s.color,fontFamily:"monospace"}}>{String(s.value)}</div>
+                }
               </div>
             ))}
           </div>
@@ -1689,7 +1857,7 @@ function TemplatePanel({ date, currentNotes, onApply, onClose }) {
   );
 }
 
-function DayJournalModal({date, trades, onClose}){
+function DayJournalModal({date, trades, onClose, onGradeUpdate}){
   const STORAGE_KEY=`tca_dayjournal_${date}`;
   const [notes,setNotes]=useState("");
   const [checklist,setChecklist]=useState([]);
@@ -1928,7 +2096,7 @@ Any key observations about market structure?`}
           {/* Trades Tab */}
           {tab==="trades"&&(
             <div>
-              {selectedTrade&&<TradeDetailModal trade={selectedTrade} onClose={()=>setSelectedTrade(null)} onEdit={(t)=>{onClose();}}/>}
+              {selectedTrade&&<TradeDetailModal trade={selectedTrade} onClose={()=>setSelectedTrade(null)} onEdit={(t)=>{onClose();}} onGradeUpdate={onGradeUpdate}/>}
               {dayTrades.length===0?(
                 <div style={{textAlign:"center",padding:"40px 0",color:B.textMuted,fontSize:13}}>No trades on this day.</div>
               ):(
@@ -2018,7 +2186,7 @@ function CalendarView({trades}){
 
   return(
     <div style={{display:"flex",flexDirection:"column",gap:20}}>
-      {selectedDay&&<DayJournalModal date={selectedDay} trades={trades} onClose={()=>setSelectedDay(null)}/>}
+      {selectedDay&&<DayJournalModal date={selectedDay} trades={trades} onClose={()=>setSelectedDay(null)} onGradeUpdate={handleGradeUpdate}/>}
 
       {/* Stats */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14}}>
@@ -3171,7 +3339,8 @@ export default function App(){
   const [toast,setToast]=useState(null);
   const [loading,setLoading]=useState(true);
   const [syncStatus,setSyncStatus]=useState("idle");
-  const [lastImport,setLastImport]=useState(null); // idle | syncing | connected | error
+  const [lastImport,setLastImport]=useState(null);
+  const [strategies,setStrategies]=useState([]); // idle | syncing | connected | error
   const [showSyncModal,setShowSyncModal]=useState(false);
   const [syncRange,setSyncRange]=useState({from:"",to:""});
 
@@ -3192,6 +3361,11 @@ export default function App(){
         console.error("Failed to load trades:",e);
         setTrades([]);
       }
+      // Load strategies for grading
+      try{
+        const sr=await window.storage.get("tca_strategies_v1");
+        if(sr?.value)setStrategies(JSON.parse(sr.value));
+      }catch(e){}
       setLoading(false);
     })();
   },[session]);
@@ -3231,6 +3405,7 @@ export default function App(){
       if (newExecs.length > 0) {
         const newTrades = newExecs.map(e => {
           const built = execToTrade(e);
+          built.grade = autoGrade(built, strategies); // auto-grade synced trades
           const { id, ...rest } = built; // strip client ID
           return { ...rest, user_id: session.user.id, day: dayName(built.date) };
         });
@@ -3293,7 +3468,10 @@ export default function App(){
     }
     const rows=imported.map(t=>{
       const{id,...rest}=t;
-      return{...rest,user_id:session.user.id,day:dayName(t.date)};
+      const graded={...rest,user_id:session.user.id,day:dayName(t.date)};
+      // Apply auto-grade if grade is still default B
+      if(!graded.grade||graded.grade==="B")graded.grade=autoGrade(graded,strategies);
+      return graded;
     });
     const{data,error}=await supabase.from("trades").insert(rows).select();
     if(error){
@@ -3315,6 +3493,12 @@ export default function App(){
     setShowSyncModal(false);
     showT("Connecting to Tradovate...");
     await syncTradovate(from,to);
+  };
+
+  const handleGradeUpdate=async(tradeId, newGrade)=>{
+    await supabase.from("trades").update({grade:newGrade}).eq("id",tradeId);
+    setTrades(ts=>ts.map(t=>t.id===tradeId?{...t,grade:newGrade}:t));
+    showT("Grade updated to "+newGrade);
   };
 
   const handleDelete=async()=>{
@@ -3370,7 +3554,7 @@ export default function App(){
       </div>
       {hasSample&&(<div style={{marginBottom:18,padding:"10px 16px",borderRadius:10,background:"rgba(79,142,247,0.07)",border:"1px solid rgba(79,142,247,0.2)",fontSize:12,color:B.blue,display:"flex",alignItems:"center",justifyContent:"space-between"}}><span>Viewing sample data. Import your Tradovate CSV or log a real trade to get started.</span><button onClick={()=>setTrades([])} style={{background:"none",border:"none",color:B.blue,cursor:"pointer",fontWeight:700,fontSize:12,textDecoration:"underline"}}>Clear it</button></div>)}
       {active==="overview"&&<Overview trades={trades}/>}
-      {active==="journal"&&<Journal trades={trades} onEdit={handleEdit} onDelete={setDelTrade}/>}
+      {active==="journal"&&<Journal trades={trades} onEdit={handleEdit} onDelete={setDelTrade} onGradeUpdate={handleGradeUpdate}/>}
       {active==="analytics"&&<Analytics trades={trades}/>}
       {active==="calendar"&&<CalendarView trades={trades}/>}
       {active==="playbooks"&&<PlaybookView/>}
