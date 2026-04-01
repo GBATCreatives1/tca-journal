@@ -115,24 +115,132 @@ function buildCalendar(trades){const m={};trades.forEach(t=>{if(!m[t.date])m[t.d
 function buildEquity(trades){const s=[...trades].sort((a,b)=>a.date.localeCompare(b.date));let c=0;return s.map(t=>{c+=t.pnl;return{date:t.date.slice(5),equity:c};});}
 
 function parseTradovateCSV(text){
-  const lines=text.trim().split("\n");
-  const headers=lines[0].split(",").map(h=>h.trim().replace(/"/g,"").toLowerCase());
-  const trades=[];
-  for(let i=1;i<lines.length;i++){
-    const vals=lines[i].split(",").map(v=>v.trim().replace(/"/g,""));
-    const row={};headers.forEach((h,idx)=>{row[h]=vals[idx]||"";});
-    const rawDate=row["buy fill time"]||row["sell fill time"]||row["entry time"]||row["date"]||"";
-    let dateStr=new Date().toISOString().slice(0,10);
-    try{if(rawDate)dateStr=new Date(rawDate).toISOString().slice(0,10);}catch(e){}
-    const symbol=(row["symbol"]||row["instrument"]||"MES").replace(/\d+/g,"").toUpperCase();
-    const side=(row["action"]||row["side"]||row["buy/sell"]||"").toLowerCase();
-    const direction=side.includes("sell")||side.includes("short")?"Short":"Long";
-    const qty=parseInt(row["qty"]||row["contracts"]||row["quantity"]||"1")||1;
-    const pnlRaw=parseFloat(row["pnl"]||row["realized p&l"]||row["realized pnl"]||row["profit/loss"]||"0")||0;
-    if(isNaN(pnlRaw))continue;
-    const hr=rawDate?new Date(rawDate).getHours():9;
-    trades.push({id:`imp_${Date.now()}_${i}`,date:dateStr,instrument:symbol||"MES",direction,contracts:qty,entry:0,exit:0,pnl:pnlRaw,rr:"--",setup:"Imported",grade:"B",notes:"Imported from Tradovate CSV",session:hr<10?"AM":hr<13?"Mid":"PM",result:pnlRaw>=0?"Win":"Loss"});
+  // Parse CSV respecting quoted fields
+  function parseCSVLine(line){
+    const result=[];let cur="";let inQ=false;
+    for(let i=0;i<line.length;i++){
+      if(line[i]==='"'){inQ=!inQ;}
+      else if(line[i]===","&&!inQ){result.push(cur.trim());cur="";}
+      else cur+=line[i];
+    }
+    result.push(cur.trim());
+    return result;
   }
+
+  const lines=text.trim().split("\n").filter(l=>l.trim());
+  const headers=parseCSVLine(lines[0]).map(h=>h.replace(/"/g,"").trim().toLowerCase());
+
+  // Tick value lookup per product
+  const TICK_VAL={MES:1.25,ES:12.5,MNQ:0.5,NQ:5,MYM:0.5,YM:5};
+  const TICK_SIZE=0.25;
+
+  // Collect only Filled orders
+  const filled=[];
+  for(let i=1;i<lines.length;i++){
+    const vals=parseCSVLine(lines[i]);
+    const row={};
+    headers.forEach((h,idx)=>{row[h]=vals[idx]?.replace(/"/g,"").trim()||"";});
+
+    const status=(row["status"]||"").trim().toLowerCase();
+    if(!status.includes("filled"))continue;
+
+    const avgPrice=parseFloat(row["avg fill price"]||row["avgprice"]||row["avg price"]||"0")||0;
+    const qty=parseInt(row["filled qty"]||row["filledqty"]||row["quantity"]||"1")||1;
+    if(!avgPrice||!qty)continue;
+
+    const rawDate=row["fill time"]||row["timestamp"]||row["date"]||"";
+    let dateStr=new Date().toISOString().slice(0,10);
+    try{if(rawDate)dateStr=new Date(rawDate.replace(/,/g,"")).toISOString().slice(0,10);}catch(e){}
+
+    const side=(row["b/s"]||row["side"]||"").trim();
+    const contract=(row["contract"]||row["product"]||"MES").trim();
+    const product=(row["product"]||"MES").replace(/\d+/g,"").toUpperCase().trim();
+    const text2=(row["text"]||"").toLowerCase();
+    const isExit=text2.includes("exit");
+
+    filled.push({
+      id:row["orderid"]||row["order id"]||`${Date.now()}_${i}`,
+      date:dateStr,
+      side:side.includes("Buy")?"Buy":"Sell",
+      product,
+      contract,
+      price:avgPrice,
+      qty,
+      isExit,
+      rawDate,
+    });
+  }
+
+  // Pair entries and exits into round-trip trades
+  const trades=[];
+  const used=new Set();
+
+  for(let i=0;i<filled.length;i++){
+    if(used.has(i))continue;
+    const entry=filled[i];
+    if(entry.isExit)continue; // skip standalone exits
+
+    // Find matching exit — same product, opposite side, not yet used
+    const exitSide=entry.side==="Buy"?"Sell":"Buy";
+    let exitIdx=-1;
+    for(let j=i+1;j<filled.length;j++){
+      if(used.has(j))continue;
+      const ex=filled[j];
+      if(ex.product===entry.product&&ex.side===exitSide&&ex.qty===entry.qty){
+        exitIdx=j;break;
+      }
+    }
+
+    if(exitIdx===-1){
+      // Try to find any matching exit regardless of qty
+      for(let j=i+1;j<filled.length;j++){
+        if(used.has(j))continue;
+        const ex=filled[j];
+        if(ex.product===entry.product&&(ex.isExit||ex.side===exitSide)){
+          exitIdx=j;break;
+        }
+      }
+    }
+
+    if(exitIdx===-1)continue; // no exit found
+
+    const exit=filled[exitIdx];
+    used.add(i);used.add(exitIdx);
+
+    // Calculate P&L
+    const tv=TICK_VAL[entry.product]||1.25;
+    const qty2=Math.min(entry.qty,exit.qty);
+    let pnl;
+    if(entry.side==="Buy"){
+      // Long: exit - entry
+      pnl=Math.round(((exit.price-entry.price)/TICK_SIZE)*tv*qty2*100)/100;
+    }else{
+      // Short: entry - exit
+      pnl=Math.round(((entry.price-exit.price)/TICK_SIZE)*tv*qty2*100)/100;
+    }
+
+    const direction=entry.side==="Buy"?"Long":"Short";
+    const hr=entry.rawDate?new Date(entry.rawDate).getHours():9;
+    const session=hr<10?"AM":hr<13?"Mid":hr<16?"PM":"After";
+
+    trades.push({
+      id:`imp_${Date.now()}_${i}`,
+      date:entry.date,
+      instrument:entry.product,
+      direction,
+      contracts:qty2,
+      entry:entry.price,
+      exit:exit.price,
+      pnl,
+      rr:"--",
+      setup:"Imported",
+      grade:"B",
+      notes:`${entry.contract} | Entry: ${entry.price} → Exit: ${exit.price}`,
+      session,
+      result:pnl>=0?"Win":"Loss",
+    });
+  }
+
   return trades;
 }
 
