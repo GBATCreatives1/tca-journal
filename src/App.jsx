@@ -1295,11 +1295,7 @@ function TemplatePanel({ date, currentNotes, onApply, onClose }) {
     const filled = template.content.replace(/{date}/g, new Date(date + "T12:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" }));
     // If notes already exist, ask to append or replace
     if (currentNotes?.trim()) {
-      const combined = currentNotes + "
-
----
-
-" + filled;
+      const combined = currentNotes + "\n\n---\n\n" + filled;
       onApply(combined);
     } else {
       onApply(filled);
