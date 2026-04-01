@@ -2839,11 +2839,6 @@ function ReportWidget({trades}){
   );
 }
 
-     )}
-    </div>
-  );
-}
-
 // ── WIDGETS DASHBOARD ────────────────────────────────────────────────────────
 function WidgetsDashboard({trades}){
   return(
