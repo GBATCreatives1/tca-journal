@@ -409,35 +409,14 @@ function AIDayReview({trades, date}){
       })),
     };
     try{
-      const res=await fetch("https://api.anthropic.com/v1/messages",{
+      const res=await fetch("/api/coach",{
         method:"POST",
         headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({
-          model:"claude-sonnet-4-20250514",
-          max_tokens:600,
-          messages:[{
-            role:"user",
-            content:`You are an expert MES futures trading coach. Review this trader's single trading day and give specific, honest feedback. Respond with ONLY valid JSON, no markdown.
-
-Day data: ${JSON.stringify(dayStats)}
-
-JSON structure:
-{
-  "verdict": "Good Day|Mixed Day|Tough Day|Excellent Day",
-  "verdictColor": "positive|negative|neutral",
-  "keyStrength": "One specific thing they did well today with numbers",
-  "keyWeakness": "One specific thing to improve with numbers",  
-  "patternAlert": "Any concerning pattern noticed (revenge trading, overtrading, etc.) or null",
-  "coachNote": "2-3 sentence personal coaching message as if speaking directly to the trader",
-  "tomorrowFocus": "One specific focus point for tomorrow's session"
-}`
-          }]
-        })
+        body:JSON.stringify({type:"day",dayStats})
       });
       const data=await res.json();
-      const text=data.content?.[0]?.text||"";
-      const parsed=JSON.parse(text.replace(/```json|```/g,"").trim());
-      setReview(parsed);
+      if(data.error)throw new Error(data.error);
+      setReview(data);
     }catch(e){console.error(e);}
     setLoading(false);
   };
@@ -774,7 +753,7 @@ function Overview({trades}){
       <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:"18px 20px",position:"relative",overflow:"hidden"}}>
         <div style={{position:"absolute",top:0,left:0,right:0,height:2,background:GTB}}/>
         <div style={{fontSize:10,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",marginBottom:6}}>Account P&L</div>
-        <div style={{fontSize:28,fontWeight:800,background:GTB,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",fontFamily:"'Space Mono',monospace",letterSpacing:-1}}>{fmt(totalPnl)}</div>
+        <div style={{fontSize:28,fontWeight:800,color:pnlColor(totalPnl),fontFamily:"'Space Mono',monospace",letterSpacing:-1}}>{fmt(totalPnl)}</div>
         <div style={{fontSize:11,color:B.textMuted,marginTop:4}}>{trades.length} trades total</div>
       </div>
 
@@ -936,8 +915,243 @@ function CalendarView({trades}){
 }
 
 function PlaybookView(){
-  const [sel,setSel]=useState(null);const grads=[GL,GTB,GBP,GTB,GL];
-  return(<div style={{display:"flex",gap:16}}><div style={{display:"flex",flexDirection:"column",gap:10,width:272,flexShrink:0}}>{PLAYBOOKS.map((pb,i)=>(<div key={pb.id} onClick={()=>setSel(pb)} style={{padding:"16px 18px",borderRadius:12,cursor:"pointer",background:sel?.id===pb.id?`${B.teal}07`:B.surface,border:`1px solid ${sel?.id===pb.id?`${B.teal}40`:B.border}`,borderLeft:`3px solid ${sel?.id===pb.id?B.teal:"transparent"}`,transition:"all 0.15s"}}><div style={{fontSize:13,fontWeight:700,color:B.text,marginBottom:8}}>{pb.name}</div><div style={{display:"flex",gap:5,marginBottom:8}}>{pb.instruments.map(i=>(<span key={i} style={{fontSize:10,padding:"2px 7px",borderRadius:5,background:`${B.purple}20`,color:B.purple,fontWeight:700}}>{i}</span>))}</div><div style={{display:"flex",alignItems:"center",gap:10}}><span style={{fontSize:13,fontWeight:800,background:grads[i],WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>{pb.winRate}% WR</span><span style={{fontSize:11,color:B.textMuted}}>{pb.avgRR} avg</span></div></div>))}</div><div style={{flex:1}}>{sel?(<div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:30}}><div style={{height:3,background:GL,borderRadius:3,marginBottom:26}}/><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:24}}><div><div style={{fontSize:22,fontWeight:800,color:B.text,marginBottom:10}}>{sel.name}</div><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{sel.tags.map(t=><Tag key={t} label={t}/>)}</div></div><div style={{display:"flex",gap:10}}>{[{l:"WIN RATE",v:`${sel.winRate}%`,g:GTB,b:B.borderTeal},{l:"AVG R:R",v:sel.avgRR,g:GBP,b:B.borderPurp},{l:"TRADES",v:sel.trades,g:GL,b:"rgba(79,142,247,0.25)"}].map(s=>(<div key={s.l} style={{textAlign:"center",borderRadius:12,padding:"14px 20px",background:"rgba(0,0,0,0.4)",border:`1px solid ${s.b}`}}><div style={{fontSize:26,fontWeight:800,background:s.g,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",fontFamily:"monospace"}}>{s.v}</div><div style={{fontSize:9,color:B.textMuted,letterSpacing:1.5,marginTop:4}}>{s.l}</div></div>))}</div></div><div style={{background:"rgba(0,0,0,0.35)",borderRadius:12,padding:20,marginBottom:22,border:`1px solid ${B.border}`}}><div style={{fontSize:10,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",marginBottom:10}}>Setup Description</div><p style={{fontSize:14,color:"#C8C4D8",lineHeight:1.8,margin:0}}>{sel.description}</p></div><div style={{fontSize:10,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",marginBottom:12}}>Instruments</div><div style={{display:"flex",gap:8}}>{sel.instruments.map(i=>(<div key={i} style={{padding:"10px 22px",borderRadius:10,background:`${B.purple}14`,border:`1px solid ${B.borderPurp}`,color:B.purple,fontWeight:800,fontSize:14}}>{i}</div>))}</div></div>):(<div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:320,gap:14}}><TCAIcon size={52}/><div style={{fontSize:13,color:B.textMuted}}>Select a playbook to view details</div></div>)}</div></div>);
+  const STORAGE_KEY="tca_strategies_v1";
+  const [strategies,setStrategies]=useState([]);
+  const [sel,setSel]=useState(null);
+  const [showForm,setShowForm]=useState(false);
+  const [editStrat,setEditStrat]=useState(null);
+  const [loaded,setLoaded]=useState(false);
+
+  useEffect(()=>{
+    (async()=>{
+      try{
+        const r=await window.storage.get(STORAGE_KEY);
+        if(r?.value)setStrategies(JSON.parse(r.value));
+      }catch(e){}
+      setLoaded(true);
+    })();
+  },[]);
+
+  useEffect(()=>{
+    if(!loaded)return;
+    (async()=>{
+      try{await window.storage.set(STORAGE_KEY,JSON.stringify(strategies));}catch(e){}
+    })();
+  },[strategies,loaded]);
+
+  const handleSave=(strat)=>{
+    if(editStrat){
+      setStrategies(ss=>ss.map(s=>s.id===strat.id?strat:s));
+      if(sel?.id===strat.id)setSel(strat);
+    }else{
+      setStrategies(ss=>[...ss,{...strat,id:`s_${Date.now()}`}]);
+    }
+    setShowForm(false);setEditStrat(null);
+  };
+
+  const handleDelete=(id)=>{
+    setStrategies(ss=>ss.filter(s=>s.id!==id));
+    if(sel?.id===id)setSel(null);
+  };
+
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:0}}>
+      {showForm&&<StrategyForm strat={editStrat} onSave={handleSave} onClose={()=>{setShowForm(false);setEditStrat(null);}}/>}
+
+      {/* Header */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+        <div>
+          <div style={{fontSize:13,color:B.textMuted}}>Build and track your personal trading strategies</div>
+        </div>
+        <button onClick={()=>{setEditStrat(null);setShowForm(true);}} style={{padding:"9px 20px",borderRadius:10,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:13,fontWeight:800}}>+ Create Strategy</button>
+      </div>
+
+      {/* Stats row */}
+      {strategies.length>0&&(
+        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:20}}>
+          {[
+            {label:"Best Performing",value:strategies.sort((a,b)=>b.pnl-a.pnl)[0]?.name||"--",sub:strategies.length?`+$${Math.max(...strategies.map(s=>s.pnl||0))}`:"-",color:B.teal},
+            {label:"Least Performing",value:strategies.sort((a,b)=>a.pnl-b.pnl)[0]?.name||"--",sub:strategies.length?`$${Math.min(...strategies.map(s=>s.pnl||0))}`:"-",color:B.loss},
+            {label:"Most Active",value:strategies.sort((a,b)=>(b.trades||0)-(a.trades||0))[0]?.name||"--",sub:`${Math.max(...strategies.map(s=>s.trades||0))} trades`,color:B.blue},
+            {label:"Best Win Rate",value:strategies.sort((a,b)=>(b.winRate||0)-(a.winRate||0))[0]?.name||"--",sub:`${Math.max(...strategies.map(s=>s.winRate||0))}% WR`,color:B.purple},
+          ].map(s=>(
+            <div key={s.label} style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:12,padding:"14px 18px",position:"relative",overflow:"hidden"}}>
+              <div style={{position:"absolute",top:0,left:0,right:0,height:2,background:`linear-gradient(90deg,${s.color},transparent)`}}/>
+              <div style={{fontSize:9,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:6}}>{s.label}</div>
+              <div style={{fontSize:13,fontWeight:700,color:B.text,marginBottom:3,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>{s.value}</div>
+              <div style={{fontSize:12,color:s.color,fontWeight:700}}>{s.sub}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {strategies.length===0?(
+        <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:360,gap:16,background:B.surface,border:`1px solid ${B.border}`,borderRadius:14}}>
+          <TCAIcon size={56}/>
+          <div style={{fontSize:16,fontWeight:700,color:B.text}}>No strategies yet</div>
+          <div style={{fontSize:13,color:B.textMuted,textAlign:"center",lineHeight:1.6}}>Create your first trading strategy.<br/>Track setups, rules, and performance.</div>
+          <button onClick={()=>setShowForm(true)} style={{padding:"10px 24px",borderRadius:10,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:13,fontWeight:800,marginTop:8}}>+ Create Strategy</button>
+        </div>
+      ):(
+        <div style={{display:"grid",gridTemplateColumns:"280px 1fr",gap:16}}>
+          {/* Strategy list */}
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            {strategies.map((s,i)=>{
+              const grads=[GL,GTB,GBP,GTB,GL];
+              return(
+                <div key={s.id} onClick={()=>setSel(s)} style={{
+                  padding:"14px 16px",borderRadius:12,cursor:"pointer",
+                  background:sel?.id===s.id?`${B.teal}07`:B.surface,
+                  border:`1px solid ${sel?.id===s.id?`${B.teal}40`:B.border}`,
+                  borderLeft:`3px solid ${sel?.id===s.id?B.teal:"transparent"}`,
+                  transition:"all 0.15s"
+                }}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
+                    <div style={{fontSize:13,fontWeight:700,color:B.text,flex:1,marginRight:8}}>{s.name}</div>
+                    <div style={{fontSize:13,fontWeight:800,fontFamily:"monospace",color:pnlColor(s.pnl||0),whiteSpace:"nowrap"}}>{s.pnl?fmt(s.pnl):"$0"}</div>
+                  </div>
+                  <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                    {s.instruments?.map(inst=>(<span key={inst} style={{fontSize:10,padding:"1px 7px",borderRadius:4,background:`${B.purple}20`,color:B.purple,fontWeight:700}}>{inst}</span>))}
+                    <span style={{fontSize:11,color:B.textMuted,marginLeft:"auto"}}>{s.trades||0} trades</span>
+                  </div>
+                  {s.winRate!=null&&(
+                    <div style={{marginTop:8,height:3,background:"rgba(255,255,255,0.05)",borderRadius:2,overflow:"hidden"}}>
+                      <div style={{height:"100%",width:`${s.winRate}%`,background:grads[i%grads.length],borderRadius:2}}/>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Strategy detail */}
+          <div>
+            {sel?(
+              <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:28}}>
+                <div style={{height:3,background:GL,borderRadius:3,marginBottom:24}}/>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:20}}>
+                  <div>
+                    <div style={{fontSize:22,fontWeight:800,color:B.text,marginBottom:8}}>{sel.name}</div>
+                    <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                      {sel.instruments?.map(i=>(<span key={i} style={{fontSize:11,padding:"3px 10px",borderRadius:6,background:`${B.purple}15`,color:B.purple,fontWeight:700}}>{i}</span>))}
+                      {sel.tags?.split(",").filter(Boolean).map(t=>(<span key={t} style={{fontSize:11,padding:"3px 10px",borderRadius:6,background:`${B.blue}15`,color:B.blue,fontWeight:700}}>{t.trim()}</span>))}
+                    </div>
+                  </div>
+                  <div style={{display:"flex",gap:8}}>
+                    <button onClick={()=>{setEditStrat(sel);setShowForm(true);}} style={{padding:"8px 16px",borderRadius:8,border:`1px solid ${B.blue}40`,background:`${B.blue}12`,color:B.blue,cursor:"pointer",fontSize:12,fontWeight:700}}>Edit</button>
+                    <button onClick={()=>handleDelete(sel.id)} style={{padding:"8px 16px",borderRadius:8,border:`1px solid ${B.loss}40`,background:`${B.loss}12`,color:B.loss,cursor:"pointer",fontSize:12,fontWeight:700}}>Delete</button>
+                  </div>
+                </div>
+
+                {/* Stats */}
+                <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginBottom:20}}>
+                  {[
+                    {label:"Total Net P&L",value:sel.pnl?fmt(sel.pnl):"--",color:pnlColor(sel.pnl||0)},
+                    {label:"Win Rate",value:sel.winRate!=null?`${sel.winRate}%`:"--",color:B.teal},
+                    {label:"Trades",value:sel.trades||"--",color:B.blue},
+                    {label:"Avg Winner",value:sel.avgWin?`+$${sel.avgWin}`:"--",color:B.profit},
+                    {label:"Avg Loser",value:sel.avgLoss?`-$${sel.avgLoss}`:"--",color:B.loss},
+                    {label:"Profit Factor",value:sel.profitFactor||"--",color:B.purple},
+                    {label:"Expectancy",value:sel.expectancy?`$${sel.expectancy}`:"--",color:B.spark},
+                    {label:"Missed Trades",value:sel.missedTrades||"0",color:B.textMuted},
+                  ].map(s=>(
+                    <div key={s.label} style={{background:"rgba(0,0,0,0.3)",borderRadius:10,padding:"12px 14px",border:`1px solid ${B.border}`}}>
+                      <div style={{fontSize:9,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:5}}>{s.label}</div>
+                      <div style={{fontSize:16,fontWeight:800,color:s.color,fontFamily:"monospace"}}>{s.value}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Description */}
+                {sel.description&&(
+                  <div style={{background:"rgba(0,0,0,0.3)",borderRadius:12,padding:18,marginBottom:16,border:`1px solid ${B.border}`}}>
+                    <div style={{fontSize:10,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>Strategy Description</div>
+                    <p style={{fontSize:14,color:"#C8C4D8",lineHeight:1.8,margin:0}}>{sel.description}</p>
+                  </div>
+                )}
+
+                {/* Rules */}
+                {sel.rules&&(
+                  <div style={{background:"rgba(0,0,0,0.3)",borderRadius:12,padding:18,border:`1px solid ${B.border}`}}>
+                    <div style={{fontSize:10,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>Entry Rules</div>
+                    <p style={{fontSize:14,color:"#C8C4D8",lineHeight:1.8,margin:0,whiteSpace:"pre-line"}}>{sel.rules}</p>
+                  </div>
+                )}
+              </div>
+            ):(
+              <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:360,gap:14,background:B.surface,border:`1px solid ${B.border}`,borderRadius:14}}>
+                <TCAIcon size={52}/>
+                <div style={{fontSize:13,color:B.textMuted}}>Select a strategy to view details</div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StrategyForm({strat, onSave, onClose}){
+  const blank={name:"",instruments:["MES"],tags:"",description:"",rules:"",winRate:"",trades:"",pnl:"",avgWin:"",avgLoss:"",profitFactor:"",expectancy:"",missedTrades:"0"};
+  const [form,setForm]=useState(strat?{...strat,instruments:strat.instruments||["MES"]}:blank);
+  const set=(k,v)=>setForm(f=>({...f,[k]:v}));
+  const toggleInst=(inst)=>setForm(f=>({...f,instruments:f.instruments.includes(inst)?f.instruments.filter(i=>i!==inst):[...f.instruments,inst]}));
+  const handleSave=()=>{
+    if(!form.name.trim())return;
+    onSave({...form,id:strat?.id||`s_${Date.now()}`,pnl:parseFloat(form.pnl)||0,winRate:parseFloat(form.winRate)||0,trades:parseInt(form.trades)||0,avgWin:parseFloat(form.avgWin)||0,avgLoss:parseFloat(form.avgLoss)||0});
+  };
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(6px)"}}>
+      <div style={{background:"#13121A",border:`1px solid ${B.border}`,borderRadius:18,padding:32,width:600,maxHeight:"90vh",overflowY:"auto"}}>
+        <div style={{height:3,background:GL,borderRadius:3,marginBottom:24}}/>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:24}}>
+          <div style={{fontSize:18,fontWeight:800,color:B.text}}>{strat?"Edit Strategy":"Create Strategy"}</div>
+          <button onClick={onClose} style={{background:"none",border:"none",color:B.textMuted,cursor:"pointer",fontSize:22}}>×</button>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+          <div style={{gridColumn:"1/-1"}}>
+            <label style={lS}>Strategy Name *</label>
+            <input value={form.name} onChange={e=>set("name",e.target.value)} style={iS} placeholder="e.g. 10AM Triple TF Confluence"/>
+          </div>
+          <div style={{gridColumn:"1/-1"}}>
+            <label style={lS}>Instruments</label>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+              {INSTRUMENTS.map(inst=>(
+                <button key={inst} onClick={()=>toggleInst(inst)} style={{padding:"6px 14px",borderRadius:20,border:"1px solid",cursor:"pointer",fontSize:12,fontWeight:700,
+                  borderColor:form.instruments?.includes(inst)?B.teal:B.border,
+                  background:form.instruments?.includes(inst)?`${B.teal}15`:"transparent",
+                  color:form.instruments?.includes(inst)?B.teal:B.textMuted}}>{inst}</button>
+              ))}
+            </div>
+          </div>
+          <div style={{gridColumn:"1/-1"}}>
+            <label style={lS}>Tags (comma separated)</label>
+            <input value={form.tags} onChange={e=>set("tags",e.target.value)} style={iS} placeholder="e.g. ICT, Confluence, AM Session"/>
+          </div>
+          <div><label style={lS}>Win Rate (%)</label><input type="number" value={form.winRate} onChange={e=>set("winRate",e.target.value)} style={iS} placeholder="0"/></div>
+          <div><label style={lS}>Total Trades</label><input type="number" value={form.trades} onChange={e=>set("trades",e.target.value)} style={iS} placeholder="0"/></div>
+          <div><label style={lS}>Total P&L ($)</label><input type="number" value={form.pnl} onChange={e=>set("pnl",e.target.value)} style={iS} placeholder="0"/></div>
+          <div><label style={lS}>Profit Factor</label><input type="number" step="0.01" value={form.profitFactor} onChange={e=>set("profitFactor",e.target.value)} style={iS} placeholder="0.00"/></div>
+          <div><label style={lS}>Avg Winner ($)</label><input type="number" value={form.avgWin} onChange={e=>set("avgWin",e.target.value)} style={iS} placeholder="0"/></div>
+          <div><label style={lS}>Avg Loser ($)</label><input type="number" value={form.avgLoss} onChange={e=>set("avgLoss",e.target.value)} style={iS} placeholder="0"/></div>
+          <div><label style={lS}>Expectancy ($)</label><input type="number" value={form.expectancy} onChange={e=>set("expectancy",e.target.value)} style={iS} placeholder="0"/></div>
+          <div><label style={lS}>Missed Trades</label><input type="number" value={form.missedTrades} onChange={e=>set("missedTrades",e.target.value)} style={iS} placeholder="0"/></div>
+          <div style={{gridColumn:"1/-1"}}>
+            <label style={lS}>Strategy Description</label>
+            <textarea value={form.description} onChange={e=>set("description",e.target.value)} rows={3} style={{...iS,resize:"vertical"}} placeholder="What is this strategy? When do you use it?"/>
+          </div>
+          <div style={{gridColumn:"1/-1"}}>
+            <label style={lS}>Entry Rules</label>
+            <textarea value={form.rules} onChange={e=>set("rules",e.target.value)} rows={4} style={{...iS,resize:"vertical"}} placeholder="List your specific entry rules, conditions, and checklist items..."/>
+          </div>
+        </div>
+        <div style={{display:"flex",gap:10,marginTop:24,justifyContent:"flex-end"}}>
+          <button onClick={onClose} style={{padding:"10px 22px",borderRadius:10,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:13,fontWeight:600}}>Cancel</button>
+          <button onClick={handleSave} style={{padding:"10px 28px",borderRadius:10,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:13,fontWeight:800}}>{strat?"Save Changes":"Create Strategy"}</button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 
@@ -1099,42 +1313,14 @@ function AICoachWidget({trades}){
     };
 
     try{
-      const res=await fetch("https://api.anthropic.com/v1/messages",{
+      const res=await fetch("/api/coach",{
         method:"POST",
         headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({
-          model:"claude-sonnet-4-20250514",
-          max_tokens:1000,
-          messages:[{
-            role:"user",
-            content:`You are an expert MES futures trading coach and trading psychologist. Analyze this trader's performance data and provide a JSON response only (no markdown, no backticks).
-
-Trading Stats:
-${JSON.stringify(stats,null,2)}
-
-Respond with ONLY valid JSON in exactly this structure:
-{
-  "patterns": [
-    {"title": "Pattern title", "detail": "Specific observation with numbers from their data", "type": "positive|negative|neutral"}
-  ],
-  "psychology": [
-    {"title": "Psychological insight", "detail": "Observation about their trading behavior and mindset", "type": "positive|negative|neutral"}
-  ],
-  "actions": [
-    {"priority": "high|medium|low", "action": "Specific actionable improvement", "reasoning": "Why this matters for their performance"}
-  ],
-  "overallScore": 65,
-  "scoreLabel": "Developing",
-  "summary": "2-3 sentence overall coaching summary"
-}`
-          }]
-        })
+        body:JSON.stringify({type:"full",stats})
       });
       const data=await res.json();
-      const text=data.content?.[0]?.text||"";
-      const cleaned=text.replace(/```json|```/g,"").trim();
-      const parsed=JSON.parse(cleaned);
-      setAnalysis(parsed);
+      if(data.error)throw new Error(data.error);
+      setAnalysis(data);
     }catch(e){
       setError("Analysis failed. Please try again.");
       console.error(e);
@@ -1323,7 +1509,7 @@ function WidgetsDashboard({trades}){
   );
 }
 
-const NAV=[{id:"overview",label:"Overview",icon:"▦"},{id:"journal",label:"Journal",icon:"⊟"},{id:"analytics",label:"Analytics",icon:"◈"},{id:"calendar",label:"Calendar",icon:"⊞"},{id:"widgets",label:"Widgets",icon:"⬡"},{id:"playbooks",label:"Playbooks",icon:"⊕"}];
+const NAV=[{id:"overview",label:"Overview",icon:"▦"},{id:"journal",label:"Journal",icon:"⊟"},{id:"analytics",label:"Analytics",icon:"◈"},{id:"calendar",label:"Calendar",icon:"⊞"},{id:"widgets",label:"Widgets",icon:"⬡"},{id:"playbooks",label:"Strategies",icon:"⊕"}];
 
 export default function App(){
   const [session,setSession]=useState(null);
@@ -1462,7 +1648,7 @@ export default function App(){
           <div style={{fontSize:10,color:syncStatus==="connected"?B.teal:B.textMuted,fontWeight:600}}>Tradovate {syncLabel}</div>
           <button onClick={syncTradovate} style={{marginLeft:"auto",background:"none",border:"none",color:B.textMuted,cursor:"pointer",fontSize:10,padding:0}}>↻</button>
         </div>
-        <div style={{marginTop:10,padding:"12px 14px",borderRadius:10,background:`${B.teal}08`,border:`1px solid ${B.teal}22`,position:"relative",overflow:"hidden"}}><div style={{position:"absolute",top:0,left:0,right:0,height:2,background:GTB}}/><div style={{fontSize:9,color:B.textMuted,marginBottom:3,letterSpacing:1}}>MONTH P&L</div><div style={{fontSize:20,fontWeight:800,fontFamily:"monospace",background:GTB,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>{fmt(totalPnl)}</div></div>
+        <div style={{marginTop:10,padding:"12px 14px",borderRadius:10,background:`${B.teal}08`,border:`1px solid ${B.teal}22`,position:"relative",overflow:"hidden"}}><div style={{position:"absolute",top:0,left:0,right:0,height:2,background:GTB}}/><div style={{fontSize:9,color:B.textMuted,marginBottom:3,letterSpacing:1}}>MONTH P&L</div><div style={{fontSize:20,fontWeight:800,fontFamily:"monospace",color:pnlColor(totalPnl)}}>{fmt(totalPnl)}</div></div>
         <div style={{marginTop:10,fontSize:10,color:B.textMuted,textAlign:"center"}}>{trades.filter(t=>!t.id?.startsWith("s")).length} trades logged</div>
         <button onClick={()=>supabase.auth.signOut()} style={{marginTop:10,width:"100%",padding:"7px",borderRadius:8,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:11,fontWeight:600}}>Sign Out</button>
       </div>
