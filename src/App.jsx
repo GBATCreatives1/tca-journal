@@ -698,16 +698,31 @@ function Overview({trades}){
   const latestDate=allDates[allDates.length-1]||new Date().toISOString().slice(0,10);
   const [calYear,setCalYear]=useState(parseInt(latestDate.slice(0,4)));
   const [calMonth,setCalMonth]=useState(parseInt(latestDate.slice(5,7))-1);
+  const [manualNav,setManualNav]=useState(false);
+
+  // Auto-update calendar when new trades sync in (unless user manually navigated)
+  useEffect(()=>{
+    if(manualNav)return;
+    const dates=trades.map(t=>t.date).sort();
+    const ld=dates[dates.length-1];
+    if(ld){
+      setCalYear(parseInt(ld.slice(0,4)));
+      setCalMonth(parseInt(ld.slice(5,7))-1);
+    }
+  },[trades,manualNav]);
 
   const prevMonth=()=>{
+    setManualNav(true);
     if(calMonth===0){setCalMonth(11);setCalYear(y=>y-1);}
     else setCalMonth(m=>m-1);
   };
   const nextMonth=()=>{
+    setManualNav(true);
     if(calMonth===11){setCalMonth(0);setCalYear(y=>y+1);}
     else setCalMonth(m=>m+1);
   };
-  const canGoNext=new Date(calYear,calMonth+1,1)<=new Date();
+  const now=new Date();
+  const canGoForward=!(calYear===now.getFullYear()&&calMonth===now.getMonth());
 
   const calMap=buildCalendar(trades);
   const yr=calYear,mo=calMonth;
@@ -786,7 +801,7 @@ function Overview({trades}){
           <div style={{display:"flex",alignItems:"center",gap:12}}>
             <button onClick={prevMonth} style={{background:"none",border:`1px solid ${B.border}`,borderRadius:8,color:B.textMuted,cursor:"pointer",fontSize:16,width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center"}}>‹</button>
             <span style={{fontSize:13,fontWeight:800,background:GL,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",letterSpacing:3,minWidth:180,textAlign:"center"}}>{mn}</span>
-            <button onClick={nextMonth} disabled={canGoNext} style={{background:"none",border:`1px solid ${B.border}`,borderRadius:8,color:canGoNext?B.textDim:B.textMuted,cursor:canGoNext?"default":"pointer",fontSize:16,width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center"}}>›</button>
+            <button onClick={nextMonth} disabled={!canGoForward} style={{background:"none",border:`1px solid ${B.border}`,borderRadius:8,color:!canGoForward?B.textDim:B.textMuted,cursor:!canGoForward?"default":"pointer",fontSize:16,width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center"}}>›</button>
           </div>
           <div style={{display:"flex",gap:16,alignItems:"center"}}>
             <span style={{fontSize:12,fontWeight:700,fontFamily:"monospace",color:pnlColor(monthPnl)}}>{fmt(monthPnl)}</span>
@@ -1135,10 +1150,20 @@ function CalendarView({trades}){
   const [calYear,setCalYear]=useState(parseInt(latestDate.slice(0,4)));
   const [calMonth,setCalMonth]=useState(parseInt(latestDate.slice(5,7))-1);
   const [selectedDay,setSelectedDay]=useState(null);
+  const [manualNavCal,setManualNavCal]=useState(false);
 
-  const prevMonth=()=>{ if(calMonth===0){setCalMonth(11);setCalYear(y=>y-1);}else setCalMonth(m=>m-1); };
-  const nextMonth=()=>{ if(calMonth===11){setCalMonth(0);setCalYear(y=>y+1);}else setCalMonth(m=>m+1); };
-  const canGoNext=new Date(calYear,calMonth+1,1)>new Date();
+  // Auto-update when new trades sync
+  useEffect(()=>{
+    if(manualNavCal)return;
+    const dates=trades.map(t=>t.date).sort();
+    const ld=dates[dates.length-1];
+    if(ld){setCalYear(parseInt(ld.slice(0,4)));setCalMonth(parseInt(ld.slice(5,7))-1);}
+  },[trades,manualNavCal]);
+
+  const prevMonth=()=>{setManualNavCal(true);if(calMonth===0){setCalMonth(11);setCalYear(y=>y-1);}else setCalMonth(m=>m-1);};
+  const nextMonth=()=>{setManualNavCal(true);if(calMonth===11){setCalMonth(0);setCalYear(y=>y+1);}else setCalMonth(m=>m+1);};
+  const nowCal=new Date();
+  const canGoForward=!(calYear===nowCal.getFullYear()&&calMonth===nowCal.getMonth());
 
   const yr=calYear,mo=calMonth;
   const mn=new Date(yr,mo,1).toLocaleString("default",{month:"long",year:"numeric"}).toUpperCase();
@@ -1173,7 +1198,7 @@ function CalendarView({trades}){
           <div style={{display:"flex",alignItems:"center",gap:12}}>
             <button onClick={prevMonth} style={{background:"none",border:`1px solid ${B.border}`,borderRadius:8,color:B.textMuted,cursor:"pointer",fontSize:18,width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center"}}>‹</button>
             <span style={{fontSize:14,fontWeight:800,background:GL,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",letterSpacing:3,minWidth:200,textAlign:"center"}}>{mn}</span>
-            <button onClick={nextMonth} disabled={canGoNext} style={{background:"none",border:`1px solid ${B.border}`,borderRadius:8,color:canGoNext?B.textDim:B.textMuted,cursor:canGoNext?"default":"pointer",fontSize:18,width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center"}}>›</button>
+            <button onClick={nextMonth} disabled={!canGoForward} style={{background:"none",border:`1px solid ${B.border}`,borderRadius:8,color:!canGoForward?B.textDim:B.textMuted,cursor:!canGoForward?"default":"pointer",fontSize:18,width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center"}}>›</button>
           </div>
           <div style={{display:"flex",gap:16,alignItems:"center"}}>
             <span style={{fontSize:13,fontWeight:700,fontFamily:"monospace",color:pnlColor(monthPnl)}}>{monthTrades.length?fmt(monthPnl):"$0"}</span>
