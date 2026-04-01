@@ -384,8 +384,7 @@ function ImportModal({onClose,onImport,existingTrades}){
     r.onload=(e)=>{
       try{
         const t=e.target.result;
-        const firstLine=t.split("
-")[0].toLowerCase();
+        const firstLine=t.split("\n")[0].toLowerCase();
         let tr=[];
         let type="";
         if(firstLine.includes("buyprice")||firstLine.includes("soldtimestamp")){
