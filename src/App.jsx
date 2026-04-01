@@ -1010,6 +1010,11 @@ function Overview({trades}){
 
   const [selectedDay,setSelectedDay]=useState(null);
   const [editMode,setEditMode]=useState(false);
+  useEffect(()=>{
+    const handler=()=>setEditMode(e=>!e);
+    document.addEventListener("tca-toggle-edit",handler);
+    return()=>document.removeEventListener("tca-toggle-edit",handler);
+  },[]);
   const [saveStatus,setSaveStatus]=useState("saved");
   const [dragWidget,setDragWidget]=useState(null);
   const [dragOver,setDragOver]=useState(null);
@@ -1017,7 +1022,7 @@ function Overview({trades}){
   // Fixed grid: 9 slots, each slot holds a widget id or null
   // Layout is saved as array of 9 slots
   const LAYOUT_KEY="tca_grid_layout_v3";
-  const DEFAULT_LAYOUT=["gauges",null,null,"calendar","equity","session","setups","timeof",null];
+  const DEFAULT_LAYOUT=["calendar","gauges","equity","session","setups","timeof",null,null,null,null,null];
 
   const [layout,setLayout]=useState(DEFAULT_LAYOUT);
   const [loaded,setLoaded]=useState(false);
@@ -1026,7 +1031,7 @@ function Overview({trades}){
     (async()=>{
       try{
         const r=await window.storage.get(LAYOUT_KEY);
-        if(r?.value){const saved=JSON.parse(r.value);if(Array.isArray(saved)&&saved.length===9)setLayout(saved);}
+        if(r?.value){const saved=JSON.parse(r.value);if(Array.isArray(saved))setLayout(saved.length===11?saved:[...saved,...Array(11-saved.length).fill(null)]);}
       }catch(e){}
       setLoaded(true);
     })();
@@ -1243,12 +1248,13 @@ function Overview({trades}){
     }
   };
 
-  // Slot sizes: slot 0 is full-width, slots 1-2 side by side, 3-4-5 three col, 6-7-8 three col
+  // Slot layout: calendar full width, gauges full width, then 3+3+3 slots
   const SLOT_CONFIGS=[
-    {cols:12,label:"Row 1 — Full width"},
-    {cols:6},{cols:6},
-    {cols:4},{cols:4},{cols:4},
-    {cols:4},{cols:4},{cols:4},
+    {cols:12},  // slot 0 - full (calendar default)
+    {cols:12},  // slot 1 - full (gauges default)
+    {cols:4},{cols:4},{cols:4}, // slots 2-4
+    {cols:4},{cols:4},{cols:4}, // slots 5-7
+    {cols:4},{cols:4},{cols:4}, // slots 8-10
   ];
 
   if(!trades.length)return(
@@ -1262,21 +1268,19 @@ function Overview({trades}){
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
       {selectedDay&&<DayJournalModal date={selectedDay} trades={trades} onClose={()=>setSelectedDay(null)} onGradeUpdate={handleGradeUpdate}/>}
 
-      {/* Toolbar */}
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 16px",borderRadius:12,background:B.surface,border:`1px solid ${B.border}`}}>
-        <div style={{display:"flex",alignItems:"center",gap:10}}>
-          <button onClick={()=>setEditMode(e=>!e)} style={{padding:"6px 14px",borderRadius:8,border:`1px solid ${editMode?B.teal:B.border}`,background:editMode?`${B.teal}15`:"transparent",color:editMode?B.teal:B.textMuted,cursor:"pointer",fontSize:12,fontWeight:700}}>
-            {editMode?"✓ Done Editing":"✏ Edit Layout"}
+      {/* Minimal edit mode banner - only shows when editing */}
+      {editMode&&(
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 16px",borderRadius:12,background:`${B.teal}08`,border:`1px solid ${B.borderTeal}`}}>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <div style={{width:6,height:6,borderRadius:"50%",background:saveStatus==="saved"?B.teal:B.blue}}/>
+            <span style={{fontSize:12,color:B.teal,fontWeight:600}}>{saveStatus==="saved"?"Layout saved":"Saving..."}</span>
+            <span style={{fontSize:11,color:B.textMuted}}>· Drag widgets to swap · Click + to add · Remove to clear slot</span>
+          </div>
+          <button onClick={()=>setEditMode(false)} style={{padding:"6px 16px",borderRadius:8,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:12,fontWeight:800}}>
+            ✓ Done
           </button>
-          {editMode&&(
-            <div style={{display:"flex",alignItems:"center",gap:6,padding:"4px 10px",borderRadius:20,background:saveStatus==="saved"?`${B.teal}10`:`${B.blue}10`,border:`1px solid ${saveStatus==="saved"?B.borderTeal:`${B.blue}30`}`}}>
-              <div style={{width:5,height:5,borderRadius:"50%",background:saveStatus==="saved"?B.teal:B.blue}}/>
-              <span style={{fontSize:10,color:saveStatus==="saved"?B.teal:B.blue,fontWeight:600}}>{saveStatus==="saved"?"Saved":"Saving..."}</span>
-            </div>
-          )}
-          {editMode&&<span style={{fontSize:11,color:B.textMuted}}>Drag widgets between slots · Click empty slots to add</span>}
         </div>
-      </div>
+      )}
 
       {/* Slot-based grid */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(12,1fr)",gap:14,alignItems:"start"}}>
@@ -1284,7 +1288,7 @@ function Overview({trades}){
           const widgetId=layout[slotIdx];
           const isEmpty=!widgetId;
           const isDragTarget=dragOver===slotIdx;
-          const slotHeight=slotIdx===0?220:300;
+          const slotHeight=slotIdx===0?520:slotIdx===1?180:300;
 
           return(
             <div key={slotIdx}
@@ -1294,26 +1298,25 @@ function Overview({trades}){
               onDrop={e=>handleSlotDrop(e,slotIdx)}
             >
               {isEmpty?(
-                // Empty slot
-                <div
-                  onClick={()=>editMode&&setDragWidget({type:"picker",slotIdx})}
-                  style={{
-                    height:slotHeight,
-                    borderRadius:14,
-                    border:`2px dashed ${isDragTarget?B.teal:editMode?"rgba(255,255,255,0.12)":"rgba(255,255,255,0.04)"}`,
-                    background:isDragTarget?`${B.teal}08`:editMode?"rgba(255,255,255,0.02)":"transparent",
-                    display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
-                    gap:8,cursor:editMode?"pointer":"default",
-                    transition:"all 0.2s",
-                  }}
-                >
-                  {editMode&&(
-                    <>
-                      <div style={{fontSize:22,opacity:0.3}}>+</div>
-                      <div style={{fontSize:11,color:B.textDim}}>Click to add widget</div>
-                    </>
-                  )}
-                </div>
+                // Empty slot — only show in edit mode
+                editMode?(
+                  <div
+                    onClick={()=>setDragWidget({type:"picker",slotIdx})}
+                    style={{
+                      height:slotHeight,
+                      borderRadius:14,
+                      border:`2px dashed ${isDragTarget?B.teal:"rgba(255,255,255,0.15)"}`,
+                      background:isDragTarget?`${B.teal}08`:"rgba(255,255,255,0.02)",
+                      display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
+                      gap:8,cursor:"pointer",transition:"all 0.2s",
+                    }}
+                  >
+                    <div style={{width:36,height:36,borderRadius:"50%",border:`2px dashed rgba(255,255,255,0.2)`,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                      <span style={{fontSize:20,color:B.textDim,lineHeight:1}}>+</span>
+                    </div>
+                    <div style={{fontSize:11,color:B.textDim}}>Click to add widget</div>
+                  </div>
+                ):null
               ):(
                 // Filled slot
                 <div style={{position:"relative",height:slotHeight}}>
@@ -3574,6 +3577,7 @@ export default function App(){
         <div><h1 style={{margin:0,fontSize:20,fontWeight:800,color:B.text,letterSpacing:-0.5}}>{NAV.find(n=>n.id===active)?.label}</h1><div style={{fontSize:12,color:B.textMuted,marginTop:4}}>{session.user.email} - {trades.filter(t=>!t.id?.startsWith("s")).length} trades logged</div></div>
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
           {hasSample&&(<button onClick={()=>setTrades([])} style={{padding:"8px 14px",borderRadius:9,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:11,fontWeight:600}}>Clear Sample Data</button>)}
+          {active==="overview"&&<button onClick={()=>document.dispatchEvent(new CustomEvent("tca-toggle-edit"))} style={{padding:"8px 14px",borderRadius:9,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:12,fontWeight:600}}>✏ Edit Layout</button>}
           <button onClick={()=>setShowImport(true)} style={{padding:"8px 16px",borderRadius:9,border:`1px solid ${B.blue}40`,background:`${B.blue}12`,color:B.blue,cursor:"pointer",fontSize:12,fontWeight:700}}>⬆ Import CSV</button>
           <button onClick={()=>{setEditTrade(null);setShowForm(true);}} style={{padding:"8px 18px",borderRadius:9,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:12,fontWeight:800}}>+ Log Trade</button>
         </div>
