@@ -1371,7 +1371,10 @@ function TemplatePanel({ date, currentNotes, onApply, onClose }) {
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 13, fontWeight: 700, color: B.text }}>{t.name}</div>
                   <div style={{ fontSize: 10, color: B.textMuted, marginTop: 2 }}>
-                    {t.locked ? "Default template" : "Custom template"}>
+                    {t.locked ? "Default template" : "Custom template"}
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 6 }}>
                   <button onClick={() => { setSelected(t); setView("preview"); }}
                     style={{ padding: "4px 10px", borderRadius: 6, border: `1px solid ${B.border}`, background: "transparent", color: B.textMuted, cursor: "pointer", fontSize: 10 }}>
                     Preview
@@ -1384,7 +1387,7 @@ function TemplatePanel({ date, currentNotes, onApply, onClose }) {
                   )}
                   <button onClick={() => applyTemplate(t)}
                     style={{ padding: "4px 10px", borderRadius: 6, border: "none", background: `${t.color}20`, color: t.color, cursor: "pointer", fontSize: 10, fontWeight: 700 }}>
-                    Apply →
+                    Apply
                   </button>
                 </div>
               </div>
