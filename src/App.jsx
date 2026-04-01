@@ -2156,7 +2156,7 @@ Any key observations about market structure?`}
   );
 }
 
-function CalendarView({trades}){
+function CalendarView({trades, onGradeUpdate}){
   const calMap=buildCalendar(trades);
   const allDates=trades.map(t=>t.date).sort();
   const latestDate=allDates[allDates.length-1]||new Date().toISOString().slice(0,10);
@@ -3128,211 +3128,6 @@ function ReportWidget({trades}){
 }
 
 // ── WIDGETS DASHBOARD ────────────────────────────────────────────────────────
-function WidgetsDashboard({trades}){
-  return(
-    <div style={{display:"flex",flexDirection:"column",gap:16}}>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-        <div style={{fontSize:12,color:B.textMuted}}>Your trading intelligence — powered by real trade data</div>
-        <div style={{fontSize:11,color:B.teal,background:`${B.teal}10`,border:`1px solid ${B.borderTeal}`,borderRadius:20,padding:"4px 12px"}}>✦ AI-Powered</div>
-      </div>
-
-      {/* Row 1: AI Coach (wide) + Report */}
-      <div style={{display:"grid",gridTemplateColumns:"2fr 1fr",gap:16}}>
-        <AICoachWidget trades={trades}/>
-        <ReportWidget trades={trades}/>
-      </div>
-
-      {/* Row 2: Daily Cumulative + Win Avg + Drawdown */}
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:16}}>
-        <DailyCumulativeWidget trades={trades}/>
-        <WinAvgWidget trades={trades}/>
-        <DrawdownWidget trades={trades}/>
-      </div>
-
-      {/* Row 3: Session Heatmap + Time Performance + Duration */}
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:16}}>
-        <SessionHeatmapWidget trades={trades}/>
-        <TradeTimeWidget trades={trades}/>
-        <TradeDurationWidget trades={trades}/>
-      </div>
-
-      {/* Row 4: Setup Leaderboard + Progress Tracker */}
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
-        <SetupLeaderboardWidget trades={trades}/>
-        <ProgressTrackerWidget trades={trades}/>
-      </div>
-
-      {/* Row 5: Yearly Calendar (full width) */}
-      <YearlyCalendarWidget trades={trades}/>
-
-    </div>
-  );
-}
-
-
-
-// ── Chart Library Modal ───────────────────────────────────────────────────────
-const ALL_WIDGETS = [
-  {id:"aicoach",      label:"AI Trade Coach",         desc:"AI analyzes your trades and gives coaching feedback",         icon:"🧠", category:"AI"},
-  {id:"report",       label:"Report",                 desc:"Track up to 3 custom performance metrics",                   icon:"📋", category:"Stats"},
-  {id:"dailycum",     label:"Daily & Cumulative P&L",  desc:"Bar + line chart showing daily and running total P&L",       icon:"📈", category:"Charts"},
-  {id:"winavg",       label:"Win% / Avg Win / Loss",   desc:"How your win rate and averages change over time",            icon:"📊", category:"Charts"},
-  {id:"drawdown",     label:"Drawdown",                desc:"Net P&L drawdown across all trading days",                   icon:"📉", category:"Charts"},
-  {id:"sessionmap",   label:"Session Heatmap",         desc:"AM vs Mid vs PM performance breakdown",                      icon:"🌡️", category:"Stats"},
-  {id:"timechart",    label:"Trade Time Performance",  desc:"Which hours of the day are most profitable",                 icon:"🕐", category:"Charts"},
-  {id:"duration",     label:"Trade Duration",          desc:"Performance by how long you hold trades",                    icon:"⏱️", category:"Stats"},
-  {id:"leaderboard",  label:"Setup Leaderboard",       desc:"Your setups ranked best to worst by P&L",                   icon:"🏆", category:"Stats"},
-  {id:"progress",     label:"Progress Tracker",        desc:"Daily rule consistency checker",                             icon:"✅", category:"Tools"},
-  {id:"yearlycal",    label:"Yearly Calendar",         desc:"Full year heatmap of your trading performance",              icon:"📅", category:"Charts"},
-];
-
-const WIDGET_STORAGE_KEY = "tca_active_widgets_v1";
-const DEFAULT_WIDGETS = ["aicoach","report","dailycum","winavg","drawdown","sessionmap","timechart","duration","leaderboard","progress","yearlycal"];
-
-function useActiveWidgets(){
-  const [activeWidgets, setActiveWidgets] = useState(DEFAULT_WIDGETS);
-  const [loaded, setLoaded] = useState(false);
-
-  useEffect(()=>{
-    (async()=>{
-      try{
-        const r = await window.storage.get(WIDGET_STORAGE_KEY);
-        if(r?.value) setActiveWidgets(JSON.parse(r.value));
-      }catch(e){}
-      setLoaded(true);
-    })();
-  },[]);
-
-  const save = async(widgets) => {
-    setActiveWidgets(widgets);
-    try{ await window.storage.set(WIDGET_STORAGE_KEY, JSON.stringify(widgets)); }catch(e){}
-  };
-
-  return { activeWidgets, save, loaded };
-}
-
-function ChartLibraryModal({activeWidgets, onSave, onClose}){
-  const [selected, setSelected] = useState([...activeWidgets]);
-  const [search, setSearch] = useState("");
-  const categories = ["All", "AI", "Charts", "Stats", "Tools"];
-  const [cat, setCat] = useState("All");
-
-  const filtered = ALL_WIDGETS.filter(w =>
-    (cat === "All" || w.category === cat) &&
-    (w.label.toLowerCase().includes(search.toLowerCase()) || w.desc.toLowerCase().includes(search.toLowerCase()))
-  );
-
-  const toggle = (id) => {
-    setSelected(s => s.includes(id) ? s.filter(x=>x!==id) : [...s, id]);
-  };
-
-  return(
-    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",zIndex:150,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(8px)"}}>
-      <div style={{background:"#13121A",border:`1px solid ${B.border}`,borderRadius:20,width:620,maxHeight:"85vh",display:"flex",flexDirection:"column"}}>
-        <div style={{height:3,background:GL,borderRadius:"20px 20px 0 0"}}/>
-
-        {/* Header */}
-        <div style={{padding:"22px 28px 0",display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-          <div>
-            <div style={{fontSize:18,fontWeight:800,color:B.text}}>Chart Library</div>
-            <div style={{fontSize:12,color:B.textMuted,marginTop:3}}>Insert widgets to your dashboard</div>
-          </div>
-          <button onClick={onClose} style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${B.border}`,borderRadius:8,color:B.textMuted,cursor:"pointer",fontSize:18,width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
-        </div>
-
-        {/* Search */}
-        <div style={{padding:"0 28px",marginBottom:12}}>
-          <input value={search} onChange={e=>setSearch(e.target.value)}
-            style={{...iS,padding:"10px 14px"}} placeholder="Search widgets..."/>
-        </div>
-
-        {/* Category tabs */}
-        <div style={{padding:"0 28px",display:"flex",gap:6,marginBottom:16}}>
-          {categories.map(c=>(
-            <button key={c} onClick={()=>setCat(c)} style={{
-              padding:"5px 14px",borderRadius:20,border:"1px solid",cursor:"pointer",fontSize:11,fontWeight:700,
-              borderColor:cat===c?B.teal:B.border,
-              background:cat===c?`${B.teal}15`:"transparent",
-              color:cat===c?B.teal:B.textMuted,
-            }}>{c}</button>
-          ))}
-        </div>
-
-        {/* Widget list */}
-        <div style={{flex:1,overflowY:"auto",padding:"0 28px"}}>
-          {filtered.map(w=>(
-            <div key={w.id} style={{
-              display:"flex",alignItems:"center",gap:16,padding:"14px 16px",borderRadius:12,marginBottom:8,
-              background:selected.includes(w.id)?`${B.teal}08`:"rgba(255,255,255,0.02)",
-              border:`1px solid ${selected.includes(w.id)?`${B.teal}30`:B.border}`,
-            }}>
-              {/* Thumbnail */}
-              <div style={{width:64,height:44,borderRadius:8,background:"rgba(0,0,0,0.4)",border:`1px solid ${B.border}`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:22}}>
-                {w.icon}
-              </div>
-              {/* Info */}
-              <div style={{flex:1}}>
-                <div style={{fontSize:13,fontWeight:700,color:B.text,marginBottom:3}}>{w.label}</div>
-                <div style={{fontSize:11,color:B.textMuted,lineHeight:1.4}}>{w.desc}</div>
-              </div>
-              {/* Toggle button */}
-              <button onClick={()=>toggle(w.id)} style={{
-                padding:"7px 16px",borderRadius:20,border:"1px solid",cursor:"pointer",fontSize:11,fontWeight:700,
-                borderColor:selected.includes(w.id)?B.loss:B.teal,
-                background:selected.includes(w.id)?`${B.loss}10`:`${B.teal}10`,
-                color:selected.includes(w.id)?B.loss:B.teal,
-                whiteSpace:"nowrap",flexShrink:0,
-              }}>{selected.includes(w.id)?"Remove":"+ Add"}</button>
-            </div>
-          ))}
-        </div>
-
-        {/* Footer */}
-        <div style={{padding:"16px 28px",borderTop:`1px solid ${B.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-          <div style={{fontSize:12,color:B.textMuted}}><span style={{color:B.teal,fontWeight:700}}>{selected.length}</span> of {ALL_WIDGETS.length} widgets active</div>
-          <div style={{display:"flex",gap:10}}>
-            <button onClick={onClose} style={{padding:"9px 20px",borderRadius:10,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:13}}>Cancel</button>
-            <button onClick={()=>{onSave(selected);onClose();}} style={{padding:"9px 24px",borderRadius:10,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:13,fontWeight:800}}>Save Dashboard</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// Widget renderer
-function WidgetRenderer({id, trades}){
-  switch(id){
-    case "aicoach":     return <AICoachWidget trades={trades}/>;
-    case "report":      return <ReportWidget trades={trades}/>;
-    case "dailycum":    return <DailyCumulativeWidget trades={trades}/>;
-    case "winavg":      return <WinAvgWidget trades={trades}/>;
-    case "drawdown":    return <DrawdownWidget trades={trades}/>;
-    case "sessionmap":  return <SessionHeatmapWidget trades={trades}/>;
-    case "timechart":   return <TradeTimeWidget trades={trades}/>;
-    case "duration":    return <TradeDurationWidget trades={trades}/>;
-    case "leaderboard": return <SetupLeaderboardWidget trades={trades}/>;
-    case "progress":    return <ProgressTrackerWidget trades={trades}/>;
-    case "yearlycal":   return <YearlyCalendarWidget trades={trades}/>;
-    default: return null;
-  }
-}
-
-// Widget layout config
-const WIDGET_LAYOUT = {
-  aicoach:     {cols:2, rows:1},
-  report:      {cols:1, rows:1},
-  dailycum:    {cols:2, rows:1},
-  winavg:      {cols:1, rows:1},
-  drawdown:    {cols:1, rows:1},
-  sessionmap:  {cols:1, rows:1},
-  timechart:   {cols:1, rows:1},
-  duration:    {cols:1, rows:1},
-  leaderboard: {cols:1, rows:1},
-  progress:    {cols:1, rows:1},
-  yearlycal:   {cols:3, rows:1},
-};
-
 const NAV=[{id:"overview",label:"Overview",icon:"▦"},{id:"journal",label:"Journal",icon:"⊟"},{id:"analytics",label:"Analytics",icon:"◈"},{id:"calendar",label:"Calendar",icon:"⊞"},{id:"playbooks",label:"Strategies",icon:"⊕"}];
 
 export default function App(){
@@ -3562,10 +3357,10 @@ export default function App(){
         </div>
       </div>
       {hasSample&&(<div style={{marginBottom:18,padding:"10px 16px",borderRadius:10,background:"rgba(79,142,247,0.07)",border:"1px solid rgba(79,142,247,0.2)",fontSize:12,color:B.blue,display:"flex",alignItems:"center",justifyContent:"space-between"}}><span>Viewing sample data. Import your Tradovate CSV or log a real trade to get started.</span><button onClick={()=>setTrades([])} style={{background:"none",border:"none",color:B.blue,cursor:"pointer",fontWeight:700,fontSize:12,textDecoration:"underline"}}>Clear it</button></div>)}
-      {active==="overview"&&<Overview trades={trades} onGradeUpdate={onGradeUpdate}/>}
-      {active==="journal"&&<Journal trades={trades} onEdit={handleEdit} onDelete={setDelTrade} onGradeUpdate={onGradeUpdate}/>}
+      {active==="overview"&&<Overview trades={trades} onGradeUpdate={handleGradeUpdate}/>}
+      {active==="journal"&&<Journal trades={trades} onEdit={handleEdit} onDelete={setDelTrade} onGradeUpdate={handleGradeUpdate}/>}
       {active==="analytics"&&<Analytics trades={trades}/>}
-      {active==="calendar"&&<CalendarView trades={trades}/>}
+      {active==="calendar"&&<CalendarView trades={trades} onGradeUpdate={handleGradeUpdate}/>}
       {active==="playbooks"&&<PlaybookView/>}
     </div>
   </div>);
