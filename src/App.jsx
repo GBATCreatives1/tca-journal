@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
+import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, ComposedChart, Line, Cell } from "recharts";
 import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
@@ -1114,6 +1114,124 @@ function Analytics({trades}){
   return(<div style={{display:"flex",flexDirection:"column",gap:20}}><div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14}}><StatCard label="Profit Factor" value={pf} sub="Gross win / Gross loss" grad={GTB} accent={B.teal}/><StatCard label="Expectancy" value={`+$${exp}`} sub="Per trade avg" grad={GBP} accent={B.blue}/><StatCard label="Max Drawdown" value={`$${maxDD}`} sub="Peak to trough" accent={B.loss}/><StatCard label="Total Trades" value={trades.length} sub={`${wins.length}W - ${losses.length}L`} accent={B.spark}/></div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}><PBar label="P&L by Instrument" data={byInst} grads={[GL,GTB,GBP]}/><PBar label="P&L by Session" data={bySess} grads={[GTB,GBP,GL]}/></div><div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:22}}><div style={{fontSize:10,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",marginBottom:16}}>P&L by Day of Week</div><ResponsiveContainer width="100%" height={160}><BarChart data={dayData} barSize={44}><CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false}/><XAxis dataKey="day" tick={{fill:"#6B6880",fontSize:12}} axisLine={false} tickLine={false}/><YAxis tick={{fill:B.textDim,fontSize:10}} axisLine={false} tickLine={false} tickFormatter={v=>`$${v}`}/><Tooltip content={<CTip/>}/><ReferenceLine y={0} stroke="rgba(255,255,255,0.08)"/><Bar dataKey="pnl" name="P&L" radius={[5,5,0,0]} fill={B.teal} isAnimationActive/></BarChart></ResponsiveContainer></div></div>);
 }
 
+// ── Trade Detail Modal ────────────────────────────────────────────────────────
+function TradeDetailModal({trade, onClose, onEdit}){
+  const isWin = trade.result === "Win";
+  const pts = trade.entry && trade.exit
+    ? trade.direction === "Long"
+      ? Math.round((trade.exit - trade.entry) * 4) / 4
+      : Math.round((trade.entry - trade.exit) * 4) / 4
+    : null;
+
+  const stats = [
+    {label:"Side",        value:trade.direction,    color:trade.direction==="Long"?"#4ade80":"#f87171"},
+    {label:"Contracts",   value:trade.contracts,    color:B.text},
+    {label:"Entry Price", value:trade.entry||"--",  color:B.text},
+    {label:"Exit Price",  value:trade.exit||"--",   color:B.text},
+    {label:"Points",      value:pts!=null?(pts>0?"+":"")+pts:"--", color:pts>0?B.profit:pts<0?B.loss:B.text},
+    {label:"Gross P&L",   value:fmt(trade.pnl),     color:pnlColor(trade.pnl)},
+    {label:"R:R",         value:trade.rr||"--",     color:B.blue},
+    {label:"Session",     value:trade.session||"--",color:B.text},
+    {label:"Grade",       value:trade.grade||"--",  color:GRADE_COLOR[trade.grade]||B.textMuted},
+    {label:"Setup",       value:trade.setup||"--",  color:B.purple},
+  ];
+
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.92)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(10px)"}}
+      onClick={onClose}>
+      <div style={{background:"#13121A",border:`1px solid ${B.border}`,borderRadius:20,width:680,maxHeight:"88vh",overflowY:"auto"}}
+        onClick={e=>e.stopPropagation()}>
+
+        {/* Top accent bar */}
+        <div style={{height:3,background:isWin?GTB:"linear-gradient(90deg,#F05A7E,#8B5CF6)",borderRadius:"20px 20px 0 0"}}/>
+
+        {/* Header */}
+        <div style={{padding:"22px 28px 0",display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:20}}>
+          <div>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:6}}>
+              <span style={{fontSize:11,padding:"3px 10px",borderRadius:6,fontWeight:700,background:`${INST_COLOR[trade.instrument]||B.teal}20`,color:INST_COLOR[trade.instrument]||B.teal}}>{trade.instrument}</span>
+              <span style={{fontSize:13,fontWeight:700,color:trade.direction==="Long"?"#4ade80":"#f87171"}}>{trade.direction}</span>
+              <span style={{fontSize:11,padding:"2px 10px",borderRadius:20,fontWeight:700,background:isWin?`${B.profit}15`:`${B.loss}15`,color:isWin?B.profit:B.loss}}>{trade.result}</span>
+            </div>
+            <div style={{fontSize:11,color:B.textMuted}}>{new Date(trade.date+"T12:00:00").toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric",year:"numeric"})}</div>
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <div style={{textAlign:"right"}}>
+              <div style={{fontSize:30,fontWeight:800,fontFamily:"monospace",color:pnlColor(trade.pnl)}}>{fmt(trade.pnl)}</div>
+              <div style={{fontSize:11,color:B.textMuted}}>Net P&L</div>
+            </div>
+            <button onClick={onClose} style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${B.border}`,borderRadius:8,color:B.textMuted,cursor:"pointer",fontSize:18,width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center",marginLeft:8}}>×</button>
+          </div>
+        </div>
+
+        {/* Stats grid */}
+        <div style={{padding:"0 28px",marginBottom:20}}>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:1,background:`${B.border}`,borderRadius:12,overflow:"hidden",border:`1px solid ${B.border}`}}>
+            {stats.map((s,i)=>(
+              <div key={s.label} style={{padding:"14px 16px",background:"#13121A",borderRight:i%5!==4?`1px solid ${B.border}`:"none",borderBottom:i<5?`1px solid ${B.border}`:"none"}}>
+                <div style={{fontSize:9,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:6}}>{s.label}</div>
+                <div style={{fontSize:15,fontWeight:700,color:s.color,fontFamily:"monospace"}}>{String(s.value)}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Performance visual */}
+        <div style={{padding:"0 28px",marginBottom:20}}>
+          <div style={{background:"rgba(0,0,0,0.4)",borderRadius:12,padding:"16px 20px",border:`1px solid ${B.border}`}}>
+            <div style={{fontSize:10,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:12}}>Trade Performance</div>
+            <div style={{display:"flex",alignItems:"center",gap:16}}>
+              {/* P&L bar visual */}
+              <div style={{flex:1}}>
+                <div style={{display:"flex",justifyContent:"space-between",marginBottom:6,fontSize:11,color:B.textMuted}}>
+                  <span>Entry: {trade.entry||"--"}</span>
+                  <span>Exit: {trade.exit||"--"}</span>
+                </div>
+                <div style={{height:8,background:"rgba(255,255,255,0.05)",borderRadius:4,overflow:"hidden",position:"relative"}}>
+                  <div style={{
+                    position:"absolute",left:"50%",height:"100%",
+                    width:pts?Math.min(Math.abs(pts)/50*50,50)+"%":"0%",
+                    background:isWin?GTB:GBP,
+                    borderRadius:4,
+                    transform:isWin?"translateX(0)":"translateX(-100%)",
+                  }}/>
+                  <div style={{position:"absolute",left:"50%",top:0,bottom:0,width:2,background:"rgba(255,255,255,0.2)",transform:"translateX(-50%)"}}/>
+                </div>
+                <div style={{display:"flex",justifyContent:"space-between",marginTop:6}}>
+                  <span style={{fontSize:10,color:B.textMuted}}>{trade.contracts} contract{trade.contracts!==1?"s":""}</span>
+                  {pts!=null&&<span style={{fontSize:11,fontWeight:700,color:pnlColor(trade.pnl),fontFamily:"monospace"}}>{pts>0?"+":""}{pts} pts</span>}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Notes */}
+        {trade.notes&&(
+          <div style={{padding:"0 28px",marginBottom:20}}>
+            <div style={{background:"rgba(0,0,0,0.3)",borderRadius:12,padding:"16px 20px",border:`1px solid ${B.border}`}}>
+              <div style={{fontSize:10,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:8}}>Notes</div>
+              <div style={{fontSize:13,color:"#C8C4D8",lineHeight:1.7}}>{trade.notes}</div>
+            </div>
+          </div>
+        )}
+
+        {/* Footer actions */}
+        <div style={{padding:"0 28px 24px",display:"flex",gap:10}}>
+          <button onClick={()=>{onEdit(trade);onClose();}}
+            style={{flex:1,padding:"11px",borderRadius:10,border:`1px solid ${B.blue}40`,background:`${B.blue}12`,color:B.blue,cursor:"pointer",fontSize:13,fontWeight:700}}>
+            ✏️ Edit Trade
+          </button>
+          <button onClick={onClose}
+            style={{flex:1,padding:"11px",borderRadius:10,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:13,fontWeight:600}}>
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Journal Templates System ──────────────────────────────────────────────────
 const DEFAULT_TEMPLATES = [
   {
@@ -1464,6 +1582,9 @@ function DayJournalModal({date, trades, onClose}){
   const [notes,setNotes]=useState("");
   const [checklist,setChecklist]=useState([]);
   const [newItem,setNewItem]=useState("");
+  const [editingCheck,setEditingCheck]=useState(null);
+  const [editCheckText,setEditCheckText]=useState("");
+  const [selectedTrade,setSelectedTrade]=useState(null);
   const [loaded,setLoaded]=useState(false);
   const [saving,setSaving]=useState(false);
   const [tab,setTab]=useState("notes");
@@ -1595,20 +1716,54 @@ function DayJournalModal({date, trades, onClose}){
               <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16}}>
                 {checklist.map((item,i)=>(
                   <div key={i} style={{
-                    display:"flex",alignItems:"center",gap:12,padding:"12px 16px",borderRadius:10,
+                    display:"flex",alignItems:"center",gap:10,padding:"10px 14px",borderRadius:10,
                     background:item.checked?"rgba(0,212,168,0.06)":"rgba(255,255,255,0.02)",
                     border:`1px solid ${item.checked?`${B.teal}30`:B.border}`,
-                    transition:"all 0.2s",cursor:"pointer"
-                  }} onClick={()=>toggleCheck(i)}>
-                    <div style={{
+                    transition:"all 0.2s"
+                  }}>
+                    {/* Checkbox */}
+                    <div onClick={()=>toggleCheck(i)} style={{
                       width:20,height:20,borderRadius:6,border:`2px solid ${item.checked?B.teal:B.textMuted}`,
                       background:item.checked?B.teal:"transparent",flexShrink:0,
-                      display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.2s"
+                      display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.2s",cursor:"pointer"
                     }}>
                       {item.checked&&<span style={{color:"#0E0E10",fontSize:12,fontWeight:900}}>✓</span>}
                     </div>
-                    <div style={{flex:1,fontSize:13,color:item.checked?B.textMuted:B.text,textDecoration:item.checked?"line-through":"none"}}>{item.text}</div>
-                    <button onClick={e=>{e.stopPropagation();removeItem(i);}} style={{background:"none",border:"none",color:B.textDim,cursor:"pointer",fontSize:14,padding:"0 4px",opacity:0.5}}>×</button>
+                    {/* Text - click to edit inline */}
+                    {editingCheck===i?(
+                      <input
+                        autoFocus
+                        value={editCheckText}
+                        onChange={e=>setEditCheckText(e.target.value)}
+                        onBlur={()=>{
+                          if(editCheckText.trim()){
+                            const updated=checklist.map((it,idx)=>idx===i?{...it,text:editCheckText.trim()}:it);
+                            setChecklist(updated);save(undefined,updated);
+                          }
+                          setEditingCheck(null);
+                        }}
+                        onKeyDown={e=>{
+                          if(e.key==="Enter"){e.target.blur();}
+                          if(e.key==="Escape"){setEditingCheck(null);}
+                        }}
+                        style={{...iS,flex:1,padding:"4px 8px",fontSize:13,height:28}}
+                      />
+                    ):(
+                      <div
+                        onClick={()=>{setEditingCheck(i);setEditCheckText(item.text);}}
+                        style={{flex:1,fontSize:13,color:item.checked?B.textMuted:B.text,textDecoration:item.checked?"line-through":"none",cursor:"text",padding:"2px 4px",borderRadius:4}}
+                        title="Click to edit"
+                      >{item.text}</div>
+                    )}
+                    {/* Action buttons */}
+                    <div style={{display:"flex",gap:4,flexShrink:0}}>
+                      <button onClick={()=>{setEditingCheck(i);setEditCheckText(item.text);}}
+                        style={{background:"none",border:"none",color:B.textMuted,cursor:"pointer",fontSize:12,padding:"2px 5px",opacity:0.6,borderRadius:4}}
+                        title="Edit">✏️</button>
+                      <button onClick={e=>{e.stopPropagation();removeItem(i);}}
+                        style={{background:"none",border:"none",color:B.textMuted,cursor:"pointer",fontSize:12,padding:"2px 5px",opacity:0.6,borderRadius:4}}
+                        title="Delete">🗑️</button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -1661,37 +1816,49 @@ Any key observations about market structure?`}
           {/* Trades Tab */}
           {tab==="trades"&&(
             <div>
+              {selectedTrade&&<TradeDetailModal trade={selectedTrade} onClose={()=>setSelectedTrade(null)} onEdit={(t)=>{onClose();}}/>}
               {dayTrades.length===0?(
                 <div style={{textAlign:"center",padding:"40px 0",color:B.textMuted,fontSize:13}}>No trades on this day.</div>
               ):(
-                <div style={{display:"flex",flexDirection:"column",gap:10}}>
-                  {dayTrades.map((t,i)=>(
-                    <div key={t.id} style={{padding:"14px 16px",borderRadius:12,background:"rgba(0,0,0,0.3)",border:`1px solid ${t.result==="Win"?`${B.teal}30`:`${B.loss}30`}`,borderLeft:`4px solid ${t.result==="Win"?B.teal:B.loss}`}}>
-                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-                        <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                          <span style={{fontSize:11,padding:"2px 9px",borderRadius:5,fontWeight:700,background:`${INST_COLOR[t.instrument]||B.teal}20`,color:INST_COLOR[t.instrument]||B.teal}}>{t.instrument}</span>
-                          <span style={{fontSize:13,fontWeight:700,color:t.direction==="Long"?"#4ade80":"#f87171"}}>{t.direction}</span>
-                          <span style={{fontSize:11,color:B.textMuted}}>{t.contracts} contract{t.contracts!==1?"s":""}</span>
-                        </div>
-                        <span style={{fontSize:18,fontWeight:800,fontFamily:"monospace",color:pnlColor(t.pnl)}}>{fmt(t.pnl)}</span>
-                      </div>
-                      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:8}}>
-                        {[{l:"Entry",v:t.entry||"--"},{l:"Exit",v:t.exit||"--"},{l:"R:R",v:t.rr||"--"},{l:"Session",v:t.session||"--"}].map(s=>(
-                          <div key={s.l} style={{background:"rgba(255,255,255,0.03)",borderRadius:8,padding:"8px 10px"}}>
-                            <div style={{fontSize:9,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:3}}>{s.l}</div>
-                            <div style={{fontSize:13,fontWeight:700,color:B.text,fontFamily:"monospace"}}>{s.v}</div>
+                <>
+                  <div style={{fontSize:11,color:B.textMuted,marginBottom:10}}>Click any trade to view full details</div>
+                  <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                    {dayTrades.map((t,i)=>(
+                      <div key={t.id} onClick={()=>setSelectedTrade(t)} style={{
+                        padding:"14px 16px",borderRadius:12,background:"rgba(0,0,0,0.3)",
+                        border:`1px solid ${t.result==="Win"?`${B.teal}30`:`${B.loss}30`}`,
+                        borderLeft:`4px solid ${t.result==="Win"?B.teal:B.loss}`,
+                        cursor:"pointer",transition:"all 0.15s"
+                      }}>
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+                          <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                            <span style={{fontSize:11,padding:"2px 9px",borderRadius:5,fontWeight:700,background:`${INST_COLOR[t.instrument]||B.teal}20`,color:INST_COLOR[t.instrument]||B.teal}}>{t.instrument}</span>
+                            <span style={{fontSize:13,fontWeight:700,color:t.direction==="Long"?"#4ade80":"#f87171"}}>{t.direction}</span>
+                            <span style={{fontSize:11,color:B.textMuted}}>{t.contracts} contract{t.contracts!==1?"s":""}</span>
                           </div>
-                        ))}
+                          <div style={{display:"flex",alignItems:"center",gap:10}}>
+                            <span style={{fontSize:18,fontWeight:800,fontFamily:"monospace",color:pnlColor(t.pnl)}}>{fmt(t.pnl)}</span>
+                            <span style={{fontSize:11,color:B.textMuted}}>→</span>
+                          </div>
+                        </div>
+                        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:8}}>
+                          {[{l:"Entry",v:t.entry||"--"},{l:"Exit",v:t.exit||"--"},{l:"R:R",v:t.rr||"--"},{l:"Session",v:t.session||"--"}].map(s=>(
+                            <div key={s.l} style={{background:"rgba(255,255,255,0.03)",borderRadius:8,padding:"8px 10px"}}>
+                              <div style={{fontSize:9,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:3}}>{s.l}</div>
+                              <div style={{fontSize:13,fontWeight:700,color:B.text,fontFamily:"monospace"}}>{String(s.v)}</div>
+                            </div>
+                          ))}
+                        </div>
+                        <div style={{display:"flex",gap:8}}>
+                          <span style={{fontSize:10,padding:"2px 10px",borderRadius:20,background:`${B.purple}15`,color:B.purple,fontWeight:700}}>{t.setup}</span>
+                          <span style={{fontSize:10,padding:"2px 10px",borderRadius:20,background:`${GRADE_COLOR[t.grade]||"#aaa"}15`,color:GRADE_COLOR[t.grade]||"#aaa",fontWeight:700}}>Grade: {t.grade}</span>
+                          <span style={{fontSize:10,padding:"2px 10px",borderRadius:20,background:t.result==="Win"?`${B.profit}15`:`${B.loss}15`,color:t.result==="Win"?B.profit:B.loss,fontWeight:700}}>{t.result}</span>
+                        </div>
+                        {t.notes&&<div style={{marginTop:8,fontSize:12,color:B.textMuted,fontStyle:"italic"}}>📝 {t.notes}</div>}
                       </div>
-                      <div style={{display:"flex",gap:8}}>
-                        <span style={{fontSize:10,padding:"2px 10px",borderRadius:20,background:`${B.purple}15`,color:B.purple,fontWeight:700}}>{t.setup}</span>
-                        <span style={{fontSize:10,padding:"2px 10px",borderRadius:20,background:`${GRADE_COLOR[t.grade]||"#aaa"}15`,color:GRADE_COLOR[t.grade]||"#aaa",fontWeight:700}}>Grade: {t.grade}</span>
-                        <span style={{fontSize:10,padding:"2px 10px",borderRadius:20,background:t.result==="Win"?`${B.profit}15`:`${B.loss}15`,color:t.result==="Win"?B.profit:B.loss,fontWeight:700}}>{t.result}</span>
-                      </div>
-                      {t.notes&&<div style={{marginTop:8,fontSize:12,color:B.textMuted,fontStyle:"italic"}}>📝 {t.notes}</div>}
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                </>
               )}
             </div>
           )}
@@ -2346,173 +2513,375 @@ function AICoachWidget({trades}){
             </div>
           )}
         </div>
+ 
+// ── Win% / Avg Win / Avg Loss Chart ─────────────────────────────────────────
+function WinAvgWidget({trades}){
+  const sorted=[...trades].sort((a,b)=>a.date.localeCompare(b.date));
+  const data=[];
+  let wins=0,losses=0,winSum=0,lossSum=0;
+  sorted.forEach(t=>{
+    if(t.result==="Win"){wins++;winSum+=t.pnl;}
+    else{losses++;lossSum+=t.pnl;}
+    const total=wins+losses;
+    data.push({date:t.date.slice(5),wr:total?Math.round((wins/total)*100):0,avgWin:wins?Math.round(winSum/wins):0,avgLoss:losses?Math.round(lossSum/losses):0});
+  });
+  if(!data.length)return(<div style={{display:"flex",alignItems:"center",justifyContent:"center",height:200,color:B.textMuted,fontSize:13}}>No data yet</div>);
+  const latest=data[data.length-1]||{};
+  return(
+    <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:20,height:"100%"}}>
+      <div style={{fontSize:11,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",marginBottom:10}}>Win% / Avg Win / Avg Loss</div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:14}}>
+        {[{l:"Win %",v:latest.wr+"%",c:B.teal},{l:"Avg Win",v:"$"+latest.avgWin,c:B.profit},{l:"Avg Loss",v:"$"+Math.abs(latest.avgLoss),c:B.loss}].map(s=>(
+          <div key={s.l} style={{background:"rgba(0,0,0,0.3)",borderRadius:8,padding:"10px",textAlign:"center"}}>
+            <div style={{fontSize:9,color:B.textMuted,letterSpacing:1,textTransform:"uppercase",marginBottom:4}}>{s.l}</div>
+            <div style={{fontSize:16,fontWeight:800,color:s.c,fontFamily:"monospace"}}>{s.v}</div>
+          </div>
+        ))}
+      </div>
+      <ResponsiveContainer width="100%" height={130}>
+        <AreaChart data={data}>
+          <defs>
+            <linearGradient id="wrG" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={B.teal} stopOpacity={0.25}/><stop offset="100%" stopColor={B.teal} stopOpacity={0}/></linearGradient>
+          </defs>
+          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)"/>
+          <XAxis dataKey="date" tick={{fill:B.textDim,fontSize:9}} axisLine={false} tickLine={false} interval={Math.ceil(data.length/5)}/>
+          <YAxis tick={{fill:B.textDim,fontSize:9}} axisLine={false} tickLine={false} tickFormatter={v=>v+"%"}/>
+          <Tooltip content={({active,payload,label})=>{if(!active||!payload?.length)return null;return(<div style={{background:"#16151C",border:`1px solid ${B.border}`,borderRadius:8,padding:"8px 12px",fontSize:11}}><div style={{color:B.textMuted,marginBottom:4}}>{label}</div>{payload.map((p,i)=>(<div key={i} style={{color:p.color}}>{p.name}: {p.value}{p.name==="Win %"?"%":""}</div>))}</div>);}}/>
+          <Area type="monotone" dataKey="wr" stroke={B.teal} fill="url(#wrG)" strokeWidth={2} name="Win %" dot={false}/>
+        </AreaChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+function TradeTimeWidget({trades}){
+  const hourMap={};
+  trades.forEach(t=>{
+    const hr=t.session==="AM"?9:t.session==="Mid"?11:t.session==="PM"?14:16;
+    if(!hourMap[hr])hourMap[hr]={pnl:0,wins:0,total:0};
+    hourMap[hr].pnl+=t.pnl;hourMap[hr].total++;
+    if(t.result==="Win")hourMap[hr].wins++;
+  });
+  const data=Array.from({length:9},(_,i)=>i+8).map(h=>({hour:h+":00",pnl:Math.round((hourMap[h]?.pnl||0)*100)/100,trades:hourMap[h]?.total||0,wr:hourMap[h]?Math.round((hourMap[h].wins/hourMap[h].total)*100):0}));
+  return(
+    <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:20,height:"100%"}}>
+      <div style={{fontSize:11,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",marginBottom:16}}>Trade Time Performance</div>
+      <ResponsiveContainer width="100%" height={160}>
+        <BarChart data={data} barSize={18}>
+          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false}/>
+          <XAxis dataKey="hour" tick={{fill:B.textDim,fontSize:9}} axisLine={false} tickLine={false}/>
+          <YAxis tick={{fill:B.textDim,fontSize:9}} axisLine={false} tickLine={false} tickFormatter={v=>"$"+v}/>
+          <Tooltip content={({active,payload,label})=>{if(!active||!payload?.length)return null;const d=payload[0]?.payload;return(<div style={{background:"#16151C",border:`1px solid ${B.border}`,borderRadius:8,padding:"8px 12px",fontSize:11}}><div style={{color:B.textMuted}}>{label}</div><div style={{color:pnlColor(d.pnl),fontFamily:"monospace",fontWeight:700}}>{fmt(d.pnl)}</div><div style={{color:B.textMuted}}>{d.trades} trades</div></div>);}}/>
+          <ReferenceLine y={0} stroke="rgba(255,255,255,0.1)"/>
+          <Bar dataKey="pnl" radius={[4,4,0,0]}>
+            {data.map((d,i)=>(<Cell key={i} fill={d.pnl>=0?B.teal:B.loss} fillOpacity={d.trades>0?0.9:0.15}/>))}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+      <div style={{display:"flex",gap:6,marginTop:8,flexWrap:"wrap"}}>
+        {data.filter(d=>d.trades>0).sort((a,b)=>b.pnl-a.pnl).slice(0,2).map((d,i)=>(
+          <span key={d.hour} style={{fontSize:10,padding:"3px 10px",borderRadius:20,background:i===0?`${B.teal}15`:"rgba(255,255,255,0.04)",border:`1px solid ${i===0?B.borderTeal:B.border}`,color:i===0?B.teal:B.textMuted}}>Best: {d.hour} {fmt(d.pnl)}</span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TradeDurationWidget({trades}){
+  const buckets={"<5m":{pnl:0,wins:0,total:0},"5-15m":{pnl:0,wins:0,total:0},"15-30m":{pnl:0,wins:0,total:0},"30-60m":{pnl:0,wins:0,total:0},">1h":{pnl:0,wins:0,total:0}};
+  trades.forEach(t=>{
+    const note=t.notes||"";
+    const dm=note.match(/(\d+)h\s*(\d+)min|(\d+)min\s*(\d+)sec|(\d+)h|(\d+)min/);
+    let mins=5;
+    if(dm){if(dm[1])mins=parseInt(dm[1])*60+(parseInt(dm[2])||0);else if(dm[3])mins=parseInt(dm[3]);else if(dm[5])mins=parseInt(dm[5])*60;else if(dm[6])mins=parseInt(dm[6]);}
+    const key=mins<5?"<5m":mins<15?"5-15m":mins<30?"15-30m":mins<60?"30-60m":">1h";
+    buckets[key].pnl+=t.pnl;buckets[key].total++;
+    if(t.result==="Win")buckets[key].wins++;
+  });
+  const data=Object.entries(buckets).map(([k,v])=>({d:k,...v,wr:v.total?Math.round((v.wins/v.total)*100):0}));
+  const maxAbs=Math.max(...data.map(d=>Math.abs(d.pnl)),1);
+  return(
+    <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:20,height:"100%"}}>
+      <div style={{fontSize:11,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",marginBottom:16}}>Trade Duration Performance</div>
+      <div style={{display:"flex",flexDirection:"column",gap:12}}>
+        {data.map(d=>(
+          <div key={d.d}>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:5}}>
+              <span style={{fontSize:12,color:B.text,fontWeight:600}}>{d.d}</span>
+              <div style={{display:"flex",gap:12,alignItems:"center"}}>
+                <span style={{fontSize:10,color:B.textMuted}}>{d.total} trades · {d.wr}% WR</span>
+                <span style={{fontSize:13,fontWeight:700,fontFamily:"monospace",color:pnlColor(d.pnl),minWidth:70,textAlign:"right"}}>{d.total?fmt(d.pnl):"--"}</span>
+              </div>
+            </div>
+            <div style={{height:6,background:"rgba(255,255,255,0.05)",borderRadius:3,overflow:"hidden"}}>
+              <div style={{height:"100%",width:d.total?(Math.abs(d.pnl)/maxAbs*100)+"%":"0%",background:d.pnl>=0?GTB:GBP,borderRadius:3,transition:"width 0.8s"}}/>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function DailyCumulativeWidget({trades}){
+  const sorted=[...trades].sort((a,b)=>a.date.localeCompare(b.date));
+  const dayMap={};
+  sorted.forEach(t=>{if(!dayMap[t.date])dayMap[t.date]=0;dayMap[t.date]+=t.pnl;});
+  let cum=0;
+  const data=Object.entries(dayMap).map(([date,daily])=>{cum+=daily;return{date:date.slice(5),daily:Math.round(daily*100)/100,cumulative:Math.round(cum*100)/100};});
+  if(!data.length)return(<div style={{display:"flex",alignItems:"center",justifyContent:"center",height:200,color:B.textMuted,fontSize:13}}>No data yet</div>);
+  return(
+    <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:20,height:"100%"}}>
+      <div style={{fontSize:11,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",marginBottom:16}}>Daily & Cumulative Net P&L</div>
+      <ResponsiveContainer width="100%" height={180}>
+        <ComposedChart data={data}>
+          <defs><linearGradient id="cumG" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={B.blue} stopOpacity={0.2}/><stop offset="100%" stopColor={B.blue} stopOpacity={0}/></linearGradient></defs>
+          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)"/>
+          <XAxis dataKey="date" tick={{fill:B.textDim,fontSize:9}} axisLine={false} tickLine={false} interval={Math.ceil(data.length/7)}/>
+          <YAxis yAxisId="l" tick={{fill:B.textDim,fontSize:9}} axisLine={false} tickLine={false} tickFormatter={v=>"$"+v}/>
+          <YAxis yAxisId="r" orientation="right" tick={{fill:B.textDim,fontSize:9}} axisLine={false} tickLine={false} tickFormatter={v=>"$"+v}/>
+          <Tooltip content={({active,payload,label})=>{if(!active||!payload?.length)return null;return(<div style={{background:"#16151C",border:`1px solid ${B.border}`,borderRadius:8,padding:"8px 12px",fontSize:11}}><div style={{color:B.textMuted,marginBottom:4}}>{label}</div>{payload.map((p,i)=>(<div key={i} style={{color:p.color,fontFamily:"monospace"}}>{p.name}: ${Math.abs(p.value)}</div>))}</div>);}}/>
+          <ReferenceLine yAxisId="l" y={0} stroke="rgba(255,255,255,0.1)"/>
+          <Bar yAxisId="l" dataKey="daily" name="Daily" maxBarSize={18} radius={[3,3,0,0]}>
+            {data.map((d,i)=>(<Cell key={i} fill={d.daily>=0?B.teal:B.loss} fillOpacity={0.8}/>))}
+          </Bar>
+          <Area yAxisId="r" type="monotone" dataKey="cumulative" stroke={B.blue} fill="url(#cumG)" strokeWidth={2} name="Cumulative" dot={false}/>
+        </ComposedChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+function DrawdownWidget({trades}){
+  const sorted=[...trades].sort((a,b)=>a.date.localeCompare(b.date));
+  let peak=0,cum=0;
+  const data=sorted.map(t=>{cum+=t.pnl;if(cum>peak)peak=cum;const dd=peak>0?Math.round(((peak-cum)/peak)*100*10)/10:0;return{date:t.date.slice(5),dd:-dd};});
+  const maxDD=data.length?Math.min(...data.map(d=>d.dd)):0;
+  if(!data.length)return(<div style={{display:"flex",alignItems:"center",justifyContent:"center",height:200,color:B.textMuted,fontSize:13}}>No data yet</div>);
+  return(
+    <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:20,height:"100%"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+        <div style={{fontSize:11,color:B.textMuted,letterSpacing:2,textTransform:"uppercase"}}>Drawdown</div>
+        <div style={{textAlign:"right"}}><div style={{fontSize:10,color:B.textMuted}}>Max Drawdown</div><div style={{fontSize:18,fontWeight:800,color:B.loss,fontFamily:"monospace"}}>{Math.abs(maxDD).toFixed(1)}%</div></div>
+      </div>
+      <ResponsiveContainer width="100%" height={160}>
+        <AreaChart data={data}>
+          <defs><linearGradient id="ddG" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={B.loss} stopOpacity={0.3}/><stop offset="100%" stopColor={B.loss} stopOpacity={0}/></linearGradient></defs>
+          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)"/>
+          <XAxis dataKey="date" tick={{fill:B.textDim,fontSize:9}} axisLine={false} tickLine={false} interval={Math.ceil(data.length/7)}/>
+          <YAxis tick={{fill:B.textDim,fontSize:9}} axisLine={false} tickLine={false} tickFormatter={v=>v+"%"}/>
+          <Tooltip content={({active,payload,label})=>{if(!active||!payload?.length)return null;return(<div style={{background:"#16151C",border:`1px solid ${B.border}`,borderRadius:8,padding:"8px 12px",fontSize:11}}><div style={{color:B.textMuted}}>{label}</div><div style={{color:B.loss,fontFamily:"monospace"}}>{payload[0]?.value?.toFixed(1)}%</div></div>);}}/>
+          <ReferenceLine y={0} stroke="rgba(255,255,255,0.1)"/>
+          <Area type="monotone" dataKey="dd" stroke={B.loss} fill="url(#ddG)" strokeWidth={2} dot={false} name="Drawdown"/>
+        </AreaChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+function YearlyCalendarWidget({trades}){
+  const year=new Date().getFullYear();
+  const dayMap={};
+  trades.filter(t=>t.date.startsWith(String(year))).forEach(t=>{if(!dayMap[t.date])dayMap[t.date]=0;dayMap[t.date]+=t.pnl;});
+  const maxAbs=Math.max(...Object.values(dayMap).map(v=>Math.abs(v)),1);
+  const days=[];const d=new Date(year,0,1);
+  while(d.getFullYear()===year){days.push({date:d.toISOString().slice(0,10),dow:d.getDay()});d.setDate(d.getDate()+1);}
+  const weeks=[];let week=[];
+  for(let i=0;i<days[0].dow;i++)week.push(null);
+  days.forEach(dy=>{week.push(dy);if(week.length===7){weeks.push(week);week=[];}});
+  if(week.length)weeks.push(week);
+  const totalPnl=Object.values(dayMap).reduce((a,v)=>a+v,0);
+  const greenDays=Object.values(dayMap).filter(v=>v>0).length;
+  return(
+    <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:20,height:"100%"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+        <div style={{fontSize:11,color:B.textMuted,letterSpacing:2,textTransform:"uppercase"}}>{year} Yearly Calendar</div>
+        <div style={{display:"flex",gap:12,fontSize:11}}>
+          <span style={{color:B.textMuted}}><span style={{color:B.profit,fontWeight:700}}>{greenDays}</span> green</span>
+          <span style={{color:pnlColor(totalPnl),fontWeight:700,fontFamily:"monospace"}}>{totalPnl?fmt(Math.round(totalPnl)):""}</span>
+        </div>
+      </div>
+      <div style={{overflowX:"auto"}}>
+        <div style={{display:"flex",gap:2,minWidth:680}}>
+          {weeks.map((wk,wi)=>(
+            <div key={wi} style={{display:"flex",flexDirection:"column",gap:2}}>
+              {wk.map((dy,di)=>{
+                if(!dy)return <div key={di} style={{width:11,height:11}}/>;
+                const pnl=dayMap[dy.date];
+                const intensity=pnl?Math.min(Math.abs(pnl)/maxAbs,1):0;
+                const bg=pnl>0?`rgba(0,212,168,${0.12+intensity*0.75})`:pnl<0?`rgba(240,90,126,${0.12+intensity*0.75})`:"rgba(255,255,255,0.04)";
+                return(<div key={di} title={dy.date+(pnl?" "+fmt(pnl):"")} style={{width:11,height:11,borderRadius:2,background:bg,cursor:pnl?"pointer":"default"}}/>);
+              })}
+            </div>
+          ))}
+        </div>
+        <div style={{display:"flex",marginTop:4,minWidth:680}}>
+          {["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"].map(m=>(<div key={m} style={{flex:1,fontSize:7,color:B.textMuted,textAlign:"center"}}>{m}</div>))}
+        </div>
+      </div>
+      <div style={{display:"flex",gap:4,alignItems:"center",marginTop:8,fontSize:8,color:B.textMuted,justifyContent:"flex-end"}}>
+        <span>Less</span>
+        {[0.12,0.3,0.5,0.7,0.87].map((o,i)=>(<div key={i} style={{width:9,height:9,borderRadius:2,background:`rgba(0,212,168,${o})`}}/>))}
+        <span>More</span>
+      </div>
+    </div>
+  );
+}
+
+function ProgressTrackerWidget({trades}){
+  const SKEY="tca_progress_v2";
+  const [rules,setRules]=useState([
+    {id:1,text:"Followed my entry rules",color:B.teal},
+    {id:2,text:"Respected my stop loss",color:B.blue},
+    {id:3,text:"No revenge trading",color:B.purple},
+    {id:4,text:"Stayed within max contracts",color:"#f97316"},
+    {id:5,text:"Reviewed pre-market plan",color:B.spark},
+  ]);
+  const [checks,setChecks]=useState({});
+  const [newRule,setNewRule]=useState("");
+  const [loaded,setLoaded]=useState(false);
+  useEffect(()=>{(async()=>{try{const r=await window.storage.get(SKEY);if(r?.value){const s=JSON.parse(r.value);if(s.rules)setRules(s.rules);if(s.checks)setChecks(s.checks);}}catch(e){}setLoaded(true);})();},[]);
+  const save=async(nr,nc)=>{try{await window.storage.set(SKEY,JSON.stringify({rules:nr??rules,checks:nc??checks}));}catch(e){}};
+  const today=new Date().toISOString().slice(0,10);
+  const todayChecks=checks[today]||{};
+  const toggle=(id)=>{const u={...checks,[today]:{...todayChecks,[id]:!todayChecks[id]}};setChecks(u);save(undefined,u);};
+  const addRule=()=>{if(!newRule.trim())return;const colors=[B.teal,B.blue,B.purple,"#f97316",B.spark];const u=[...rules,{id:Date.now(),text:newRule.trim(),color:colors[rules.length%colors.length]}];setRules(u);setNewRule("");save(u,undefined);};
+  const todayScore=rules.length?Math.round((Object.values(todayChecks).filter(Boolean).length/rules.length)*100):0;
+  const last7=[...Array(7)].map((_,i)=>{const d=new Date();d.setDate(d.getDate()-i);return d.toISOString().slice(0,10);});
+  const avgScore=Math.round(last7.map(d=>{const dc=checks[d]||{};return rules.length?Math.round((rules.filter(r=>dc[r.id]).length/rules.length)*100):0;}).reduce((a,b)=>a+b,0)/7);
+  return(
+    <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:20,height:"100%",display:"flex",flexDirection:"column"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+        <div style={{fontSize:11,color:B.textMuted,letterSpacing:2,textTransform:"uppercase"}}>Progress Tracker</div>
+        <div style={{display:"flex",gap:12}}>
+          <div style={{textAlign:"center"}}><div style={{fontSize:18,fontWeight:800,color:todayScore>=70?B.teal:todayScore>=40?"#f97316":B.loss,fontFamily:"monospace"}}>{todayScore}%</div><div style={{fontSize:8,color:B.textMuted}}>TODAY</div></div>
+          <div style={{textAlign:"center"}}><div style={{fontSize:18,fontWeight:800,color:B.blue,fontFamily:"monospace"}}>{avgScore}%</div><div style={{fontSize:8,color:B.textMuted}}>7D AVG</div></div>
+        </div>
+      </div>
+      <div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",gap:6,marginBottom:10}}>
+        {rules.map(r=>(
+          <div key={r.id} onClick={()=>toggle(r.id)} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",borderRadius:9,cursor:"pointer",background:todayChecks[r.id]?`${r.color}08`:"rgba(255,255,255,0.02)",border:`1px solid ${todayChecks[r.id]?r.color+"30":B.border}`,transition:"all 0.2s"}}>
+            <div style={{width:18,height:18,borderRadius:5,border:`2px solid ${todayChecks[r.id]?r.color:B.textMuted}`,background:todayChecks[r.id]?r.color:"transparent",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
+              {todayChecks[r.id]&&<span style={{color:"#0E0E10",fontSize:11,fontWeight:900}}>✓</span>}
+            </div>
+            <div style={{fontSize:12,color:todayChecks[r.id]?B.textMuted:B.text,textDecoration:todayChecks[r.id]?"line-through":"none",flex:1}}>{r.text}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{height:5,background:"rgba(255,255,255,0.05)",borderRadius:3,overflow:"hidden",marginBottom:10}}>
+        <div style={{height:"100%",width:todayScore+"%",background:GL,borderRadius:3,transition:"width 0.5s"}}/>
+      </div>
+      <div style={{display:"flex",gap:6}}>
+        <input value={newRule} onChange={e=>setNewRule(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addRule()} style={{...iS,flex:1,fontSize:11,padding:"7px 10px"}} placeholder="Add a trading rule..."/>
+        <button onClick={addRule} style={{padding:"7px 14px",borderRadius:8,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:12,fontWeight:800}}>+</button>
+      </div>
+    </div>
+  );
+}
+
+function ReportWidget({trades}){
+  const ALL_METRICS=[
+    {id:"netPnl",label:"Net P&L",fn:ts=>fmt(Math.round(ts.reduce((a,t)=>a+t.pnl,0)*100)/100)},
+    {id:"winRate",label:"Win Rate",fn:ts=>{const w=ts.filter(t=>t.result==="Win").length;return ts.length?Math.round((w/ts.length)*100)+"%":"0%";}},
+    {id:"profitFactor",label:"Profit Factor",fn:ts=>{const w=ts.filter(t=>t.result==="Win").reduce((a,t)=>a+t.pnl,0);const l=ts.filter(t=>t.result==="Loss").reduce((a,t)=>a+t.pnl,0);return l?Math.abs(w/l).toFixed(2):"N/A";}},
+    {id:"avgWin",label:"Avg Win",fn:ts=>{const w=ts.filter(t=>t.result==="Win");return w.length?"$"+Math.round(w.reduce((a,t)=>a+t.pnl,0)/w.length):"--";}},
+    {id:"avgLoss",label:"Avg Loss",fn:ts=>{const l=ts.filter(t=>t.result==="Loss");return l.length?"$"+Math.abs(Math.round(l.reduce((a,t)=>a+t.pnl,0)/l.length)):"--";}},
+    {id:"totalTrades",label:"Total Trades",fn:ts=>String(ts.length)},
+    {id:"bestDay",label:"Best Day",fn:ts=>{const dm={};ts.forEach(t=>{dm[t.date]=(dm[t.date]||0)+t.pnl;});const v=Object.values(dm);return v.length?fmt(Math.round(Math.max(...v)*100)/100):"--";}},
+    {id:"worstDay",label:"Worst Day",fn:ts=>{const dm={};ts.forEach(t=>{dm[t.date]=(dm[t.date]||0)+t.pnl;});const v=Object.values(dm);return v.length?fmt(Math.round(Math.min(...v)*100)/100):"--";}},
+    {id:"expectancy",label:"Expectancy",fn:ts=>ts.length?"$"+Math.round(ts.reduce((a,t)=>a+t.pnl,0)/ts.length):"--"},
+  ];
+  const SKEY="tca_report_v2";
+  const [selected,setSelected]=useState(["netPnl","winRate","profitFactor"]);
+  const [showPicker,setShowPicker]=useState(false);
+  useEffect(()=>{(async()=>{try{const r=await window.storage.get(SKEY);if(r?.value)setSelected(JSON.parse(r.value));}catch(e){}})();},[]);
+  const toggle=(id)=>{let u;if(selected.includes(id)){u=selected.filter(s=>s!==id);}else if(selected.length<3){u=[...selected,id];}else{u=[...selected.slice(1),id];}setSelected(u);(async()=>{try{await window.storage.set(SKEY,JSON.stringify(u));}catch(e){}})();};
+  const grads=[GL,GTB,GBP];
+  const selMetrics=ALL_METRICS.filter(m=>selected.includes(m.id));
+  return(
+    <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:20,height:"100%"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+        <div style={{fontSize:11,color:B.textMuted,letterSpacing:2,textTransform:"uppercase"}}>Report</div>
+        <button onClick={()=>setShowPicker(p=>!p)} style={{padding:"4px 10px",borderRadius:8,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:10}}>Customize</button>
+      </div>
+      {showPicker?(
+        <div>
+          <div style={{fontSize:10,color:B.textMuted,marginBottom:8}}>Select up to 3 metrics:</div>
+          <div style={{display:"flex",flexDirection:"column",gap:5,maxHeight:260,overflowY:"auto"}}>
+            {ALL_METRICS.map(m=>(
+              <div key={m.id} onClick={()=>toggle(m.id)} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",borderRadius:8,cursor:"pointer",background:selected.includes(m.id)?`${B.teal}10`:"transparent",border:`1px solid ${selected.includes(m.id)?B.borderTeal:B.border}`}}>
+                <div style={{width:16,height:16,borderRadius:4,border:`2px solid ${selected.includes(m.id)?B.teal:B.textMuted}`,background:selected.includes(m.id)?B.teal:"transparent",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                  {selected.includes(m.id)&&<span style={{color:"#0E0E10",fontSize:10,fontWeight:900}}>✓</span>}
+                </div>
+                <span style={{fontSize:12,color:B.text,flex:1}}>{m.label}</span>
+                <span style={{fontSize:11,fontFamily:"monospace",color:B.textMuted}}>{m.fn(trades)}</span>
+              </div>
+            ))}
+          </div>
+          <button onClick={()=>setShowPicker(false)} style={{marginTop:10,width:"100%",padding:"8px",borderRadius:8,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:12,fontWeight:800}}>Done</button>
+        </div>
+      ):(
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          {selMetrics.map((m,i)=>(
+            <div key={m.id} style={{background:"rgba(0,0,0,0.3)",borderRadius:12,padding:"16px 20px",border:`1px solid ${B.border}`,position:"relative",overflow:"hidden"}}>
+              <div style={{position:"absolute",top:0,left:0,right:0,height:2,background:grads[i]}}/>
+              <div style={{fontSize:9,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",marginBottom:6}}>{m.label}</div>
+              <div style={{fontSize:26,fontWeight:800,background:grads[i],WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",fontFamily:"monospace"}}>{m.fn(trades)}</div>
+            </div>
+          ))}
+        </div>
       )}
+    </div>
+  );
+}
+
+     )}
     </div>
   );
 }
 
 // ── WIDGETS DASHBOARD ────────────────────────────────────────────────────────
 function WidgetsDashboard({trades}){
-  const [layout,setLayout]=useState([
-    {id:"timeofday",  col:0, row:0, w:2, h:1},
-    {id:"session",    col:2, row:0, w:1, h:1},
-    {id:"leaderboard",col:0, row:1, w:1, h:1},
-    {id:"aicoach",    col:1, row:1, w:2, h:2},
-  ]);
-
-  const widgetMap={
-    timeofday:  <TimeOfDayWidget trades={trades}/>,
-    session:    <SessionHeatmapWidget trades={trades}/>,
-    leaderboard:<SetupLeaderboardWidget trades={trades}/>,
-    aicoach:    <AICoachWidget trades={trades}/>,
-  };
-
-  const widgetLabels={
-    timeofday:"⏰ Time of Day",
-    session:"🌡️ Session Heatmap",
-    leaderboard:"🏆 Setup Leaderboard",
-    aicoach:"🧠 AI Trade Coach",
-  };
-
   return(
-    <div style={{display:"flex",flexDirection:"column",gap:20}}>
+    <div style={{display:"flex",flexDirection:"column",gap:16}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-        <div style={{fontSize:12,color:B.textMuted}}>Your trading intelligence dashboard — powered by your real trade data</div>
-        <div style={{fontSize:11,color:B.textMuted,background:`${B.teal}10`,border:`1px solid ${B.borderTeal}`,borderRadius:20,padding:"4px 12px"}}>
-          ✦ AI-Powered
-        </div>
+        <div style={{fontSize:12,color:B.textMuted}}>Your trading intelligence — powered by real trade data</div>
+        <div style={{fontSize:11,color:B.teal,background:`${B.teal}10`,border:`1px solid ${B.borderTeal}`,borderRadius:20,padding:"4px 12px"}}>✦ AI-Powered</div>
       </div>
 
-      {/* 2x2 widget grid */}
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gridTemplateRows:"auto",gap:16}}>
-        <div style={{gridColumn:"1/3",minHeight:280}}>
-          <TimeOfDayWidget trades={trades}/>
-        </div>
-        <div style={{minHeight:280}}>
-          <SessionHeatmapWidget trades={trades}/>
-        </div>
-        <div style={{minHeight:320}}>
-          <SetupLeaderboardWidget trades={trades}/>
-        </div>
-        <div style={{gridColumn:"2/4",minHeight:320}}>
-          <AICoachWidget trades={trades}/>
-        </div>
+      {/* Row 1: AI Coach (wide) + Report */}
+      <div style={{display:"grid",gridTemplateColumns:"2fr 1fr",gap:16}}>
+        <AICoachWidget trades={trades}/>
+        <ReportWidget trades={trades}/>
       </div>
+
+      {/* Row 2: Daily Cumulative + Win Avg + Drawdown */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:16}}>
+        <DailyCumulativeWidget trades={trades}/>
+        <WinAvgWidget trades={trades}/>
+        <DrawdownWidget trades={trades}/>
+      </div>
+
+      {/* Row 3: Session Heatmap + Time Performance + Duration */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:16}}>
+        <SessionHeatmapWidget trades={trades}/>
+        <TradeTimeWidget trades={trades}/>
+        <TradeDurationWidget trades={trades}/>
+      </div>
+
+      {/* Row 4: Setup Leaderboard + Progress Tracker */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+        <SetupLeaderboardWidget trades={trades}/>
+        <ProgressTrackerWidget trades={trades}/>
+      </div>
+
+      {/* Row 5: Yearly Calendar (full width) */}
+      <YearlyCalendarWidget trades={trades}/>
+
     </div>
   );
 }
 
-// ── Tradovate Date Range Sync Modal ──────────────────────────────────────────
-function TradovateSyncModal({onClose, onSync, syncing}){
-  const today = new Date().toISOString().slice(0,10);
-  const firstOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0,10);
-  const [fromDate, setFromDate] = useState(firstOfMonth);
-  const [toDate, setToDate] = useState(today);
-  const [preset, setPreset] = useState("month");
-
-  const applyPreset = (p) => {
-    setPreset(p);
-    const now = new Date();
-    const to = now.toISOString().slice(0,10);
-    let from;
-    if(p==="today"){
-      from = to;
-    }else if(p==="week"){
-      const d = new Date(now);
-      d.setDate(d.getDate() - 7);
-      from = d.toISOString().slice(0,10);
-    }else if(p==="month"){
-      from = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0,10);
-    }else if(p==="quarter"){
-      from = new Date(now.getFullYear(), Math.floor(now.getMonth()/3)*3, 1).toISOString().slice(0,10);
-    }else if(p==="year"){
-      from = new Date(now.getFullYear(), 0, 1).toISOString().slice(0,10);
-    }else if(p==="all"){
-      from = "2020-01-01";
-    }
-    setFromDate(from);
-    setToDate(to);
-  };
-
-  const PRESETS = [
-    {id:"today", label:"Today"},
-    {id:"week",  label:"Last 7 Days"},
-    {id:"month", label:"This Month"},
-    {id:"quarter",label:"This Quarter"},
-    {id:"year",  label:"This Year"},
-    {id:"all",   label:"All Time"},
-  ];
-
-  return(
-    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(8px)"}}>
-      <div style={{background:"#13121A",border:`1px solid ${B.border}`,borderRadius:20,width:480,position:"relative",overflow:"hidden"}}>
-        <div style={{height:3,background:GTB,borderRadius:"20px 20px 0 0"}}/>
-        
-        {/* Header */}
-        <div style={{padding:"24px 28px 0",display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
-          <div>
-            <div style={{fontSize:18,fontWeight:800,color:B.text}}>Sync from Tradovate</div>
-            <div style={{fontSize:12,color:B.textMuted,marginTop:3}}>Select the date range to import trades from</div>
-          </div>
-          <button onClick={onClose} style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${B.border}`,borderRadius:8,color:B.textMuted,cursor:"pointer",fontSize:18,width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
-        </div>
-
-        <div style={{padding:"0 28px 28px"}}>
-          {/* Quick presets */}
-          <div style={{marginBottom:20}}>
-            <div style={{fontSize:10,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:10}}>Quick Select</div>
-            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-              {PRESETS.map(p=>(
-                <button key={p.id} onClick={()=>applyPreset(p.id)} style={{
-                  padding:"7px 14px",borderRadius:20,border:"1px solid",cursor:"pointer",fontSize:12,fontWeight:700,
-                  borderColor:preset===p.id?B.teal:B.border,
-                  background:preset===p.id?`${B.teal}15`:"transparent",
-                  color:preset===p.id?B.teal:B.textMuted,
-                  transition:"all 0.15s"
-                }}>{p.label}</button>
-              ))}
-            </div>
-          </div>
-
-          {/* Custom date range */}
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:24}}>
-            <div>
-              <label style={lS}>From Date</label>
-              <input type="date" value={fromDate} onChange={e=>{setFromDate(e.target.value);setPreset("custom");}} style={iS}/>
-            </div>
-            <div>
-              <label style={lS}>To Date</label>
-              <input type="date" value={toDate} onChange={e=>{setToDate(e.target.value);setPreset("custom");}} style={iS}/>
-            </div>
-          </div>
-
-          {/* Summary */}
-          <div style={{padding:"12px 16px",borderRadius:10,background:"rgba(0,0,0,0.3)",border:`1px solid ${B.border}`,marginBottom:20}}>
-            <div style={{fontSize:12,color:B.textMuted}}>
-              Importing trades from <span style={{color:B.teal,fontWeight:700}}>{fromDate}</span> to <span style={{color:B.teal,fontWeight:700}}>{toDate}</span>
-            </div>
-            <div style={{fontSize:11,color:B.textMuted,marginTop:4}}>
-              Duplicate trades will be skipped automatically
-            </div>
-          </div>
-
-          {/* Buttons */}
-          <div style={{display:"flex",gap:10}}>
-            <button onClick={onClose} style={{flex:1,padding:"11px",borderRadius:10,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:13,fontWeight:600}}>Cancel</button>
-            <button onClick={()=>onSync(fromDate,toDate)} disabled={syncing} style={{flex:2,padding:"11px",borderRadius:10,border:"none",background:GL,color:"#0E0E10",cursor:syncing?"default":"pointer",fontSize:13,fontWeight:800,opacity:syncing?0.7:1,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
-              {syncing?(
-                <>
-                  <div style={{width:14,height:14,border:"2px solid #0E0E10",borderTop:"2px solid transparent",borderRadius:"50%",animation:"spin 1s linear infinite"}}/>
-                  Syncing...
-                </>
-              ):"Sync Trades →"}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 const NAV=[{id:"overview",label:"Overview",icon:"▦"},{id:"journal",label:"Journal",icon:"⊟"},{id:"analytics",label:"Analytics",icon:"◈"},{id:"calendar",label:"Calendar",icon:"⊞"},{id:"widgets",label:"Widgets",icon:"⬡"},{id:"playbooks",label:"Strategies",icon:"⊕"}];
 
