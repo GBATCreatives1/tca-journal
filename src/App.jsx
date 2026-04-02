@@ -56,13 +56,13 @@ async function syncPref(userId, key, onData){
 // ── Tradovate via Vercel Proxy (avoids CORS) ─────────────────────────────────
 const PROXY = "/api/tradovate";
 
-async function tvAuth() {
+async function tvAuth(account="main") {
   try {
-    const res = await fetch(`${PROXY}?action=auth`);
+    const res = await fetch(`${PROXY}?action=auth&account=${account}`);
     const data = await res.json();
     if (data.accessToken) {
-      sessionStorage.setItem("tv_token", data.accessToken);
-      sessionStorage.setItem("tv_expiry", Date.now() + 75 * 60 * 1000);
+      sessionStorage.setItem(`tv_token_${account}`, data.accessToken);
+      sessionStorage.setItem(`tv_expiry_${account}`, Date.now() + 75 * 60 * 1000);
       return data.accessToken;
     }
     console.error("Tradovate auth failed:", data);
@@ -73,16 +73,16 @@ async function tvAuth() {
   }
 }
 
-async function getToken() {
-  const expiry = sessionStorage.getItem("tv_expiry");
-  const token  = sessionStorage.getItem("tv_token");
+async function getToken(account="main") {
+  const expiry = sessionStorage.getItem(`tv_expiry_${account}`);
+  const token  = sessionStorage.getItem(`tv_token_${account}`);
   if (token && expiry && Date.now() < parseInt(expiry)) return token;
-  return await tvAuth();
+  return await tvAuth(account);
 }
 
-async function fetchClosedTrades(token, fromDate=null, toDate=null) {
+async function fetchClosedTrades(token, fromDate=null, toDate=null, account="main") {
   try {
-    let url = `${PROXY}?action=fills&token=${token}`;
+    let url = `${PROXY}?action=fills&token=${token}&account=${account}`;
     if (fromDate) url += `&from=${fromDate}`;
     if (toDate) url += `&to=${toDate}`;
     const res = await fetch(url);
@@ -567,7 +567,18 @@ function ImportModal({onClose,onImport,existingTrades}){
   const [drag,setDrag]=useState(false);
   const [mode,setMode]=useState("add"); // "add" | "replace"
   const [fileType,setFileType]=useState("");
+  const [importAccount,setImportAccount]=useState("main");
+  const [importAccounts,setImportAccounts]=useState([
+    {id:"main",label:"Live Account",color:"#00D4A8"},
+    {id:"apex_eval",label:"Apex Eval",color:"#4F8EF7"},
+    {id:"apex_demo",label:"Apex Demo",color:"#8B5CF6"},
+  ]);
   const ref=useRef();
+
+  // Load custom accounts from localStorage
+  useEffect(()=>{
+    try{const l=localStorage.getItem("pref_tca_accounts_v1");if(l)setImportAccounts(JSON.parse(l));}catch(e){}
+  },[]);
 
   const handle=(file)=>{
     if(!file)return;
@@ -726,9 +737,28 @@ function ImportModal({onClose,onImport,existingTrades}){
               </div>
 
               {/* Action buttons */}
+                            {/* Account tagger */}
+              <div style={{marginBottom:12,padding:"12px 14px",borderRadius:10,background:"rgba(0,0,0,0.3)",border:`1px solid ${B.border}`}}>
+                <div style={{fontSize:10,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:8}}>Tag trades to account:</div>
+                <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                  {importAccounts.map(a=>(
+                    <button key={a.id} onClick={()=>setImportAccount(a.id)} style={{
+                      padding:"6px 14px",borderRadius:20,cursor:"pointer",fontSize:11,fontWeight:600,
+                      border:`1px solid ${importAccount===a.id?a.color:B.border}`,
+                      background:importAccount===a.id?`${a.color}15`:"transparent",
+                      color:importAccount===a.id?a.color:B.textMuted,transition:"all 0.15s",
+                    }}>{a.label}</button>
+                  ))}
+                </div>
+              </div>
               <div style={{display:"flex",gap:10}}>
                 <button onClick={onClose} style={{flex:1,padding:"11px",borderRadius:10,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:13,fontWeight:600}}>Cancel</button>
-                <button onClick={()=>{onImport(mode==="replace"?parsed:newTrades,mode);onClose();}} style={{flex:2,padding:"11px",borderRadius:10,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:13,fontWeight:800}}>
+                <button onClick={()=>{
+                  const tagged=parsed.map(t=>({...t,account_id:importAccount}));
+                  const newTagged=tagged.filter(t=>!existingTrades.some(e=>e.tradovate_id&&e.tradovate_id===t.tradovate_id));
+                  onImport(mode==="replace"?tagged:newTagged,mode);
+                  onClose();
+                }} style={{flex:2,padding:"11px",borderRadius:10,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:13,fontWeight:800}}>
                   Import {mode==="replace"?parsed.length:newTrades.length} Trades →
                 </button>
               </div>
@@ -4583,14 +4613,29 @@ function RecurringPatternsWidget({trades}){
         body:JSON.stringify({type:"patterns",dayStats:stats}),
       });
       const data=await res.json();
-      const text=data.content?.[0]?.text||JSON.stringify(data);
-      const clean=text.replace(/```json|```/g,"").trim();
-      const parsed=JSON.parse(clean);
+      // coach.js returns parsed JSON directly
+      if(data.error){throw new Error(data.error);}
+      // Handle both direct object and wrapped content
+      let parsed=data;
+      if(data.content?.[0]?.text){
+        const clean=data.content[0].text.replace(/```json|```/g,"").trim();
+        parsed=JSON.parse(clean);
+      }
+      if(!parsed.patterns&&!parsed.overallScore){throw new Error("No patterns returned");}
       setAnalysis(parsed);
       const today=new Date().toISOString().slice(0,10);
       setLastRun(today);
       localStorage.setItem("tca_patterns_cache",JSON.stringify({data:parsed,date:today}));
-    }catch(e){console.error("Patterns AI error:",e);}
+    }catch(e){
+      console.error("Patterns AI error:",e);
+      setAnalysis({
+        overallScore:0,
+        scoreLabel:"Analysis Failed",
+        summary:`Could not complete analysis: ${e.message}. Make sure you have trades logged and try again.`,
+        patterns:[{title:"Error",detail:e.message,type:"negative"}],
+        actions:[]
+      });
+    }
     setLoading(false);
   };
 
@@ -4683,10 +4728,11 @@ function RecurringPatternsWidget({trades}){
 
 
 // ── Tradovate Sync Modal ──────────────────────────────────────────────────────
-function TradovateSyncModal({onClose, onSync, syncing}){
+function TradovateSyncModal({onClose, onSync, syncing, accounts=[]}){
   const [range,setRange]=useState("today");
   const [from,setFrom]=useState(new Date().toISOString().slice(0,10));
   const [to,setTo]=useState(new Date().toISOString().slice(0,10));
+  const [syncAccount,setSyncAccount]=useState("main");
 
   const RANGES=[
     {id:"today",    label:"Today"},
@@ -4714,7 +4760,7 @@ function TradovateSyncModal({onClose, onSync, syncing}){
 
   const handleSync=()=>{
     const r=getRange(range);
-    onSync(r.from,r.to);
+    onSync(r.from,r.to,syncAccount);
   };
 
   return(
@@ -4744,6 +4790,20 @@ function TradovateSyncModal({onClose, onSync, syncing}){
             <div><label style={lS}>To</label><input type="date" value={to} onChange={e=>setTo(e.target.value)} style={iS}/></div>
           </div>
         )}
+        {/* Account selector */}
+        <div style={{marginBottom:16}}>
+          <div style={{fontSize:11,color:B.textMuted,marginBottom:8}}>Sync from account:</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
+            {[{id:"main",label:"Live Account",color:B.teal},{id:"demo",label:"Apex Demo",color:B.purple},{id:"eval",label:"Apex Eval",color:B.blue}].map(a=>(
+              <button key={a.id} onClick={()=>setSyncAccount(a.id)} style={{
+                padding:"8px",borderRadius:8,cursor:"pointer",fontSize:11,fontWeight:600,
+                border:`1px solid ${syncAccount===a.id?a.color:B.border}`,
+                background:syncAccount===a.id?`${a.color}15`:"transparent",
+                color:syncAccount===a.id?a.color:B.textMuted,
+              }}>{a.label}</button>
+            ))}
+          </div>
+        </div>
         <button onClick={handleSync} disabled={syncing} style={{width:"100%",padding:"12px",borderRadius:10,border:"none",background:syncing?"rgba(255,255,255,0.1)":GL,color:syncing?B.textMuted:"#0E0E10",cursor:syncing?"not-allowed":"pointer",fontSize:13,fontWeight:800}}>
           {syncing?"Syncing...":"↻ Sync Trades"}
         </button>
@@ -4808,17 +4868,17 @@ export default function App(){
   },[session]);
 
   // ── Tradovate Auto Sync ────────────────────────────────────────────────────
-  const syncTradovate = useCallback(async (fromDate=null, toDate=null) => {
+  const syncTradovate = useCallback(async (fromDate=null, toDate=null, accountId="main") => {
     if (!session) return;
     setSyncStatus("syncing");
     try {
-      // Force fresh token to pick up new permissions
-      sessionStorage.removeItem("tv_token");
-      sessionStorage.removeItem("tv_expiry");
-      const token = await getToken();
+      // Force fresh token for this account
+      sessionStorage.removeItem(`tv_token_${accountId}`);
+      sessionStorage.removeItem(`tv_expiry_${accountId}`);
+      const token = await getToken(accountId);
       if (!token) { setSyncStatus("error"); return; }
       // Pass date range directly to proxy
-      const execs = await fetchClosedTrades(token, fromDate, toDate);
+      const execs = await fetchClosedTrades(token, fromDate, toDate, accountId);
       console.log("Synced trades from Tradovate:", execs.length);
       if (!execs.length) { setSyncStatus("connected"); showT("Tradovate connected — no new trades in range"); return; }
 
@@ -4871,7 +4931,7 @@ export default function App(){
       try {
         sessionStorage.removeItem("tv_token");
         sessionStorage.removeItem("tv_expiry");
-        const token = await getToken();
+        const token = await getToken("main");
         if (token) setSyncStatus("connected");
         else setSyncStatus("error");
       } catch(e) { setSyncStatus("error"); }
@@ -4926,10 +4986,10 @@ export default function App(){
     showT(`${newData.length} trades imported and saved ✓`);
   };
 
-  const handleManualSync=async(from,to)=>{
+  const handleManualSync=async(from,to,accountId="main")=>{
     setShowSyncModal(false);
-    showT("Connecting to Tradovate...");
-    await syncTradovate(from,to);
+    showT(`Connecting to Tradovate (${accountId})...`);
+    await syncTradovate(from,to,accountId);
   };
 
   const handleGradeUpdate=async(tradeId, newGrade)=>{
@@ -4958,7 +5018,7 @@ export default function App(){
 
   return(<div style={{minHeight:"100vh",background:B.bg,fontFamily:"'DM Sans','Segoe UI',sans-serif",color:B.text}}><style>{`@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,600;0,9..40,700;0,9..40,800&family=Space+Mono:wght@400;700&display=swap');*{box-sizing:border-box;}body{margin:0;}::-webkit-scrollbar{width:4px;}::-webkit-scrollbar-track{background:transparent;}::-webkit-scrollbar-thumb{background:rgba(0,212,168,0.2);border-radius:2px;}input[type=date]::-webkit-calendar-picker-indicator{filter:invert(0.5);}select option{background:#13121A;color:#F0EEF8;}`}</style>
     {toast&&(<div style={{position:"fixed",top:20,right:24,zIndex:200,padding:"12px 20px",borderRadius:10,background:toast.type==="error"?`${B.loss}18`:`${B.teal}15`,border:`1px solid ${toast.type==="error"?`${B.loss}40`:`${B.teal}40`}`,color:toast.type==="error"?B.loss:B.teal,fontWeight:700,fontSize:13,boxShadow:"0 8px 32px rgba(0,0,0,0.5)"}}>{toast.msg}</div>)}
-    {showSyncModal&&<TradovateSyncModal onClose={()=>setShowSyncModal(false)} onSync={handleManualSync} syncing={syncStatus==="syncing"}/>}
+    {showSyncModal&&<TradovateSyncModal onClose={()=>setShowSyncModal(false)} onSync={handleManualSync} syncing={syncStatus==="syncing"} accounts={accounts}/>}
     {showForm&&<TradeFormModal onClose={()=>{setShowForm(false);setEditTrade(null);}} onSave={handleSave} editTrade={editTrade}/>}
     {showImport&&<ImportModal onClose={()=>setShowImport(false)} onImport={handleImport} existingTrades={trades}/>}
     {delTrade&&<DeleteConfirm trade={delTrade} onConfirm={handleDelete} onCancel={()=>setDelTrade(null)}/>}
