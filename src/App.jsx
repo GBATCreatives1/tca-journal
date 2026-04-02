@@ -1469,32 +1469,38 @@ function TradeDetailModal({trade, onClose, onEdit, onGradeUpdate}){
   const runAI = async () => {
     setAiLoading(true);
     try {
-      const prompt = `Analyze this single trade and respond in JSON only (no markdown):
-Trade: ${trade.instrument} ${trade.direction} x${trade.contracts} contracts
-Date: ${trade.date} | Session: ${trade.session||"unknown"}
-Entry: ${trade.entry||"?"} → Exit: ${trade.exit||"?"} | Points: ${trade.entry&&trade.exit?(trade.direction==="Long"?trade.exit-trade.entry:trade.entry-trade.exit).toFixed(2):"unknown"}
-P&L: ${fmt(trade.pnl)} | R:R: ${trade.rr||"unknown"} | Grade: ${trade.grade||"B"}
-Setup: ${trade.setup||"unknown"} | Result: ${trade.result}
-Notes: ${trade.notes||"none"}
+      const tradeData = {
+        instrument: trade.instrument,
+        direction: trade.direction,
+        contracts: trade.contracts,
+        date: trade.date,
+        session: trade.session || "unknown",
+        entry: trade.entry || null,
+        exit: trade.exit || null,
+        points: trade.entry && trade.exit
+          ? (trade.direction === "Long" ? trade.exit - trade.entry : trade.entry - trade.exit).toFixed(2)
+          : null,
+        pnl: trade.pnl,
+        rr: trade.rr || "--",
+        grade: trade.grade || "B",
+        setup: trade.setup || "unknown",
+        result: trade.result,
+        notes: trade.notes || "none",
+      };
 
-Return JSON: {"score":0-100,"verdict":"2-3 sentence assessment","strengths":["up to 2 short points"],"improvements":["up to 2 short points"],"lesson":"one key takeaway"}`;
-
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
+      const res = await fetch("/api/coach", {
         method: "POST",
-        headers: {"Content-Type":"application/json"},
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 500,
-          messages: [{role:"user", content: prompt}]
-        })
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ type: "trade", dayStats: tradeData }),
       });
       const data = await res.json();
-      const text = data.content?.[0]?.text || "";
-      const clean = text.replace(/```json|```/g,"").trim();
+      const text = data.content?.[0]?.text || JSON.stringify(data);
+      const clean = text.replace(/```json|```/g, "").trim();
       const parsed = JSON.parse(clean);
       setAiAnalysis(parsed);
     } catch(e) {
-      setAiAnalysis({score:50, verdict:"Could not analyze this trade. Please try again.", strengths:[], improvements:[], lesson:""});
+      console.error("Trade AI error:", e);
+      setAiAnalysis({score:50, verdict:"Could not analyze this trade. Please check your connection and try again.", strengths:[], improvements:[], lesson:""});
     }
     setAiLoading(false);
   };

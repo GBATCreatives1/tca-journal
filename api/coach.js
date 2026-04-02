@@ -36,6 +36,19 @@ JSON structure:
   "patternAlert": "Any concerning pattern noticed or null",
   "coachNote": "2-3 sentence personal coaching message speaking directly to the trader",
   "tomorrowFocus": "One specific focus point for tomorrow's session"
+}`,
+
+    trade: `You are an expert MES futures trading coach. Analyze this single trade and give honest, specific feedback. Respond with ONLY valid JSON, no markdown.
+
+Trade data: ${JSON.stringify(dayStats)}
+
+JSON structure:
+{
+  "score": 0-100,
+  "verdict": "2-3 sentence honest assessment of this trade",
+  "strengths": ["specific strength 1", "specific strength 2"],
+  "improvements": ["specific improvement 1", "specific improvement 2"],
+  "lesson": "The single most important lesson from this trade"
 }`
   };
 
