@@ -1058,6 +1058,7 @@ function Overview({trades, onGradeUpdate, session}){
   const [saveStatus,setSaveStatus]=useState("saved");
   const [dragWidget,setDragWidget]=useState(null);
   const [dragOver,setDragOver]=useState(null);
+  const [expandedWidget,setExpandedWidget]=useState(null);
 
   // Listen for edit toggle from header button
   useEffect(()=>{
@@ -1303,6 +1304,28 @@ function Overview({trades, onGradeUpdate, session}){
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
       {selectedDay&&<DayJournalModal date={selectedDay} trades={trades} onClose={()=>setSelectedDay(null)} onGradeUpdate={onGradeUpdate}/>}
 
+      {/* ── WIDGET POPOUT MODAL ── */}
+      {expandedWidget&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",zIndex:150,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(6px)"}}
+          onClick={()=>setExpandedWidget(null)}>
+          <div style={{background:"#13121A",border:`1px solid ${B.border}`,borderRadius:20,width:"75vw",maxWidth:1100,maxHeight:"82vh",overflow:"hidden",display:"flex",flexDirection:"column"}}
+            onClick={e=>e.stopPropagation()}>
+            {/* Popout header */}
+            <div style={{height:3,background:GL,borderRadius:"20px 20px 0 0",flexShrink:0}}/>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"16px 22px",borderBottom:`1px solid ${B.border}`,flexShrink:0}}>
+              <div style={{fontSize:15,fontWeight:700,color:B.text}}>
+                {{"gauges":"🎯 Performance Gauges","calendar":"📅 Calendar","equity":"📈 Equity Curve","dailypnl":"📊 Daily P&L","setups":"🏆 Setup Performance","session":"🌡️ Session Heatmap","timeof":"🕐 Time of Day","cumulative":"📉 Daily & Cumulative","drawdown":"⚠️ Drawdown","winAvg":"💹 Win% / Avg Win / Loss","duration":"⏱️ Trade Duration","leaderboard":"🥇 Setup Leaderboard","yearly":"🗓️ Yearly Calendar","progress":"✅ Progress Tracker","report":"📋 Report","aicoach":"🧠 AI Trade Coach"}[expandedWidget]||expandedWidget}
+              </div>
+              <button onClick={()=>setExpandedWidget(null)} style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${B.border}`,borderRadius:8,color:B.textMuted,cursor:"pointer",fontSize:18,width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
+            </div>
+            {/* Popout content */}
+            <div style={{flex:1,overflowY:"auto",padding:24,minHeight:400}}>
+              {renderWidget(expandedWidget)}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── PINNED STAT ROW — always visible ── */}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr 1fr",gap:12}}>
         {/* Account P&L */}
@@ -1385,7 +1408,17 @@ function Overview({trades, onGradeUpdate, session}){
                       </div>
                     </div>
                   )}
-                  <div style={{height:"100%",borderRadius:14,background:B.surface,border:`1px solid ${B.border}`,padding:20,overflow:"hidden"}}>
+  <div
+                    onClick={()=>!editMode&&setExpandedWidget(wid)}
+                    style={{height:"100%",borderRadius:14,background:B.surface,border:`1px solid ${B.border}`,padding:20,overflow:"hidden",cursor:editMode?"default":"pointer",transition:"border-color 0.15s"}}
+                    onMouseEnter={e=>{if(!editMode)e.currentTarget.style.borderColor=B.teal+"60";}}
+                    onMouseLeave={e=>{e.currentTarget.style.borderColor=B.border;}}
+                  >
+                    {!editMode&&<div style={{position:"absolute",top:10,right:10,zIndex:5,opacity:0,transition:"opacity 0.2s"}}
+                      onMouseEnter={e=>e.currentTarget.style.opacity=1}
+                      className="expand-hint">
+                      <div style={{padding:"2px 7px",borderRadius:5,background:"rgba(0,0,0,0.7)",border:`1px solid ${B.border}`,fontSize:9,color:B.textMuted}}>⤢ expand</div>
+                    </div>}
                     {renderWidget(wid)}
                   </div>
                 </div>
