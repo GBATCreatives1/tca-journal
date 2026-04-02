@@ -1463,6 +1463,41 @@ function Analytics({trades}){
 // ── Trade Detail Modal ────────────────────────────────────────────────────────
 function TradeDetailModal({trade, onClose, onEdit, onGradeUpdate}){
   const isWin = trade.result === "Win";
+  const [aiAnalysis, setAiAnalysis] = useState(null);
+  const [aiLoading, setAiLoading] = useState(false);
+
+  const runAI = async () => {
+    setAiLoading(true);
+    try {
+      const prompt = `Analyze this single trade and respond in JSON only (no markdown):
+Trade: ${trade.instrument} ${trade.direction} x${trade.contracts} contracts
+Date: ${trade.date} | Session: ${trade.session||"unknown"}
+Entry: ${trade.entry||"?"} → Exit: ${trade.exit||"?"} | Points: ${trade.entry&&trade.exit?(trade.direction==="Long"?trade.exit-trade.entry:trade.entry-trade.exit).toFixed(2):"unknown"}
+P&L: ${fmt(trade.pnl)} | R:R: ${trade.rr||"unknown"} | Grade: ${trade.grade||"B"}
+Setup: ${trade.setup||"unknown"} | Result: ${trade.result}
+Notes: ${trade.notes||"none"}
+
+Return JSON: {"score":0-100,"verdict":"2-3 sentence assessment","strengths":["up to 2 short points"],"improvements":["up to 2 short points"],"lesson":"one key takeaway"}`;
+
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 500,
+          messages: [{role:"user", content: prompt}]
+        })
+      });
+      const data = await res.json();
+      const text = data.content?.[0]?.text || "";
+      const clean = text.replace(/```json|```/g,"").trim();
+      const parsed = JSON.parse(clean);
+      setAiAnalysis(parsed);
+    } catch(e) {
+      setAiAnalysis({score:50, verdict:"Could not analyze this trade. Please try again.", strengths:[], improvements:[], lesson:""});
+    }
+    setAiLoading(false);
+  };
   const pts = trade.entry && trade.exit
     ? trade.direction === "Long"
       ? Math.round((trade.exit - trade.entry) * 4) / 4
@@ -1564,6 +1599,59 @@ function TradeDetailModal({trade, onClose, onEdit, onGradeUpdate}){
             </div>
           </div>
         )}
+
+        {/* AI Coach Section */}
+        <div style={{padding:"0 28px",marginBottom:20}}>
+          {!aiAnalysis&&!aiLoading&&(
+            <button onClick={runAI} style={{width:"100%",padding:"12px",borderRadius:12,border:`1px solid ${B.purple}40`,background:`${B.purple}10`,color:B.purple,cursor:"pointer",fontSize:13,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+              🧠 Analyze This Trade with AI Coach
+            </button>
+          )}
+          {aiLoading&&(
+            <div style={{padding:"20px",borderRadius:12,background:"rgba(0,0,0,0.3)",border:`1px solid ${B.border}`,textAlign:"center"}}>
+              <div style={{fontSize:13,color:B.textMuted}}>🧠 Analyzing trade...</div>
+              <div style={{marginTop:8,height:3,background:`${B.border}`,borderRadius:2,overflow:"hidden"}}>
+                <div style={{height:"100%",width:"60%",background:GL,borderRadius:2,animation:"pulse 1.5s infinite"}}/>
+              </div>
+            </div>
+          )}
+          {aiAnalysis&&(
+            <div style={{borderRadius:12,background:"rgba(0,0,0,0.3)",border:`1px solid ${B.purple}30`,overflow:"hidden"}}>
+              <div style={{padding:"12px 16px",background:`${B.purple}10`,borderBottom:`1px solid ${B.purple}20`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <span>🧠</span>
+                  <span style={{fontSize:11,fontWeight:700,color:B.purple,letterSpacing:1.5,textTransform:"uppercase"}}>AI Trade Analysis</span>
+                </div>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <div style={{fontSize:22,fontWeight:800,color:aiAnalysis.score>=70?B.profit:aiAnalysis.score>=50?B.spark:B.loss,fontFamily:"monospace"}}>{aiAnalysis.score}</div>
+                  <div style={{fontSize:9,color:B.textMuted}}>/100</div>
+                  <button onClick={()=>setAiAnalysis(null)} style={{background:"none",border:"none",color:B.textMuted,cursor:"pointer",fontSize:14,marginLeft:4}}>↺</button>
+                </div>
+              </div>
+              <div style={{padding:"14px 16px",display:"flex",flexDirection:"column",gap:12}}>
+                <div style={{fontSize:12,color:"#C8C4D8",lineHeight:1.7}}>{aiAnalysis.verdict}</div>
+                {aiAnalysis.strengths?.length>0&&(
+                  <div>
+                    <div style={{fontSize:10,color:B.profit,letterSpacing:1.5,textTransform:"uppercase",marginBottom:6}}>✅ Strengths</div>
+                    {aiAnalysis.strengths.map((s,i)=>(<div key={i} style={{fontSize:12,color:B.textMuted,padding:"4px 0",borderBottom:`1px solid ${B.border}20`}}>• {s}</div>))}
+                  </div>
+                )}
+                {aiAnalysis.improvements?.length>0&&(
+                  <div>
+                    <div style={{fontSize:10,color:B.loss,letterSpacing:1.5,textTransform:"uppercase",marginBottom:6}}>⚠️ Improvements</div>
+                    {aiAnalysis.improvements.map((s,i)=>(<div key={i} style={{fontSize:12,color:B.textMuted,padding:"4px 0",borderBottom:`1px solid ${B.border}20`}}>• {s}</div>))}
+                  </div>
+                )}
+                {aiAnalysis.lesson&&(
+                  <div style={{padding:"10px 14px",borderRadius:8,background:`${B.spark}10`,border:`1px solid ${B.spark}30`}}>
+                    <div style={{fontSize:10,color:B.spark,letterSpacing:1.5,textTransform:"uppercase",marginBottom:4}}>💡 Key Lesson</div>
+                    <div style={{fontSize:12,color:"#C8C4D8",lineHeight:1.6}}>{aiAnalysis.lesson}</div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* Footer actions */}
         <div style={{padding:"0 28px 24px",display:"flex",gap:10}}>
