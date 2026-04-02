@@ -519,36 +519,7 @@ const CTip=({active,payload,label})=>{if(!active||!payload?.length)return null;r
 function LoginScreen(){
   const [email,setEmail]=useState("");const [password,setPassword]=useState("");const [mode,setMode]=useState("login");const [error,setError]=useState("");const [loading,setLoading]=useState(false);
   const handle=async()=>{setLoading(true);setError("");const{error:err}=mode==="login"?await supabase.auth.signInWithPassword({email,password}):await supabase.auth.signUp({email,password});if(err)setError(err.message);setLoading(false);};
-  return(<div style={{minHeight:"100vh",background:B.bg,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'DM Sans','Segoe UI',sans-serif"}}><style>{`
-  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&family=Space+Mono:wght@400;700&display=swap');
-  *{box-sizing:border-box;}
-  body{margin:0;}
-  .tca-sidebar{position:fixed;top:0;left:0;bottom:0;width:216px;z-index:100;}
-  .tca-main{margin-left:216px;padding:24px 28px;min-height:100vh;}
-  .tca-stat-row{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;}
-  .tca-widget-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
-  @media(max-width:1280px){
-    .tca-stat-row{grid-template-columns:repeat(3,1fr);}
-  }
-  @media(max-width:1100px){
-    .tca-sidebar{width:64px;}
-    .tca-main{margin-left:64px;padding:20px 18px;}
-    .tca-sidebar-label{display:none;}
-    .tca-sidebar-logo{display:none;}
-    .tca-widget-grid{grid-template-columns:1fr;}
-    .tca-stat-row{grid-template-columns:repeat(2,1fr);}
-  }
-  @media(max-width:768px){
-    .tca-sidebar{width:0;overflow:hidden;}
-    .tca-main{margin-left:0;padding:16px;}
-    .tca-stat-row{grid-template-columns:1fr 1fr;}
-    .tca-widget-grid{grid-template-columns:1fr;}
-  }
-  .tca-stat-row > *{min-width:0;}
-  .tca-widget-grid > *{min-width:0;}
-  .tca-main > *{max-width:100%;}
-  table{min-width:0;}
-`}</style><div style={{width:400,padding:44,borderRadius:20,background:"#13121A",border:`1px solid ${B.border}`,position:"relative",overflow:"hidden"}}><div style={{position:"absolute",top:0,left:0,right:0,height:3,background:GL}}/><div style={{textAlign:"center",marginBottom:36}}><div style={{display:"flex",justifyContent:"center",marginBottom:16}}><TCAIcon size={52}/></div><div style={{fontSize:11,fontWeight:800,color:B.text,letterSpacing:2,textTransform:"uppercase"}}>The Candlestick Academy</div><div style={{marginTop:6,display:"inline-block",padding:"2px 12px",borderRadius:20,background:GL,fontSize:9,fontWeight:800,letterSpacing:2,color:"#0E0E10"}}>TRADE JOURNAL</div></div><div style={{marginBottom:12}}><label style={lS}>Email</label><input type="email" value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handle()} placeholder="you@email.com" style={iS}/></div><div style={{marginBottom:20}}><label style={lS}>Password</label><input type="password" value={password} onChange={e=>setPassword(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handle()} placeholder="password" style={iS}/></div>{error&&<div style={{marginBottom:14,padding:"10px 14px",borderRadius:8,background:"rgba(240,90,126,0.1)",border:"1px solid rgba(240,90,126,0.3)",color:B.loss,fontSize:12}}>{error}</div>}<button onClick={handle} disabled={loading} style={{width:"100%",padding:"12px",borderRadius:10,border:"none",background:GL,color:"#0E0E10",fontWeight:800,fontSize:14,cursor:"pointer",opacity:loading?0.7:1}}>{loading?"Loading...":(mode==="login"?"Sign In":"Create Account")}</button><div style={{textAlign:"center",marginTop:18,fontSize:12,color:B.textMuted}}>{mode==="login"?"Don't have an account? ":"Already have an account? "}<span onClick={()=>{setMode(m=>m==="login"?"signup":"login");setError("");}} style={{color:B.teal,cursor:"pointer",fontWeight:700}}>{mode==="login"?"Sign up free":"Sign in"}</span></div></div></div>);
+  return(<div style={{minHeight:"100vh",background:B.bg,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'DM Sans','Segoe UI',sans-serif"}}><style>{`@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&family=Space+Mono:wght@400;700&display=swap');*{box-sizing:border-box;}body{margin:0;}`}</style><div style={{width:400,padding:44,borderRadius:20,background:"#13121A",border:`1px solid ${B.border}`,position:"relative",overflow:"hidden"}}><div style={{position:"absolute",top:0,left:0,right:0,height:3,background:GL}}/><div style={{textAlign:"center",marginBottom:36}}><div style={{display:"flex",justifyContent:"center",marginBottom:16}}><TCAIcon size={52}/></div><div style={{fontSize:11,fontWeight:800,color:B.text,letterSpacing:2,textTransform:"uppercase"}}>The Candlestick Academy</div><div style={{marginTop:6,display:"inline-block",padding:"2px 12px",borderRadius:20,background:GL,fontSize:9,fontWeight:800,letterSpacing:2,color:"#0E0E10"}}>TRADE JOURNAL</div></div><div style={{marginBottom:12}}><label style={lS}>Email</label><input type="email" value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handle()} placeholder="you@email.com" style={iS}/></div><div style={{marginBottom:20}}><label style={lS}>Password</label><input type="password" value={password} onChange={e=>setPassword(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handle()} placeholder="password" style={iS}/></div>{error&&<div style={{marginBottom:14,padding:"10px 14px",borderRadius:8,background:"rgba(240,90,126,0.1)",border:"1px solid rgba(240,90,126,0.3)",color:B.loss,fontSize:12}}>{error}</div>}<button onClick={handle} disabled={loading} style={{width:"100%",padding:"12px",borderRadius:10,border:"none",background:GL,color:"#0E0E10",fontWeight:800,fontSize:14,cursor:"pointer",opacity:loading?0.7:1}}>{loading?"Loading...":(mode==="login"?"Sign In":"Create Account")}</button><div style={{textAlign:"center",marginTop:18,fontSize:12,color:B.textMuted}}>{mode==="login"?"Don't have an account? ":"Already have an account? "}<span onClick={()=>{setMode(m=>m==="login"?"signup":"login");setError("");}} style={{color:B.teal,cursor:"pointer",fontWeight:700}}>{mode==="login"?"Sign up free":"Sign in"}</span></div></div></div>);
 }
 
 function TradeFormModal({onClose,onSave,editTrade}){
@@ -1333,7 +1304,7 @@ function Overview({trades, onGradeUpdate, session}){
       {selectedDay&&<DayJournalModal date={selectedDay} trades={trades} onClose={()=>setSelectedDay(null)} onGradeUpdate={onGradeUpdate}/>}
 
       {/* ── PINNED STAT ROW — always visible ── */}
-      <div className="tca-stat-row">
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr 1fr",gap:12}}>
         {/* Account P&L */}
         <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:"18px 20px",position:"relative",overflow:"hidden"}}>
           <div style={{position:"absolute",top:0,left:0,right:0,height:2,background:GTB}}/>
@@ -1372,7 +1343,7 @@ function Overview({trades, onGradeUpdate, session}){
       )}
 
       {/* ── WIDGET GRID ── 2 columns, 3 rows */}
-      <div className="tca-widget-grid">
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
         {[0,1,2,3,4,5].map(slotIdx=>{
           const wid=layout[slotIdx];
           const isEmpty=!wid;
@@ -3663,7 +3634,7 @@ export default function App(){
     {showForm&&<TradeFormModal onClose={()=>{setShowForm(false);setEditTrade(null);}} onSave={handleSave} editTrade={editTrade}/>}
     {showImport&&<ImportModal onClose={()=>setShowImport(false)} onImport={handleImport} existingTrades={trades}/>}
     {delTrade&&<DeleteConfirm trade={delTrade} onConfirm={handleDelete} onCancel={()=>setDelTrade(null)}/>}
-    <div className="tca-sidebar" style={{background:"rgba(8,8,10,0.98)",borderRight:`1px solid ${B.border}`,display:"flex",flexDirection:"column",zIndex:100}}>
+    <div style={{position:"fixed",top:0,left:0,bottom:0,width:216,background:"rgba(8,8,10,0.98)",borderRight:`1px solid ${B.border}`,display:"flex",flexDirection:"column",zIndex:100}}>
       <div style={{padding:"22px 18px 18px",borderBottom:`1px solid ${B.border}`}}><div style={{display:"flex",alignItems:"center",gap:12}}><TCAIcon size={40}/><div><div style={{fontSize:10,fontWeight:800,color:B.text,letterSpacing:1,lineHeight:1.3,textTransform:"uppercase"}}>The Candlestick</div><div style={{fontSize:10,fontWeight:800,color:B.text,letterSpacing:1,lineHeight:1.3,textTransform:"uppercase"}}>Academy</div><div style={{marginTop:4,display:"inline-block",padding:"2px 8px",borderRadius:20,background:GL,fontSize:8,fontWeight:800,letterSpacing:2,color:"#0E0E10"}}>TRADE JOURNAL</div></div></div></div>
       <nav style={{padding:"16px 12px",flex:1}}>{NAV.map(n=>(<button key={n.id} onClick={()=>setActive(n.id)} style={{display:"flex",alignItems:"center",gap:10,width:"100%",padding:"10px 12px",borderRadius:9,border:"none",background:active===n.id?"rgba(0,212,168,0.07)":"transparent",borderLeft:active===n.id?`2px solid ${B.teal}`:"2px solid transparent",color:active===n.id?B.teal:B.textMuted,cursor:"pointer",fontSize:13,fontWeight:600,textAlign:"left",transition:"all 0.15s",marginBottom:2}}><span style={{fontSize:14}}>{n.icon}</span>{n.label}</button>))}</nav>
       <div style={{padding:"16px 18px",borderTop:`1px solid ${B.border}`}}>
@@ -3681,7 +3652,7 @@ export default function App(){
         <button onClick={()=>supabase.auth.signOut()} style={{marginTop:10,width:"100%",padding:"7px",borderRadius:8,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:11,fontWeight:600}}>Sign Out</button>
       </div>
     </div>
-    <div className="tca-main" style={{minHeight:"100vh"}}>
+    <div style={{marginLeft:216,padding:"28px 32px",minHeight:"100vh"}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
         <div><h1 style={{margin:0,fontSize:20,fontWeight:800,color:B.text,letterSpacing:-0.5}}>{NAV.find(n=>n.id===active)?.label}</h1><div style={{fontSize:12,color:B.textMuted,marginTop:4}}>{session.user.email} - {trades.filter(t=>!t.id?.startsWith("s")).length} trades logged</div></div>
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
