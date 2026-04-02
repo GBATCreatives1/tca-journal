@@ -511,7 +511,33 @@ function parseGenericCSV(text){
 const iS={background:"rgba(0,0,0,0.4)",border:`1px solid ${B.border}`,borderRadius:8,color:B.text,padding:"9px 12px",fontSize:13,width:"100%",outline:"none",fontFamily:"'DM Sans',sans-serif"};
 const lS={fontSize:10,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:5,display:"block"};
 
-function TCAIcon({size=34}){return(<svg width={size} height={size} viewBox="0 0 100 100" fill="none"><defs><linearGradient id="tcaB" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stopColor="#00D4A8"/><stop offset="55%" stopColor="#4F8EF7"/><stop offset="100%" stopColor="#8B5CF6"/></linearGradient><linearGradient id="tcaF" x1="0.5" y1="1" x2="0.5" y2="0"><stop offset="0%" stopColor="#4F8EF7"/><stop offset="100%" stopColor="#8B5CF6"/></linearGradient><linearGradient id="tcaW" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#8B5CF6"/><stop offset="100%" stopColor="#00D4A8"/></linearGradient></defs><rect x="47" y="74" width="6" height="16" rx="3" fill="url(#tcaW)"/><rect x="30" y="42" width="40" height="34" rx="7" fill="url(#tcaB)"/><path d="M50 40 C50 40 41 29 44 20 C45.5 15 43 11 43 11 C52 15 60 25 57 34 C55 40 50 40 50 40Z" fill="url(#tcaF)"/><path d="M70 24 L72 19 L74 24 L79 26 L74 28 L72 33 L70 28 L65 26 Z" fill="#7B61FF" opacity="0.85"/></svg>);}
+function TCAIcon({size=34}){
+  return(
+    <svg width={size} height={size} viewBox="0 0 100 100" fill="none">
+      <defs>
+        <linearGradient id="tcaG" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="#00D4A8"/>
+          <stop offset="50%" stopColor="#4F8EF7"/>
+          <stop offset="100%" stopColor="#8B5CF6"/>
+        </linearGradient>
+      </defs>
+      {/* Candlestick body */}
+      <rect x="38" y="20" width="24" height="40" rx="4" fill="url(#tcaG)"/>
+      {/* Wicks */}
+      <line x1="50" y1="8" x2="50" y2="20" stroke="url(#tcaG)" strokeWidth="4" strokeLinecap="round"/>
+      <line x1="50" y1="60" x2="50" y2="78" stroke="url(#tcaG)" strokeWidth="4" strokeLinecap="round"/>
+      {/* Small accent candles */}
+      <rect x="18" y="35" width="12" height="22" rx="3" fill="#00D4A8" opacity="0.6"/>
+      <line x1="24" y1="26" x2="24" y2="35" stroke="#00D4A8" strokeWidth="3" strokeLinecap="round" opacity="0.6"/>
+      <line x1="24" y1="57" x2="24" y2="66" stroke="#00D4A8" strokeWidth="3" strokeLinecap="round" opacity="0.6"/>
+      <rect x="70" y="30" width="12" height="28" rx="3" fill="#8B5CF6" opacity="0.6"/>
+      <line x1="76" y1="20" x2="76" y2="30" stroke="#8B5CF6" strokeWidth="3" strokeLinecap="round" opacity="0.6"/>
+      <line x1="76" y1="58" x2="76" y2="68" stroke="#8B5CF6" strokeWidth="3" strokeLinecap="round" opacity="0.6"/>
+    </svg>
+  );
+}
+
+
 function StatCard({label,value,sub,accent,grad}){return(<div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:"20px 22px",position:"relative",overflow:"hidden"}}><div style={{position:"absolute",top:0,left:0,right:0,height:2,background:grad||`linear-gradient(90deg,${accent},transparent)`}}/><div style={{position:"absolute",top:-20,right:-20,width:90,height:90,background:`radial-gradient(circle,${accent}14 0%,transparent 70%)`,pointerEvents:"none"}}/><div style={{fontSize:10,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>{label}</div>{grad?<div style={{fontSize:26,fontWeight:800,background:grad,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",fontFamily:"'Space Mono',monospace",letterSpacing:-1}}>{value}</div>:<div style={{fontSize:26,fontWeight:800,color:accent,fontFamily:"'Space Mono',monospace",letterSpacing:-1}}>{value}</div>}{sub&&<div style={{fontSize:11,color:B.textMuted,marginTop:5}}>{sub}</div>}</div>);}
 function Tag({label}){const c=TAG_COLOR[label]||"#666";return <span style={{fontSize:10,padding:"2px 9px",borderRadius:20,border:`1px solid ${c}44`,color:c,background:"rgba(0,0,0,0.35)",letterSpacing:0.5,fontWeight:700}}>{label}</span>;}
 const CTip=({active,payload,label})=>{if(!active||!payload?.length)return null;return(<div style={{background:"#16151C",border:`1px solid ${B.borderTeal}`,borderRadius:10,padding:"10px 16px",fontSize:12}}><div style={{color:B.textMuted,marginBottom:5}}>{label}</div>{payload.map((p,i)=>(<div key={i} style={{color:p.value>=0?B.profit:B.loss,fontFamily:"monospace",fontWeight:700}}>{p.name}: {p.value>=0?"+":""}${p.value}</div>))}</div>);};
@@ -523,12 +549,15 @@ function LoginScreen(){
 }
 
 function TradeFormModal({onClose,onSave,editTrade}){
-  const blank={date:new Date().toISOString().slice(0,10),instrument:"MES",direction:"Long",contracts:1,entry:"",exit:"",pnl:"",rr:"",setup:SETUPS[0],grade:"A",session:"AM",notes:"",result:"Win"};
+  const blank={date:new Date().toISOString().slice(0,10),account_id:"main",instrument:"MES",direction:"Long",contracts:1,entry:"",exit:"",pnl:"",rr:"",setup:SETUPS[0],grade:"A",session:"AM",notes:"",result:"Win"};
   const [form,setForm]=useState(editTrade?{...editTrade}:blank);const [auto,setAuto]=useState(!editTrade);
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
+  // accounts from parent - we'll read from localStorage
+  const [formAccounts,setFormAccounts]=useState([{id:"main",label:"Live Account"},{id:"apex_eval",label:"Apex Eval"},{id:"apex_demo",label:"Apex Demo"}]);
+  useEffect(()=>{try{const l=localStorage.getItem("pref_tca_accounts_v1");if(l)setFormAccounts(JSON.parse(l));}catch(e){};},[]);
   useEffect(()=>{if(!auto)return;const en=parseFloat(form.entry),ex=parseFloat(form.exit),qty=parseInt(form.contracts)||1;if(isNaN(en)||isNaN(ex))return;const inst=form.instrument;let tv=1,ts=0.25;if(inst==="MES"){tv=1.25;ts=0.25;}else if(inst==="ES"){tv=12.5;ts=0.25;}else if(inst==="NQ"){tv=5;ts=0.25;}else if(inst==="MNQ"){tv=0.5;ts=0.25;}const pts=form.direction==="Long"?ex-en:en-ex;const p=Math.round((pts/ts)*tv*qty*100)/100;set("pnl",p);set("result",p>=0?"Win":"Loss");},[form.entry,form.exit,form.contracts,form.instrument,form.direction,auto]);
   const handleSave=()=>{onSave({...form,id:editTrade?.id||`t_${Date.now()}`,pnl:parseFloat(form.pnl)||0,contracts:parseInt(form.contracts)||1,entry:parseFloat(form.entry)||0,exit:parseFloat(form.exit)||0,result:parseFloat(form.pnl)>=0?"Win":"Loss"});onClose();};
-  return(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.82)",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(6px)"}}><div style={{background:"#13121A",border:`1px solid ${B.border}`,borderRadius:18,padding:32,width:580,maxHeight:"90vh",overflowY:"auto"}}><div style={{height:3,background:GL,borderRadius:3,marginBottom:24}}/><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:24}}><div style={{fontSize:18,fontWeight:800,color:B.text}}>{editTrade?"Edit Trade":"Log New Trade"}</div><button onClick={onClose} style={{background:"none",border:"none",color:B.textMuted,cursor:"pointer",fontSize:22}}>x</button></div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}><div><label style={lS}>Date</label><input type="date" value={form.date} onChange={e=>set("date",e.target.value)} style={iS}/></div><div><label style={lS}>Instrument</label><select value={form.instrument} onChange={e=>set("instrument",e.target.value)} style={iS}>{INSTRUMENTS.map(i=><option key={i}>{i}</option>)}</select></div><div><label style={lS}>Direction</label><div style={{display:"flex",gap:8}}>{["Long","Short"].map(d=>(<button key={d} onClick={()=>set("direction",d)} style={{flex:1,padding:"9px",borderRadius:8,border:"1px solid",cursor:"pointer",fontWeight:700,fontSize:13,borderColor:form.direction===d?(d==="Long"?"#4ade80":"#f87171"):B.border,background:form.direction===d?(d==="Long"?"rgba(74,222,128,0.1)":"rgba(248,113,113,0.1)"):"transparent",color:form.direction===d?(d==="Long"?"#4ade80":"#f87171"):B.textMuted}}>{d}</button>))}</div></div><div><label style={lS}>Contracts</label><input type="number" value={form.contracts} onChange={e=>set("contracts",e.target.value)} style={iS} min="1"/></div><div><label style={lS}>Entry Price</label><input type="number" step="0.01" value={form.entry} onChange={e=>set("entry",e.target.value)} style={iS} placeholder="e.g. 5780.25"/></div><div><label style={lS}>Exit Price</label><input type="number" step="0.01" value={form.exit} onChange={e=>set("exit",e.target.value)} style={iS} placeholder="e.g. 5794.00"/></div><div><label style={lS}>P&L ($) <span onClick={()=>setAuto(a=>!a)} style={{marginLeft:8,cursor:"pointer",color:auto?B.teal:B.textMuted,fontSize:9}}>{auto?"AUTO":"MANUAL"}</span></label><input type="number" step="0.01" value={form.pnl} onChange={e=>{set("pnl",e.target.value);setAuto(false);}} style={{...iS,color:parseFloat(form.pnl)>=0?B.profit:B.loss,fontWeight:700}} placeholder="0.00"/></div><div><label style={lS}>R:R Ratio</label><input value={form.rr} onChange={e=>set("rr",e.target.value)} style={iS} placeholder="e.g. 2.1R"/></div><div><label style={lS}>Setup</label><select value={form.setup} onChange={e=>set("setup",e.target.value)} style={iS}>{SETUPS.map(s=><option key={s}>{s}</option>)}</select></div><div><label style={lS}>Session</label><select value={form.session} onChange={e=>set("session",e.target.value)} style={iS}>{SESSIONS.map(s=><option key={s}>{s}</option>)}</select></div><div style={{gridColumn:"1/-1"}}><label style={lS}>Grade</label><div style={{display:"flex",gap:6}}>{GRADES.map(g=>(<button key={g} onClick={()=>set("grade",g)} style={{flex:1,padding:"7px 0",borderRadius:8,border:"1px solid",cursor:"pointer",fontWeight:800,fontSize:12,borderColor:form.grade===g?GRADE_COLOR[g]:B.border,background:form.grade===g?`${GRADE_COLOR[g]}18`:"transparent",color:form.grade===g?GRADE_COLOR[g]:B.textMuted}}>{g}</button>))}</div></div><div style={{gridColumn:"1/-1"}}><label style={lS}>Notes</label><textarea value={form.notes} onChange={e=>set("notes",e.target.value)} rows={3} style={{...iS,resize:"vertical"}} placeholder="What happened?"/></div></div><div style={{display:"flex",gap:10,marginTop:24,justifyContent:"flex-end"}}><button onClick={onClose} style={{padding:"10px 22px",borderRadius:10,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:13,fontWeight:600}}>Cancel</button><button onClick={handleSave} style={{padding:"10px 28px",borderRadius:10,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:13,fontWeight:800}}>{editTrade?"Save Changes":"Log Trade"}</button></div></div></div>);
+  return(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.82)",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(6px)"}}><div style={{background:"#13121A",border:`1px solid ${B.border}`,borderRadius:18,padding:32,width:580,maxHeight:"90vh",overflowY:"auto"}}><div style={{height:3,background:GL,borderRadius:3,marginBottom:24}}/><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:24}}><div style={{fontSize:18,fontWeight:800,color:B.text}}>{editTrade?"Edit Trade":"Log New Trade"}</div><button onClick={onClose} style={{background:"none",border:"none",color:B.textMuted,cursor:"pointer",fontSize:22}}>x</button></div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}><div><label style={lS}>Date</label><input type="date" value={form.date} onChange={e=>set("date",e.target.value)} style={iS}/></div><div><label style={lS}>Instrument</label><select value={form.instrument} onChange={e=>set("instrument",e.target.value)} style={iS}>{INSTRUMENTS.map(i=><option key={i}>{i}</option>)}</select></div><div><label style={lS}>Direction</label><div style={{display:"flex",gap:8}}>{["Long","Short"].map(d=>(<button key={d} onClick={()=>set("direction",d)} style={{flex:1,padding:"9px",borderRadius:8,border:"1px solid",cursor:"pointer",fontWeight:700,fontSize:13,borderColor:form.direction===d?(d==="Long"?"#4ade80":"#f87171"):B.border,background:form.direction===d?(d==="Long"?"rgba(74,222,128,0.1)":"rgba(248,113,113,0.1)"):"transparent",color:form.direction===d?(d==="Long"?"#4ade80":"#f87171"):B.textMuted}}>{d}</button>))}</div></div><div><label style={lS}>Contracts</label><input type="number" value={form.contracts} onChange={e=>set("contracts",e.target.value)} style={iS} min="1"/></div><div><label style={lS}>Entry Price</label><input type="number" step="0.01" value={form.entry} onChange={e=>set("entry",e.target.value)} style={iS} placeholder="e.g. 5780.25"/></div><div><label style={lS}>Exit Price</label><input type="number" step="0.01" value={form.exit} onChange={e=>set("exit",e.target.value)} style={iS} placeholder="e.g. 5794.00"/></div><div><label style={lS}>P&L ($) <span onClick={()=>setAuto(a=>!a)} style={{marginLeft:8,cursor:"pointer",color:auto?B.teal:B.textMuted,fontSize:9}}>{auto?"AUTO":"MANUAL"}</span></label><input type="number" step="0.01" value={form.pnl} onChange={e=>{set("pnl",e.target.value);setAuto(false);}} style={{...iS,color:parseFloat(form.pnl)>=0?B.profit:B.loss,fontWeight:700}} placeholder="0.00"/></div><div><label style={lS}>R:R Ratio</label><input value={form.rr} onChange={e=>set("rr",e.target.value)} style={iS} placeholder="e.g. 2.1R"/></div><div><label style={lS}>Setup</label><select value={form.setup} onChange={e=>set("setup",e.target.value)} style={iS}>{SETUPS.map(s=><option key={s}>{s}</option>)}</select></div><div><label style={lS}>Session</label><select value={form.session} onChange={e=>set("session",e.target.value)} style={iS}>{SESSIONS.map(s=><option key={s}>{s}</option>)}</select></div><div><label style={lS}>Account</label><select value={form.account_id||"main"} onChange={e=>set("account_id",e.target.value)} style={{...iS,cursor:"pointer"}}>{formAccounts.map(a=>(<option key={a.id} value={a.id}>{a.label}</option>))}</select></div><div style={{gridColumn:"1/-1"}}><label style={lS}>Grade</label><div style={{display:"flex",gap:6}}>{GRADES.map(g=>(<button key={g} onClick={()=>set("grade",g)} style={{flex:1,padding:"7px 0",borderRadius:8,border:"1px solid",cursor:"pointer",fontWeight:800,fontSize:12,borderColor:form.grade===g?GRADE_COLOR[g]:B.border,background:form.grade===g?`${GRADE_COLOR[g]}18`:"transparent",color:form.grade===g?GRADE_COLOR[g]:B.textMuted}}>{g}</button>))}</div></div><div style={{gridColumn:"1/-1"}}><label style={lS}>Notes</label><textarea value={form.notes} onChange={e=>set("notes",e.target.value)} rows={3} style={{...iS,resize:"vertical"}} placeholder="What happened?"/></div></div><div style={{display:"flex",gap:10,marginTop:24,justifyContent:"flex-end"}}><button onClick={onClose} style={{padding:"10px 22px",borderRadius:10,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:13,fontWeight:600}}>Cancel</button><button onClick={handleSave} style={{padding:"10px 28px",borderRadius:10,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:13,fontWeight:800}}>{editTrade?"Save Changes":"Log Trade"}</button></div></div></div>);
 }
 
 function ImportModal({onClose,onImport,existingTrades}){
@@ -1161,6 +1190,7 @@ function Overview({trades, onGradeUpdate, session}){
     {id:"ictags",     label:"ICT Concept Tagger",    icon:"🧠"},
     {id:"emotions",   label:"Emotional Tracker",     icon:"😤"},
     {id:"achievements",label:"Achievements",          icon:"🏆"},
+    {id:"patterns",   label:"Recurring Patterns AI",   icon:"🔁"},
   ];
 
   // Calendar state
@@ -1294,6 +1324,7 @@ function Overview({trades, onGradeUpdate, session}){
       case "ictags":     return <ICTTaggerWidget trades={trades} session={session}/>;
       case "emotions":   return <EmotionalTrackerWidget trades={trades} session={session}/>;
       case "achievements":return <AchievementsWidget trades={trades} session={session}/>;
+      case "patterns":   return <RecurringPatternsWidget trades={trades}/>;
       default: return null;
     }
   };
@@ -2606,6 +2637,12 @@ function CalendarView({trades, onGradeUpdate}){
 function PlaybookView(){
   const STORAGE_KEY="tca_strategies_v1";
   const [strategies,setStrategies]=useState([]);
+  const [accounts,setAccounts]=useState([
+    {id:"main",label:"Live Account",type:"live",color:"#00D4A8"},
+    {id:"apex_eval",label:"Apex Eval",type:"eval",color:"#4F8EF7"},
+    {id:"apex_demo",label:"Apex Demo",type:"demo",color:"#8B5CF6"},
+  ]);
+  const [activeAccount,setActiveAccount]=useState("all");
   const [sel,setSel]=useState(null);
   const [showForm,setShowForm]=useState(false);
   const [editStrat,setEditStrat]=useState(null);
@@ -2785,6 +2822,9 @@ function StrategyForm({strat, onSave, onClose}){
   const blank={name:"",instruments:["MES"],tags:"",description:"",rules:"",winRate:"",trades:"",pnl:"",avgWin:"",avgLoss:"",profitFactor:"",expectancy:"",missedTrades:"0"};
   const [form,setForm]=useState(strat?{...strat,instruments:strat.instruments||["MES"]}:blank);
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
+  // accounts from parent - we'll read from localStorage
+  const [formAccounts,setFormAccounts]=useState([{id:"main",label:"Live Account"},{id:"apex_eval",label:"Apex Eval"},{id:"apex_demo",label:"Apex Demo"}]);
+  useEffect(()=>{try{const l=localStorage.getItem("pref_tca_accounts_v1");if(l)setFormAccounts(JSON.parse(l));}catch(e){};},[]);
   const toggleInst=(inst)=>setForm(f=>({...f,instruments:f.instruments.includes(inst)?f.instruments.filter(i=>i!==inst):[...f.instruments,inst]}));
   const handleSave=()=>{
     if(!form.name.trim())return;
@@ -4109,6 +4149,539 @@ function AchievementsWidget({trades, session}){
 }
 
 
+
+// ── TCA Playbook Library ──────────────────────────────────────────────────────
+const DEFAULT_PLAYBOOK = [
+  {
+    id:"section_1", type:"section", title:"The 10AM Triple Timeframe Setup",
+    color:"#00D4A8", icon:"🎯",
+    lessons:[
+      {id:"l1",title:"What is the 10AM Setup?",content:"The 10AM Triple Timeframe Confluence is the core TCA entry model. It requires alignment across 3 timeframes at or near the 10AM NY session open.\n\n• 3H candle must show directional bias\n• 90M candle must confirm direction\n• 45M candle triggers the entry\n\nAll three must agree — no exceptions."},
+      {id:"l2",title:"Entry Rules",content:"Entry Checklist:\n✓ Wait for 10:00 AM NY time\n✓ 3H candle is bullish (for longs) or bearish (for shorts)\n✓ 90M candle confirms same direction\n✓ 45M candle breaks structure in direction\n✓ Look for FVG or OTE entry on 15M or 5M\n✓ Stop below/above the 45M swing\n✓ Target: previous high/low or next PD array"},
+      {id:"l3",title:"What Invalidates the Setup",content:"Do NOT take the trade if:\n✗ Candles across timeframes disagree\n✗ You're in a consolidation zone (choppy price)\n✗ Major news event within 30 minutes\n✗ Already missed the 10AM window (no chasing)\n✗ Daily bias is unclear"},
+    ]
+  },
+  {
+    id:"section_2", type:"section", title:"ICT Concepts Reference",
+    color:"#4F8EF7", icon:"📚",
+    lessons:[
+      {id:"l4",title:"Fair Value Gap (FVG)",content:"A FVG is a 3-candle imbalance where price moves so fast it leaves an unfilled gap between candle 1's high and candle 3's low (bullish) or candle 1's low and candle 3's high (bearish).\n\n• Price tends to return to fill FVGs\n• Best used as entry zones, not standalone signals\n• OTE (0.62-0.79 fib) inside an FVG = high probability"},
+      {id:"l5",title:"Order Blocks",content:"An order block is the last up-candle before a bearish move, or the last down-candle before a bullish move.\n\n• Represents institutional order activity\n• Price often retraces to test the order block\n• Stronger when combined with FVG or liquidity sweep"},
+      {id:"l6",title:"Liquidity Sweeps",content:"ICT calls these 'judas swings' — price moves above old highs or below old lows to grab stop orders, then reverses.\n\n• Buy side liquidity = stops above swing highs\n• Sell side liquidity = stops below swing lows\n• A sweep + reversal = high probability entry signal"},
+    ]
+  },
+  {
+    id:"section_3", type:"section", title:"Risk Management Rules",
+    color:"#8B5CF6", icon:"🛡️",
+    lessons:[
+      {id:"l7",title:"Position Sizing",content:"MES Futures Sizing Rules:\n\n• Never risk more than 1-2% of account per trade\n• For a $10,000 account: max risk = $100-200 per trade\n• 1 MES contract = $1.25 per tick, $5 per point\n• Calculate contracts from your dollar risk, not gut feel\n\nFormula: Contracts = Dollar Risk ÷ (Stop in points × $5)"},
+      {id:"l8",title:"Daily Loss Limit",content:"Hard Rules:\n• Daily loss limit: Set before market open, never move it\n• Once hit — STOP. Log off. Walk away.\n• 3 consecutive losing days = take a day off\n• Never revenge trade. Ever.\n\nThe goal is longevity. One bad day shouldn't end your account."},
+    ]
+  },
+  {
+    id:"section_4", type:"section", title:"Pre-Market Routine",
+    color:"#F59E0B", icon:"🌅",
+    lessons:[
+      {id:"l9",title:"Morning Checklist",content:"Every morning before 9:30 AM:\n\n1. Check economic calendar (FOMC, CPI, NFP = no trade days)\n2. Identify overnight globex high and low\n3. Mark PDH (Previous Day High) and PDL (Previous Day Low)\n4. Identify weekly high/low levels\n5. Determine bias: Are we above or below key levels?\n6. Identify 1-2 setups to watch at 10AM\n7. Set your daily profit target and loss limit\n8. Check mental state — are you ready to trade?"},
+    ]
+  },
+];
+
+function PlaybookLibrary({session}){
+  const SKEY="tca_playbook_v1";
+  const [sections,setSections]=useState(DEFAULT_PLAYBOOK);
+  const [selectedSection,setSelectedSection]=useState(null);
+  const [selectedLesson,setSelectedLesson]=useState(null);
+  const [editMode,setEditMode]=useState(false);
+  const [editingLesson,setEditingLesson]=useState(null);
+  const [editingSection,setEditingSection]=useState(null);
+  const [showAddSection,setShowAddSection]=useState(false);
+  const [showAddLesson,setShowAddLesson]=useState(false);
+  const [newSectionForm,setNewSectionForm]=useState({title:"",icon:"📖",color:"#00D4A8"});
+  const [newLessonForm,setNewLessonForm]=useState({title:"",content:""});
+  const [saveStatus,setSaveStatus]=useState("saved");
+  const [loaded,setLoaded]=useState(false);
+
+  const SECTION_COLORS=["#00D4A8","#4F8EF7","#8B5CF6","#F59E0B","#F05A7E","#10B981"];
+  const SECTION_ICONS=["🎯","📚","🛡️","🌅","📊","💡","⚡","🔥","🧠","✅"];
+
+  useEffect(()=>{
+    try{const l=localStorage.getItem("pref_"+SKEY);if(l){const v=JSON.parse(l);setSections(v);}}catch(e){}
+    if(session?.user?.id)(async()=>{
+      try{
+        const{data}=await supabase.from("user_preferences").select("value").eq("key",SKEY).single();
+        if(data?.value){const v=JSON.parse(data.value);setSections(v);localStorage.setItem("pref_"+SKEY,data.value);}
+      }catch(e){}
+      setLoaded(true);
+    })();
+    else setLoaded(true);
+  },[session]);
+
+  const save=async(newSections)=>{
+    setSections(newSections);setSaveStatus("saving");
+    const val=JSON.stringify(newSections);
+    localStorage.setItem("pref_"+SKEY,val);
+    if(session?.user?.id)try{
+      await supabase.from("user_preferences").upsert({user_id:session.user.id,key:SKEY,value:val,updated_at:new Date().toISOString()},{onConflict:"user_id,key"});
+      setSaveStatus("saved");
+    }catch(e){setSaveStatus("unsaved");}
+    else setSaveStatus("saved");
+  };
+
+  const addSection=()=>{
+    if(!newSectionForm.title.trim())return;
+    const newSec={id:`s_${Date.now()}`,type:"section",title:newSectionForm.title,color:newSectionForm.color,icon:newSectionForm.icon,lessons:[]};
+    save([...sections,newSec]);
+    setNewSectionForm({title:"",icon:"📖",color:"#00D4A8"});
+    setShowAddSection(false);
+  };
+
+  const deleteSection=(id)=>{
+    if(!confirm("Delete this section and all its lessons?"))return;
+    save(sections.filter(s=>s.id!==id));
+    if(selectedSection?.id===id){setSelectedSection(null);setSelectedLesson(null);}
+  };
+
+  const addLesson=()=>{
+    if(!newLessonForm.title.trim()||!selectedSection)return;
+    const newLesson={id:`l_${Date.now()}`,title:newLessonForm.title,content:newLessonForm.content};
+    const updated=sections.map(s=>s.id===selectedSection.id?{...s,lessons:[...s.lessons,newLesson]}:s);
+    save(updated);
+    const updatedSection=updated.find(s=>s.id===selectedSection.id);
+    setSelectedSection(updatedSection);
+    setNewLessonForm({title:"",content:""});
+    setShowAddLesson(false);
+  };
+
+  const saveLesson=(sectionId,lessonId,updates)=>{
+    const updated=sections.map(s=>s.id===sectionId?{...s,lessons:s.lessons.map(l=>l.id===lessonId?{...l,...updates}:l)}:s);
+    save(updated);
+    const updatedSection=updated.find(s=>s.id===sectionId);
+    setSelectedSection(updatedSection);
+    setSelectedLesson(updatedSection?.lessons.find(l=>l.id===lessonId));
+  };
+
+  const deleteLesson=(sectionId,lessonId)=>{
+    const updated=sections.map(s=>s.id===sectionId?{...s,lessons:s.lessons.filter(l=>l.id!==lessonId)}:s);
+    save(updated);
+    setSelectedSection(updated.find(s=>s.id===sectionId));
+    if(selectedLesson?.id===lessonId)setSelectedLesson(null);
+  };
+
+  const currentLesson=selectedSection&&selectedLesson?
+    sections.find(s=>s.id===selectedSection.id)?.lessons.find(l=>l.id===selectedLesson.id):null;
+
+  return(
+    <div style={{display:"flex",height:"calc(100vh - 160px)",gap:0,borderRadius:14,overflow:"hidden",border:`1px solid ${B.border}`}}>
+
+      {/* Left sidebar - sections */}
+      <div style={{width:240,background:"rgba(0,0,0,0.4)",borderRight:`1px solid ${B.border}`,display:"flex",flexDirection:"column",flexShrink:0}}>
+        {/* Header */}
+        <div style={{padding:"16px 16px 12px",borderBottom:`1px solid ${B.border}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <div>
+            <div style={{fontSize:13,fontWeight:800,background:GL,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>TCA Playbook</div>
+            <div style={{fontSize:9,color:B.textMuted,marginTop:1}}>{sections.reduce((a,s)=>a+s.lessons.length,0)} lessons</div>
+          </div>
+          <div style={{display:"flex",gap:4}}>
+            <button onClick={()=>setEditMode(e=>!e)} style={{padding:"4px 8px",borderRadius:6,border:`1px solid ${editMode?B.teal:B.border}`,background:editMode?`${B.teal}15`:"transparent",color:editMode?B.teal:B.textMuted,cursor:"pointer",fontSize:10}}>
+              {editMode?"✓ Done":"✏"}
+            </button>
+          </div>
+        </div>
+
+        {/* Section list */}
+        <div style={{flex:1,overflowY:"auto",padding:"8px"}}>
+          {sections.map(s=>(
+            <div key={s.id}>
+              <div onClick={()=>{setSelectedSection(s);setSelectedLesson(null);}}
+                style={{
+                  padding:"10px 12px",borderRadius:9,cursor:"pointer",marginBottom:4,
+                  background:selectedSection?.id===s.id?`${s.color}15`:"transparent",
+                  border:`1px solid ${selectedSection?.id===s.id?s.color+"40":B.border}`,
+                  transition:"all 0.15s",
+                }}>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <span style={{fontSize:14}}>{s.icon}</span>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:12,fontWeight:700,color:selectedSection?.id===s.id?s.color:B.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{s.title}</div>
+                    <div style={{fontSize:10,color:B.textMuted}}>{s.lessons.length} lesson{s.lessons.length!==1?"s":""}</div>
+                  </div>
+                  {editMode&&<button onClick={e=>{e.stopPropagation();deleteSection(s.id);}}
+                    style={{background:"none",border:"none",color:B.loss,cursor:"pointer",fontSize:12,padding:"0 2px"}}>×</button>}
+                </div>
+              </div>
+
+              {/* Lessons list under selected section */}
+              {selectedSection?.id===s.id&&s.lessons.map(l=>(
+                <div key={l.id} onClick={()=>setSelectedLesson(l)}
+                  style={{
+                    padding:"7px 12px 7px 32px",borderRadius:7,cursor:"pointer",marginBottom:2,
+                    background:selectedLesson?.id===l.id?`${s.color}10`:"transparent",
+                    borderLeft:`2px solid ${selectedLesson?.id===l.id?s.color:"transparent"}`,
+                    transition:"all 0.15s",
+                  }}>
+                  <div style={{display:"flex",alignItems:"center",gap:6}}>
+                    <div style={{fontSize:11,color:selectedLesson?.id===l.id?s.color:B.textMuted,flex:1,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{l.title}</div>
+                    {editMode&&<button onClick={e=>{e.stopPropagation();deleteLesson(s.id,l.id);}}
+                      style={{background:"none",border:"none",color:B.loss,cursor:"pointer",fontSize:11,padding:"0 2px",flexShrink:0}}>×</button>}
+                  </div>
+                </div>
+              ))}
+
+              {selectedSection?.id===s.id&&editMode&&(
+                <button onClick={()=>setShowAddLesson(true)}
+                  style={{width:"100%",padding:"6px",borderRadius:7,border:`1px dashed ${s.color}40`,background:"transparent",color:s.color,cursor:"pointer",fontSize:10,marginBottom:8}}>
+                  + Add Lesson
+                </button>
+              )}
+            </div>
+          ))}
+
+          {editMode&&(
+            <button onClick={()=>setShowAddSection(true)}
+              style={{width:"100%",padding:"10px",borderRadius:9,border:`2px dashed ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:11,marginTop:4}}>
+              + New Section
+            </button>
+          )}
+        </div>
+
+        {/* Save status */}
+        {saveStatus!=="saved"&&(
+          <div style={{padding:"8px 16px",borderTop:`1px solid ${B.border}`,fontSize:10,color:B.textMuted,textAlign:"center"}}>
+            {saveStatus==="saving"?"Saving...":"Unsaved changes"}
+          </div>
+        )}
+      </div>
+
+      {/* Main content area */}
+      <div style={{flex:1,background:B.bg,display:"flex",flexDirection:"column",minWidth:0}}>
+        {!selectedSection?(
+          <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,padding:40}}>
+            <div style={{fontSize:48}}>📚</div>
+            <div style={{fontSize:18,fontWeight:800,color:B.text,textAlign:"center"}}>TCA Playbook Library</div>
+            <div style={{fontSize:13,color:B.textMuted,textAlign:"center",maxWidth:400,lineHeight:1.7}}>
+              Your complete reference for The Candlestick Academy methodology.<br/>
+              Select a section from the sidebar to start learning.
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:10,marginTop:8,width:"100%",maxWidth:500}}>
+              {sections.map(s=>(
+                <div key={s.id} onClick={()=>setSelectedSection(s)} style={{padding:"14px 16px",borderRadius:12,border:`1px solid ${s.color}30`,background:`${s.color}08`,cursor:"pointer",transition:"all 0.15s"}}
+                  onMouseEnter={e=>{e.currentTarget.style.background=`${s.color}15`;}}
+                  onMouseLeave={e=>{e.currentTarget.style.background=`${s.color}08`;}}>
+                  <div style={{fontSize:20,marginBottom:6}}>{s.icon}</div>
+                  <div style={{fontSize:12,fontWeight:700,color:s.color}}>{s.title}</div>
+                  <div style={{fontSize:10,color:B.textMuted,marginTop:2}}>{s.lessons.length} lessons</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ):!selectedLesson?(
+          <div style={{flex:1,padding:32,overflowY:"auto"}}>
+            <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:24}}>
+              <span style={{fontSize:28}}>{selectedSection.icon}</span>
+              <div>
+                <div style={{fontSize:20,fontWeight:800,color:selectedSection.color}}>{selectedSection.title}</div>
+                <div style={{fontSize:12,color:B.textMuted}}>{selectedSection.lessons.length} lessons</div>
+              </div>
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              {selectedSection.lessons.map((l,i)=>(
+                <div key={l.id} onClick={()=>setSelectedLesson(l)} style={{padding:"16px 20px",borderRadius:12,background:B.surface,border:`1px solid ${B.border}`,cursor:"pointer",transition:"all 0.15s",display:"flex",alignItems:"center",gap:14}}
+                  onMouseEnter={e=>{e.currentTarget.style.borderColor=selectedSection.color+"60";}}
+                  onMouseLeave={e=>{e.currentTarget.style.borderColor=B.border;}}>
+                  <div style={{width:28,height:28,borderRadius:"50%",background:`${selectedSection.color}20`,border:`1px solid ${selectedSection.color}40`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:800,color:selectedSection.color,flexShrink:0}}>{i+1}</div>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:14,fontWeight:700,color:B.text}}>{l.title}</div>
+                    <div style={{fontSize:11,color:B.textMuted,marginTop:2}}>{l.content.slice(0,80)}...</div>
+                  </div>
+                  <span style={{color:B.textDim,fontSize:16}}>›</span>
+                </div>
+              ))}
+              {selectedSection.lessons.length===0&&(
+                <div style={{textAlign:"center",padding:"40px 0",color:B.textMuted,fontSize:13}}>
+                  No lessons yet. Click ✏ Edit to add your first lesson.
+                </div>
+              )}
+            </div>
+          </div>
+        ):(
+          <div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0}}>
+            {/* Lesson header */}
+            <div style={{padding:"20px 28px 16px",borderBottom:`1px solid ${B.border}`,flexShrink:0,display:"flex",alignItems:"center",gap:12}}>
+              <button onClick={()=>setSelectedLesson(null)} style={{background:"none",border:`1px solid ${B.border}`,borderRadius:7,color:B.textMuted,cursor:"pointer",fontSize:12,padding:"4px 10px"}}>← Back</button>
+              <div style={{flex:1}}>
+                {editMode&&editingLesson?.id===currentLesson?.id?(
+                  <input value={editingLesson.title} onChange={e=>setEditingLesson(l=>({...l,title:e.target.value}))}
+                    style={{...iS,fontSize:16,fontWeight:700,width:"100%"}}/>
+                ):(
+                  <div style={{fontSize:16,fontWeight:700,color:B.text}}>{currentLesson?.title}</div>
+                )}
+                <div style={{fontSize:11,color:selectedSection.color,marginTop:2}}>{selectedSection.icon} {selectedSection.title}</div>
+              </div>
+              {editMode&&(
+                editingLesson?.id===currentLesson?.id?(
+                  <div style={{display:"flex",gap:6}}>
+                    <button onClick={()=>{saveLesson(selectedSection.id,currentLesson.id,{title:editingLesson.title,content:editingLesson.content});setEditingLesson(null);}}
+                      style={{padding:"6px 14px",borderRadius:7,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:12,fontWeight:800}}>Save</button>
+                    <button onClick={()=>setEditingLesson(null)}
+                      style={{padding:"6px 10px",borderRadius:7,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:12}}>Cancel</button>
+                  </div>
+                ):(
+                  <button onClick={()=>setEditingLesson({...currentLesson})}
+                    style={{padding:"6px 14px",borderRadius:7,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:12}}>✏ Edit</button>
+                )
+              )}
+            </div>
+
+            {/* Lesson content */}
+            <div style={{flex:1,padding:"24px 28px",overflowY:"auto"}}>
+              {editMode&&editingLesson?.id===currentLesson?.id?(
+                <textarea value={editingLesson.content} onChange={e=>setEditingLesson(l=>({...l,content:e.target.value}))}
+                  style={{...iS,width:"100%",height:"100%",minHeight:400,resize:"none",fontSize:14,lineHeight:1.8,fontFamily:"'DM Sans',sans-serif"}}/>
+              ):(
+                <div style={{fontSize:14,color:"#D4D0E8",lineHeight:1.9,whiteSpace:"pre-wrap",fontFamily:"'DM Sans',sans-serif"}}>
+                  {currentLesson?.content}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Add Section Modal */}
+      {showAddSection&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(8px)"}}
+          onClick={()=>setShowAddSection(false)}>
+          <div style={{background:"#13121A",border:`1px solid ${B.border}`,borderRadius:18,padding:28,width:420}} onClick={e=>e.stopPropagation()}>
+            <div style={{height:3,background:GL,borderRadius:"18px 18px 0 0",margin:"-28px -28px 20px"}}/>
+            <div style={{fontSize:16,fontWeight:800,color:B.text,marginBottom:20}}>New Section</div>
+            <div style={{marginBottom:12}}>
+              <label style={lS}>Section Title</label>
+              <input value={newSectionForm.title} onChange={e=>setNewSectionForm(f=>({...f,title:e.target.value}))} style={iS} placeholder="e.g. Advanced ICT Concepts"/>
+            </div>
+            <div style={{marginBottom:12}}>
+              <label style={lS}>Icon</label>
+              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                {SECTION_ICONS.map(icon=>(<button key={icon} onClick={()=>setNewSectionForm(f=>({...f,icon}))}
+                  style={{width:34,height:34,borderRadius:8,border:`2px solid ${newSectionForm.icon===icon?B.teal:B.border}`,background:newSectionForm.icon===icon?`${B.teal}15`:"transparent",cursor:"pointer",fontSize:16}}>{icon}</button>))}
+              </div>
+            </div>
+            <div style={{marginBottom:20}}>
+              <label style={lS}>Color</label>
+              <div style={{display:"flex",gap:6}}>
+                {SECTION_COLORS.map(c=>(<button key={c} onClick={()=>setNewSectionForm(f=>({...f,color:c}))}
+                  style={{width:26,height:26,borderRadius:"50%",border:`3px solid ${newSectionForm.color===c?"#fff":"transparent"}`,background:c,cursor:"pointer"}}/>))}
+              </div>
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={()=>setShowAddSection(false)} style={{flex:1,padding:"10px",borderRadius:9,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:13}}>Cancel</button>
+              <button onClick={addSection} style={{flex:2,padding:"10px",borderRadius:9,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:13,fontWeight:800}}>Create Section</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Lesson Modal */}
+      {showAddLesson&&selectedSection&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(8px)"}}
+          onClick={()=>setShowAddLesson(false)}>
+          <div style={{background:"#13121A",border:`1px solid ${B.border}`,borderRadius:18,padding:28,width:560}} onClick={e=>e.stopPropagation()}>
+            <div style={{height:3,background:GL,borderRadius:"18px 18px 0 0",margin:"-28px -28px 20px"}}/>
+            <div style={{fontSize:16,fontWeight:800,color:B.text,marginBottom:20}}>New Lesson — {selectedSection.title}</div>
+            <div style={{marginBottom:12}}>
+              <label style={lS}>Lesson Title</label>
+              <input value={newLessonForm.title} onChange={e=>setNewLessonForm(f=>({...f,title:e.target.value}))} style={iS} placeholder="e.g. Entry Triggers"/>
+            </div>
+            <div style={{marginBottom:20}}>
+              <label style={lS}>Content</label>
+              <textarea value={newLessonForm.content} onChange={e=>setNewLessonForm(f=>({...f,content:e.target.value}))}
+                rows={8} style={{...iS,resize:"vertical",fontSize:13,lineHeight:1.7,fontFamily:"'DM Sans',sans-serif"}} placeholder="Write your lesson content here..."/>
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={()=>setShowAddLesson(false)} style={{flex:1,padding:"10px",borderRadius:9,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:13}}>Cancel</button>
+              <button onClick={addLesson} style={{flex:2,padding:"10px",borderRadius:9,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:13,fontWeight:800}}>Add Lesson</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+
+// ── Recurring Patterns AI ─────────────────────────────────────────────────────
+function RecurringPatternsWidget({trades}){
+  const [analysis,setAnalysis]=useState(null);
+  const [loading,setLoading]=useState(false);
+  const [lastRun,setLastRun]=useState(null);
+
+  useEffect(()=>{
+    try{const l=localStorage.getItem("tca_patterns_cache");if(l){const v=JSON.parse(l);setAnalysis(v.data);setLastRun(v.date);}}catch(e){}
+  },[]);
+
+  const runAnalysis=async()=>{
+    if(!trades.length)return;
+    setLoading(true);
+    try{
+      // Build rich stats for the AI
+      const dayMap={};
+      trades.forEach(t=>{
+        if(!dayMap[t.date])dayMap[t.date]={pnl:0,wins:0,total:0,day:t.day||new Date(t.date+"T12:00:00").toLocaleDateString("en-US",{weekday:"short"})};
+        dayMap[t.date].pnl+=t.pnl;dayMap[t.date].total++;if(t.result==="Win")dayMap[t.date].wins++;
+      });
+
+      const byHour={};
+      trades.forEach(t=>{
+        const h=t.session||"AM";
+        if(!byHour[h])byHour[h]={pnl:0,wins:0,total:0};
+        byHour[h].pnl+=t.pnl;byHour[h].total++;if(t.result==="Win")byHour[h].wins++;
+      });
+
+      const bySetup={};
+      trades.forEach(t=>{
+        if(!bySetup[t.setup])bySetup[t.setup]={pnl:0,wins:0,total:0};
+        bySetup[t.setup].pnl+=t.pnl;bySetup[t.setup].total++;if(t.result==="Win")bySetup[t.setup].wins++;
+      });
+
+      const byDay={};
+      Object.values(dayMap).forEach(d=>{
+        if(!byDay[d.day])byDay[d.day]={pnl:0,wins:0,total:0};
+        byDay[d.day].pnl+=d.pnl;byDay[d.day].total++;if(d.pnl>0)byDay[d.day].wins++;
+      });
+
+      // Consecutive loss sequences
+      const sorted=[...trades].sort((a,b)=>a.date.localeCompare(b.date));
+      let maxConsecLoss=0,curLoss=0,maxConsecWin=0,curWin=0;
+      sorted.forEach(t=>{
+        if(t.result==="Loss"){curLoss++;curWin=0;maxConsecLoss=Math.max(maxConsecLoss,curLoss);}
+        else{curWin++;curLoss=0;maxConsecWin=Math.max(maxConsecWin,curWin);}
+      });
+
+      // After loss behavior
+      let afterLossWins=0,afterLossTotal=0;
+      for(let i=1;i<sorted.length;i++){
+        if(sorted[i-1].result==="Loss"){afterLossTotal++;if(sorted[i].result==="Win")afterLossWins++;}
+      }
+
+      const stats={
+        totalTrades:trades.length,
+        winRate:Math.round((trades.filter(t=>t.result==="Win").length/trades.length)*100),
+        totalPnl:Math.round(trades.reduce((a,t)=>a+t.pnl,0)*100)/100,
+        bySession:byHour,
+        bySetup:Object.fromEntries(Object.entries(bySetup).slice(0,8)),
+        byDayOfWeek:byDay,
+        maxConsecLoss,maxConsecWin,
+        afterLossWinRate:afterLossTotal?Math.round((afterLossWins/afterLossTotal)*100):null,
+        avgTradesPerDay:Math.round(trades.length/Object.keys(dayMap).length*10)/10,
+        tradeDays:Object.keys(dayMap).length,
+      };
+
+      const res=await fetch("/api/coach",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({type:"patterns",dayStats:stats}),
+      });
+      const data=await res.json();
+      const text=data.content?.[0]?.text||JSON.stringify(data);
+      const clean=text.replace(/```json|```/g,"").trim();
+      const parsed=JSON.parse(clean);
+      setAnalysis(parsed);
+      const today=new Date().toISOString().slice(0,10);
+      setLastRun(today);
+      localStorage.setItem("tca_patterns_cache",JSON.stringify({data:parsed,date:today}));
+    }catch(e){console.error("Patterns AI error:",e);}
+    setLoading(false);
+  };
+
+  const TYPE_COLORS={positive:B.profit,negative:B.loss,neutral:B.textMuted,warning:B.spark};
+
+  return(
+    <div style={{height:"100%",display:"flex",flexDirection:"column",gap:14}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <div style={{fontSize:9,color:B.textMuted,letterSpacing:2,textTransform:"uppercase"}}>🔁 Recurring Patterns AI</div>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          {lastRun&&<span style={{fontSize:9,color:B.textDim}}>Last: {lastRun}</span>}
+          <button onClick={runAnalysis} disabled={loading||!trades.length}
+            style={{padding:"5px 12px",borderRadius:8,border:"none",background:loading?B.border:GL,color:loading?"#666":"#0E0E10",cursor:loading?"not-allowed":"pointer",fontSize:11,fontWeight:700}}>
+            {loading?"Analyzing...":"Run Analysis"}
+          </button>
+        </div>
+      </div>
+
+      {!analysis&&!loading&&(
+        <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:12,color:B.textMuted}}>
+          <div style={{fontSize:32}}>🔁</div>
+          <div style={{fontSize:13,fontWeight:700,color:B.text}}>Recurring Patterns AI</div>
+          <div style={{fontSize:12,textAlign:"center",lineHeight:1.6,maxWidth:280}}>
+            Scans all your trades to find behavioral patterns, timing edges, and repeated mistakes you might not notice.
+          </div>
+          <button onClick={runAnalysis} disabled={!trades.length}
+            style={{padding:"10px 24px",borderRadius:10,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:13,fontWeight:800,marginTop:4}}>
+            🔍 Analyze My Patterns
+          </button>
+        </div>
+      )}
+
+      {loading&&(
+        <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:12}}>
+          <div style={{fontSize:32}}>🧠</div>
+          <div style={{fontSize:13,color:B.textMuted}}>Scanning {trades.length} trades for patterns...</div>
+          <div style={{width:200,height:3,background:B.border,borderRadius:2,overflow:"hidden"}}>
+            <div style={{height:"100%",width:"70%",background:GL,borderRadius:2,animation:"pulse 1.5s infinite"}}/>
+          </div>
+        </div>
+      )}
+
+      {analysis&&(
+        <div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",gap:12}}>
+          {/* Summary score */}
+          <div style={{padding:"14px 16px",borderRadius:12,background:"rgba(0,0,0,0.3)",border:`1px solid ${B.border}`,display:"flex",alignItems:"center",gap:14}}>
+            <div style={{textAlign:"center"}}>
+              <div style={{fontSize:32,fontWeight:800,background:GL,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",fontFamily:"monospace"}}>{analysis.overallScore}</div>
+              <div style={{fontSize:9,color:B.textMuted}}>/100</div>
+            </div>
+            <div style={{flex:1}}>
+              <div style={{fontSize:14,fontWeight:700,color:B.text,marginBottom:4}}>{analysis.scoreLabel}</div>
+              <div style={{fontSize:12,color:B.textMuted,lineHeight:1.6}}>{analysis.summary}</div>
+            </div>
+          </div>
+
+          {/* Pattern findings */}
+          {analysis.patterns?.map((p,i)=>(
+            <div key={i} style={{padding:"12px 14px",borderRadius:10,background:`${TYPE_COLORS[p.type]||B.textMuted}08`,border:`1px solid ${TYPE_COLORS[p.type]||B.textMuted}25`}}>
+              <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
+                <span style={{fontSize:14}}>{p.type==="positive"?"✅":p.type==="negative"?"⚠️":"💡"}</span>
+                <span style={{fontSize:12,fontWeight:700,color:TYPE_COLORS[p.type]||B.text}}>{p.title}</span>
+              </div>
+              <div style={{fontSize:12,color:B.textMuted,lineHeight:1.6}}>{p.detail}</div>
+            </div>
+          ))}
+
+          {/* Action items */}
+          {analysis.actions?.length>0&&(
+            <div style={{padding:"14px 16px",borderRadius:12,background:`${B.teal}08`,border:`1px solid ${B.borderTeal}`}}>
+              <div style={{fontSize:10,color:B.teal,letterSpacing:1.5,textTransform:"uppercase",marginBottom:10}}>🎯 Action Plan</div>
+              {analysis.actions.map((a,i)=>(
+                <div key={i} style={{marginBottom:8,paddingBottom:8,borderBottom:i<analysis.actions.length-1?`1px solid ${B.border}`:"none"}}>
+                  <div style={{display:"flex",gap:8,alignItems:"flex-start"}}>
+                    <span style={{padding:"2px 6px",borderRadius:4,fontSize:9,fontWeight:700,background:a.priority==="high"?`${B.loss}20`:a.priority==="medium"?`${B.spark}20`:`${B.teal}20`,color:a.priority==="high"?B.loss:a.priority==="medium"?B.spark:B.teal,flexShrink:0}}>{a.priority}</span>
+                    <div>
+                      <div style={{fontSize:12,fontWeight:700,color:B.text}}>{a.action}</div>
+                      <div style={{fontSize:11,color:B.textMuted,marginTop:2}}>{a.reasoning}</div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 // ── Tradovate Sync Modal ──────────────────────────────────────────────────────
 function TradovateSyncModal({onClose, onSync, syncing}){
   const [range,setRange]=useState("today");
@@ -4180,7 +4753,7 @@ function TradovateSyncModal({onClose, onSync, syncing}){
 }
 
 
-const NAV=[{id:"overview",label:"Overview",icon:"▦"},{id:"journal",label:"Journal",icon:"⊟"},{id:"analytics",label:"Analytics",icon:"◈"},{id:"calendar",label:"Calendar",icon:"⊞"},{id:"playbooks",label:"Strategies",icon:"⊕"},{id:"resources",label:"Resources",icon:"◎"}];
+const NAV=[{id:"overview",label:"Overview",icon:"▦"},{id:"journal",label:"Journal",icon:"⊟"},{id:"analytics",label:"Analytics",icon:"◈"},{id:"calendar",label:"Calendar",icon:"⊞"},{id:"playbooks",label:"Strategies",icon:"⊕"},{id:"library",label:"Playbook",icon:"📚"},{id:"resources",label:"Resources",icon:"◎"}];
 
 export default function App(){
   const [session,setSession]=useState(null);
@@ -4195,7 +4768,13 @@ export default function App(){
   const [loading,setLoading]=useState(true);
   const [syncStatus,setSyncStatus]=useState("idle");
   const [lastImport,setLastImport]=useState(null);
-  const [strategies,setStrategies]=useState([]); // idle | syncing | connected | error
+  const [strategies,setStrategies]=useState([]);
+  const [accounts,setAccounts]=useState([
+    {id:"main",label:"Live Account",type:"live",color:"#00D4A8"},
+    {id:"apex_eval",label:"Apex Eval",type:"eval",color:"#4F8EF7"},
+    {id:"apex_demo",label:"Apex Demo",type:"demo",color:"#8B5CF6"},
+  ]);
+  const [activeAccount,setActiveAccount]=useState("all"); // idle | syncing | connected | error
   const [showSyncModal,setShowSyncModal]=useState(false);
   const [syncRange,setSyncRange]=useState({from:"",to:""});
 
@@ -4212,6 +4791,8 @@ export default function App(){
         const{data,error}=await supabase.from("trades").select("*").order("date",{ascending:false});
         if(error)console.error("Load error:",error);
         setTrades(data||[]);
+        // Load saved accounts config
+        try{const l=localStorage.getItem("pref_tca_accounts_v1");if(l)setAccounts(JSON.parse(l));}catch(e){}
       }catch(e){
         console.error("Failed to load trades:",e);
         setTrades([]);
@@ -4382,7 +4963,7 @@ export default function App(){
     {showImport&&<ImportModal onClose={()=>setShowImport(false)} onImport={handleImport} existingTrades={trades}/>}
     {delTrade&&<DeleteConfirm trade={delTrade} onConfirm={handleDelete} onCancel={()=>setDelTrade(null)}/>}
     <div style={{position:"fixed",top:0,left:0,bottom:0,width:216,background:"rgba(8,8,10,0.98)",borderRight:`1px solid ${B.border}`,display:"flex",flexDirection:"column",zIndex:100}}>
-      <div style={{padding:"22px 18px 18px",borderBottom:`1px solid ${B.border}`}}><div style={{display:"flex",alignItems:"center",gap:12}}><TCAIcon size={40}/><div><div style={{fontSize:10,fontWeight:800,color:B.text,letterSpacing:1,lineHeight:1.3,textTransform:"uppercase"}}>The Candlestick</div><div style={{fontSize:10,fontWeight:800,color:B.text,letterSpacing:1,lineHeight:1.3,textTransform:"uppercase"}}>Academy</div><div style={{marginTop:4,display:"inline-block",padding:"2px 8px",borderRadius:20,background:GL,fontSize:8,fontWeight:800,letterSpacing:2,color:"#0E0E10"}}>TRADE JOURNAL</div></div></div></div>
+      <div style={{padding:"22px 18px 18px",borderBottom:`1px solid ${B.border}`}}><div style={{display:"flex",alignItems:"center",gap:12}}><TCAIcon size={36}/><div><div style={{fontSize:13,fontWeight:800,background:GL,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",letterSpacing:-0.3}}>TCA Journal</div><div style={{fontSize:9,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",marginTop:1}}>Candlestick Academy</div><div style={{marginTop:4,display:"inline-block",padding:"2px 8px",borderRadius:20,background:GL,fontSize:8,fontWeight:800,letterSpacing:2,color:"#0E0E10"}}>TRADE JOURNAL</div></div></div></div>
       <nav style={{padding:"16px 12px",flex:1}}>{NAV.map(n=>(<button key={n.id} onClick={()=>setActive(n.id)} style={{display:"flex",alignItems:"center",gap:10,width:"100%",padding:"10px 12px",borderRadius:9,border:"none",background:active===n.id?"rgba(0,212,168,0.07)":"transparent",borderLeft:active===n.id?`2px solid ${B.teal}`:"2px solid transparent",color:active===n.id?B.teal:B.textMuted,cursor:"pointer",fontSize:13,fontWeight:600,textAlign:"left",transition:"all 0.15s",marginBottom:2}}><span style={{fontSize:14}}>{n.icon}</span>{n.label}</button>))}</nav>
       <div style={{padding:"16px 18px",borderTop:`1px solid ${B.border}`}}>
         <div style={{fontSize:9,color:B.textDim,letterSpacing:2,marginBottom:3}}>NY SESSION</div>
@@ -4405,17 +4986,23 @@ export default function App(){
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
           {hasSample&&(<button onClick={()=>setTrades([])} style={{padding:"8px 14px",borderRadius:9,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:11,fontWeight:600}}>Clear Sample Data</button>)}
           {active==="overview"&&<button onClick={()=>document.dispatchEvent(new CustomEvent("tca-toggle-edit"))} style={{padding:"8px 14px",borderRadius:9,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:12,fontWeight:600}}>✏ Edit Layout</button>}
+          <select value={activeAccount} onChange={e=>setActiveAccount(e.target.value)}
+            style={{padding:"7px 12px",borderRadius:9,border:`1px solid ${B.border}`,background:"rgba(0,0,0,0.5)",color:B.text,cursor:"pointer",fontSize:12,fontFamily:"'DM Sans',sans-serif"}}>
+            <option value="all">All Accounts</option>
+            {accounts.map(a=>(<option key={a.id} value={a.id}>{a.label}</option>))}
+          </select>
           <button onClick={()=>setShowImport(true)} style={{padding:"8px 16px",borderRadius:9,border:`1px solid ${B.blue}40`,background:`${B.blue}12`,color:B.blue,cursor:"pointer",fontSize:12,fontWeight:700}}>⬆ Import CSV</button>
           <button onClick={()=>{setEditTrade(null);setShowForm(true);}} style={{padding:"8px 18px",borderRadius:9,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:12,fontWeight:800}}>+ Log Trade</button>
         </div>
       </div>
       {hasSample&&(<div style={{marginBottom:18,padding:"10px 16px",borderRadius:10,background:"rgba(79,142,247,0.07)",border:"1px solid rgba(79,142,247,0.2)",fontSize:12,color:B.blue,display:"flex",alignItems:"center",justifyContent:"space-between"}}><span>Viewing sample data. Import your Tradovate CSV or log a real trade to get started.</span><button onClick={()=>setTrades([])} style={{background:"none",border:"none",color:B.blue,cursor:"pointer",fontWeight:700,fontSize:12,textDecoration:"underline"}}>Clear it</button></div>)}
-      {active==="overview"&&<Overview trades={trades} onGradeUpdate={handleGradeUpdate} session={session}/>}
-      {active==="journal"&&<Journal trades={trades} onEdit={handleEdit} onDelete={setDelTrade} onGradeUpdate={handleGradeUpdate}/>}
-      {active==="analytics"&&<Analytics trades={trades}/>}
-      {active==="calendar"&&<CalendarView trades={trades} onGradeUpdate={handleGradeUpdate}/>}
+      {active==="overview"&&<Overview trades={activeAccount==="all"?trades:trades.filter(t=>t.account_id===activeAccount)} onGradeUpdate={handleGradeUpdate} session={session}/>}
+      {active==="journal"&&<Journal trades={activeAccount==="all"?trades:trades.filter(t=>t.account_id===activeAccount)} onEdit={handleEdit} onDelete={setDelTrade} onGradeUpdate={handleGradeUpdate}/>}
+      {active==="analytics"&&<Analytics trades={activeAccount==="all"?trades:trades.filter(t=>t.account_id===activeAccount)}/>}
+      {active==="calendar"&&<CalendarView trades={activeAccount==="all"?trades:trades.filter(t=>t.account_id===activeAccount)} onGradeUpdate={handleGradeUpdate}/>}
       {active==="playbooks"&&<PlaybookView/>}
       {active==="resources"&&<ResourcesPage session={session}/>}
+      {active==="library"&&<PlaybookLibrary session={session}/>}
     </div>
   </div>);
 }
