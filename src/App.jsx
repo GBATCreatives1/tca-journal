@@ -6,6 +6,51 @@ const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL,
   import.meta.env.VITE_SUPABASE_ANON_KEY
 );
+// ── User Preferences (cross-device via Supabase) ─────────────────────────────
+async function getPref(userId, key){
+  // Check localStorage first for instant load
+  const local = localStorage.getItem(`pref_${key}`);
+  // Then fetch from Supabase for latest
+  try{
+    const {data} = await supabase
+      .from("user_preferences")
+      .select("value")
+      .eq("user_id", userId)
+      .eq("key", key)
+      .single();
+    if(data?.value){
+      localStorage.setItem(`pref_${key}`, data.value);
+      return data.value;
+    }
+  }catch(e){}
+  return local;
+}
+
+async function setPref(userId, key, value){
+  localStorage.setItem(`pref_${key}`, value);
+  if(!userId)return;
+  try{
+    await supabase
+      .from("user_preferences")
+      .upsert({user_id:userId, key, value, updated_at:new Date().toISOString()},
+              {onConflict:"user_id,key"});
+  }catch(e){
+    console.warn("Pref sync failed:", e.message);
+  }
+}
+
+async function syncPref(userId, key, onData){
+  // Load localStorage first (fast)
+  try{const l=localStorage.getItem(`pref_${key}`);if(l)onData(l);}catch(e){}
+  // Then Supabase (cross-device)
+  if(!userId)return;
+  try{
+    const{data}=await supabase.from("user_preferences").select("value").eq("user_id",userId).eq("key",key).single();
+    if(data?.value){localStorage.setItem(`pref_${key}`,data.value);onData(data.value);}
+  }catch(e){}
+}
+
+
 
 // ── Tradovate Sync ────────────────────────────────────────────────────────────
 // ── Tradovate via Vercel Proxy (avoids CORS) ─────────────────────────────────
@@ -474,7 +519,36 @@ const CTip=({active,payload,label})=>{if(!active||!payload?.length)return null;r
 function LoginScreen(){
   const [email,setEmail]=useState("");const [password,setPassword]=useState("");const [mode,setMode]=useState("login");const [error,setError]=useState("");const [loading,setLoading]=useState(false);
   const handle=async()=>{setLoading(true);setError("");const{error:err}=mode==="login"?await supabase.auth.signInWithPassword({email,password}):await supabase.auth.signUp({email,password});if(err)setError(err.message);setLoading(false);};
-  return(<div style={{minHeight:"100vh",background:B.bg,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'DM Sans','Segoe UI',sans-serif"}}><style>{`@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&family=Space+Mono:wght@400;700&display=swap');*{box-sizing:border-box;}body{margin:0;}`}</style><div style={{width:400,padding:44,borderRadius:20,background:"#13121A",border:`1px solid ${B.border}`,position:"relative",overflow:"hidden"}}><div style={{position:"absolute",top:0,left:0,right:0,height:3,background:GL}}/><div style={{textAlign:"center",marginBottom:36}}><div style={{display:"flex",justifyContent:"center",marginBottom:16}}><TCAIcon size={52}/></div><div style={{fontSize:11,fontWeight:800,color:B.text,letterSpacing:2,textTransform:"uppercase"}}>The Candlestick Academy</div><div style={{marginTop:6,display:"inline-block",padding:"2px 12px",borderRadius:20,background:GL,fontSize:9,fontWeight:800,letterSpacing:2,color:"#0E0E10"}}>TRADE JOURNAL</div></div><div style={{marginBottom:12}}><label style={lS}>Email</label><input type="email" value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handle()} placeholder="you@email.com" style={iS}/></div><div style={{marginBottom:20}}><label style={lS}>Password</label><input type="password" value={password} onChange={e=>setPassword(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handle()} placeholder="password" style={iS}/></div>{error&&<div style={{marginBottom:14,padding:"10px 14px",borderRadius:8,background:"rgba(240,90,126,0.1)",border:"1px solid rgba(240,90,126,0.3)",color:B.loss,fontSize:12}}>{error}</div>}<button onClick={handle} disabled={loading} style={{width:"100%",padding:"12px",borderRadius:10,border:"none",background:GL,color:"#0E0E10",fontWeight:800,fontSize:14,cursor:"pointer",opacity:loading?0.7:1}}>{loading?"Loading...":(mode==="login"?"Sign In":"Create Account")}</button><div style={{textAlign:"center",marginTop:18,fontSize:12,color:B.textMuted}}>{mode==="login"?"Don't have an account? ":"Already have an account? "}<span onClick={()=>{setMode(m=>m==="login"?"signup":"login");setError("");}} style={{color:B.teal,cursor:"pointer",fontWeight:700}}>{mode==="login"?"Sign up free":"Sign in"}</span></div></div></div>);
+  return(<div style={{minHeight:"100vh",background:B.bg,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'DM Sans','Segoe UI',sans-serif"}}><style>{`
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&family=Space+Mono:wght@400;700&display=swap');
+  *{box-sizing:border-box;}
+  body{margin:0;}
+  .tca-sidebar{position:fixed;top:0;left:0;bottom:0;width:216px;z-index:100;}
+  .tca-main{margin-left:216px;padding:24px 28px;min-height:100vh;}
+  .tca-stat-row{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;}
+  .tca-widget-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+  @media(max-width:1280px){
+    .tca-stat-row{grid-template-columns:repeat(3,1fr);}
+  }
+  @media(max-width:1100px){
+    .tca-sidebar{width:64px;}
+    .tca-main{margin-left:64px;padding:20px 18px;}
+    .tca-sidebar-label{display:none;}
+    .tca-sidebar-logo{display:none;}
+    .tca-widget-grid{grid-template-columns:1fr;}
+    .tca-stat-row{grid-template-columns:repeat(2,1fr);}
+  }
+  @media(max-width:768px){
+    .tca-sidebar{width:0;overflow:hidden;}
+    .tca-main{margin-left:0;padding:16px;}
+    .tca-stat-row{grid-template-columns:1fr 1fr;}
+    .tca-widget-grid{grid-template-columns:1fr;}
+  }
+  .tca-stat-row > *{min-width:0;}
+  .tca-widget-grid > *{min-width:0;}
+  .tca-main > *{max-width:100%;}
+  table{min-width:0;}
+`}</style><div style={{width:400,padding:44,borderRadius:20,background:"#13121A",border:`1px solid ${B.border}`,position:"relative",overflow:"hidden"}}><div style={{position:"absolute",top:0,left:0,right:0,height:3,background:GL}}/><div style={{textAlign:"center",marginBottom:36}}><div style={{display:"flex",justifyContent:"center",marginBottom:16}}><TCAIcon size={52}/></div><div style={{fontSize:11,fontWeight:800,color:B.text,letterSpacing:2,textTransform:"uppercase"}}>The Candlestick Academy</div><div style={{marginTop:6,display:"inline-block",padding:"2px 12px",borderRadius:20,background:GL,fontSize:9,fontWeight:800,letterSpacing:2,color:"#0E0E10"}}>TRADE JOURNAL</div></div><div style={{marginBottom:12}}><label style={lS}>Email</label><input type="email" value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handle()} placeholder="you@email.com" style={iS}/></div><div style={{marginBottom:20}}><label style={lS}>Password</label><input type="password" value={password} onChange={e=>setPassword(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handle()} placeholder="password" style={iS}/></div>{error&&<div style={{marginBottom:14,padding:"10px 14px",borderRadius:8,background:"rgba(240,90,126,0.1)",border:"1px solid rgba(240,90,126,0.3)",color:B.loss,fontSize:12}}>{error}</div>}<button onClick={handle} disabled={loading} style={{width:"100%",padding:"12px",borderRadius:10,border:"none",background:GL,color:"#0E0E10",fontWeight:800,fontSize:14,cursor:"pointer",opacity:loading?0.7:1}}>{loading?"Loading...":(mode==="login"?"Sign In":"Create Account")}</button><div style={{textAlign:"center",marginTop:18,fontSize:12,color:B.textMuted}}>{mode==="login"?"Don't have an account? ":"Already have an account? "}<span onClick={()=>{setMode(m=>m==="login"?"signup":"login");setError("");}} style={{color:B.teal,cursor:"pointer",fontWeight:700}}>{mode==="login"?"Sign up free":"Sign in"}</span></div></div></div>);
 }
 
 function TradeFormModal({onClose,onSave,editTrade}){
@@ -1001,7 +1075,7 @@ function StreakBadge({trades}){
   );
 }
 
-function Overview({trades, onGradeUpdate}){
+function Overview({trades, onGradeUpdate, session}){
   const wins=trades.filter(t=>t.result==="Win"),losses=trades.filter(t=>t.result==="Loss");
   const totalPnl=trades.reduce((a,t)=>a+t.pnl,0);
   const winRate=trades.length?Math.round((wins.length/trades.length)*100):0;
@@ -1028,10 +1102,12 @@ function Overview({trades, onGradeUpdate}){
   const [loaded,setLoaded]=useState(false);
 
   useEffect(()=>{
+    if(!session?.user?.id)return;
+    // Load instantly from localStorage, then sync latest from Supabase
     try{
-      const saved=localStorage.getItem(LAYOUT_KEY);
-      if(saved){
-        const parsed=JSON.parse(saved);
+      const local=localStorage.getItem(`pref_${LAYOUT_KEY}`);
+      if(local){
+        const parsed=JSON.parse(local);
         if(Array.isArray(parsed)){
           const padded=[...parsed];
           while(padded.length<6)padded.push(null);
@@ -1039,13 +1115,29 @@ function Overview({trades, onGradeUpdate}){
         }
       }
     }catch(e){}
-    setLoaded(true);
-  },[]);
+    // Then fetch latest from Supabase (may override local if newer)
+    (async()=>{
+      try{
+        const val=await getPref(session.user.id, LAYOUT_KEY);
+        if(val){
+          const parsed=JSON.parse(val);
+          if(Array.isArray(parsed)){
+            const padded=[...parsed];
+            while(padded.length<6)padded.push(null);
+            setLayout(padded.slice(0,6));
+          }
+        }
+      }catch(e){}
+      setLoaded(true);
+    })();
+  },[session]);
 
   const persist=(newLayout)=>{
     setSaveStatus("saving");
-    try{localStorage.setItem(LAYOUT_KEY,JSON.stringify(newLayout));setSaveStatus("saved");}
-    catch(e){setSaveStatus("unsaved");}
+    if(!session?.user?.id){setSaveStatus("unsaved");return;}
+    setPref(session.user.id, LAYOUT_KEY, JSON.stringify(newLayout))
+      .then(()=>setSaveStatus("saved"))
+      .catch(()=>setSaveStatus("unsaved"));
   };
 
   const updateLayout=(nl)=>{setLayout(nl);persist(nl);};
@@ -1241,7 +1333,7 @@ function Overview({trades, onGradeUpdate}){
       {selectedDay&&<DayJournalModal date={selectedDay} trades={trades} onClose={()=>setSelectedDay(null)} onGradeUpdate={onGradeUpdate}/>}
 
       {/* ── PINNED STAT ROW — always visible ── */}
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr 1fr",gap:12}}>
+      <div className="tca-stat-row">
         {/* Account P&L */}
         <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:"18px 20px",position:"relative",overflow:"hidden"}}>
           <div style={{position:"absolute",top:0,left:0,right:0,height:2,background:GTB}}/>
@@ -1280,7 +1372,7 @@ function Overview({trades, onGradeUpdate}){
       )}
 
       {/* ── WIDGET GRID ── 2 columns, 3 rows */}
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+      <div className="tca-widget-grid">
         {[0,1,2,3,4,5].map(slotIdx=>{
           const wid=layout[slotIdx];
           const isEmpty=!wid;
@@ -1649,14 +1741,20 @@ function useTemplates() {
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
+    // Load from localStorage instantly
+    try{
+      const l=localStorage.getItem("pref_"+TEMPLATES_STORAGE_KEY);
+      if(l){const saved=JSON.parse(l);const custom=saved.filter(t=>!t.locked);setTemplates([...DEFAULT_TEMPLATES,...custom]);}
+    }catch(e){}
+    // Sync from Supabase
     (async () => {
       try {
-        const r = await window.storage.get(TEMPLATES_STORAGE_KEY);
-        if (r?.value) {
-          const saved = JSON.parse(r.value);
-          // Merge defaults with custom templates
-          const customTemplates = saved.filter(t => !t.locked);
-          setTemplates([...DEFAULT_TEMPLATES, ...customTemplates]);
+        const{data}=await supabase.from("user_preferences").select("value").eq("key",TEMPLATES_STORAGE_KEY).single();
+        if(data?.value){
+          localStorage.setItem("pref_"+TEMPLATES_STORAGE_KEY,data.value);
+          const saved=JSON.parse(data.value);
+          const custom=saved.filter(t=>!t.locked);
+          setTemplates([...DEFAULT_TEMPLATES,...custom]);
         }
       } catch(e) {}
       setLoaded(true);
@@ -1665,9 +1763,9 @@ function useTemplates() {
 
   const saveTemplates = async (newTemplates) => {
     setTemplates(newTemplates);
-    try {
-      await window.storage.set(TEMPLATES_STORAGE_KEY, JSON.stringify(newTemplates));
-    } catch(e) {}
+    const val=JSON.stringify(newTemplates);
+    localStorage.setItem("pref_"+TEMPLATES_STORAGE_KEY,val);
+    try{await (async()=>{const{data:{user}}=await supabase.auth.getUser();await supabase.from("user_preferences").upsert({user_id:user?.id,key:TEMPLATES_STORAGE_KEY,value:val,updated_at:new Date().toISOString()},{onConflict:"user_id,key"});})();}catch(e){}
   };
 
   const addTemplate = (template) => {
@@ -1893,10 +1991,17 @@ function DayJournalModal({date, trades, onClose, onGradeUpdate}){
 
   useEffect(()=>{
     (async()=>{
+      // Load from localStorage instantly
       try{
-        const r=await window.storage.get(STORAGE_KEY);
-        if(r?.value){
-          const saved=JSON.parse(r.value);
+        const l=localStorage.getItem("pref_"+STORAGE_KEY);
+        if(l){const s=JSON.parse(l);setNotes(s.notes||"");setChecklist(s.checklist||DEFAULT_CHECKLIST.map(i=>({text:i,checked:false})));}
+      }catch(e){}
+      // Sync latest from Supabase
+      try{
+        const{data}=await supabase.from("user_preferences").select("value").eq("key",STORAGE_KEY).single();
+        if(data?.value){
+          localStorage.setItem("pref_"+STORAGE_KEY,data.value);
+          const saved=JSON.parse(data.value);
           setNotes(saved.notes||"");
           setChecklist(saved.checklist||DEFAULT_CHECKLIST.map(item=>({text:item,checked:false})));
         }else{
@@ -1911,11 +2016,10 @@ function DayJournalModal({date, trades, onClose, onGradeUpdate}){
 
   const save=async(newNotes,newChecklist)=>{
     setSaving(true);
-    try{
-      await window.storage.set(STORAGE_KEY,JSON.stringify({notes:newNotes??notes,checklist:newChecklist??checklist}));
-    }catch(e){}
-    setSaving(false);
-  };
+    const val=JSON.stringify({notes:newNotes??notes,checklist:newChecklist??checklist});
+    localStorage.setItem("pref_"+STORAGE_KEY,val);
+    try{await (async()=>{const{data:{user}}=await supabase.auth.getUser();await supabase.from("user_preferences").upsert({user_id:user?.id,key:STORAGE_KEY,value:val,updated_at:new Date().toISOString()},{onConflict:"user_id,key"});})();}catch(e){}
+    setSaving(false);  };
 
   const toggleCheck=(i)=>{
     const updated=checklist.map((item,idx)=>idx===i?{...item,checked:!item.checked}:item);
@@ -2269,10 +2373,11 @@ function PlaybookView(){
   const [loaded,setLoaded]=useState(false);
 
   useEffect(()=>{
+    try{const l=localStorage.getItem("pref_"+STORAGE_KEY);if(l)setStrategies(JSON.parse(l));}catch(e){}
     (async()=>{
       try{
-        const r=await window.storage.get(STORAGE_KEY);
-        if(r?.value)setStrategies(JSON.parse(r.value));
+        const{data}=await supabase.from("user_preferences").select("value").eq("key",STORAGE_KEY).single();
+        if(data?.value){setStrategies(JSON.parse(data.value));localStorage.setItem("pref_"+STORAGE_KEY,data.value);}
       }catch(e){}
       setLoaded(true);
     })();
@@ -2280,9 +2385,9 @@ function PlaybookView(){
 
   useEffect(()=>{
     if(!loaded)return;
-    (async()=>{
-      try{await window.storage.set(STORAGE_KEY,JSON.stringify(strategies));}catch(e){}
-    })();
+    const val=JSON.stringify(strategies);
+    localStorage.setItem("pref_"+STORAGE_KEY,val);
+    (async()=>{const{data:{user}}=await supabase.auth.getUser();await supabase.from("user_preferences").upsert({user_id:user?.id,key:STORAGE_KEY,value:val,updated_at:new Date().toISOString()},{onConflict:"user_id,key"});})().catch(()=>{});
   },[strategies,loaded]);
 
   const handleSave=(strat)=>{
@@ -3030,8 +3135,18 @@ function ProgressTrackerWidget({trades}){
   const [checks,setChecks]=useState({});
   const [newRule,setNewRule]=useState("");
   const [loaded,setLoaded]=useState(false);
-  useEffect(()=>{(async()=>{try{const r=await window.storage.get(SKEY);if(r?.value){const s=JSON.parse(r.value);if(s.rules)setRules(s.rules);if(s.checks)setChecks(s.checks);}}catch(e){}setLoaded(true);})();},[]);
-  const save=async(nr,nc)=>{try{await window.storage.set(SKEY,JSON.stringify({rules:nr??rules,checks:nc??checks}));}catch(e){}};
+  useEffect(()=>{
+    try{const l=localStorage.getItem("pref_"+SKEY);if(l){const s=JSON.parse(l);if(s.rules)setRules(s.rules);if(s.checks)setChecks(s.checks);}}catch(e){}
+    (async()=>{
+      try{const{data}=await supabase.from("user_preferences").select("value").eq("key",SKEY).single();if(data?.value){localStorage.setItem("pref_"+SKEY,data.value);const s=JSON.parse(data.value);if(s.rules)setRules(s.rules);if(s.checks)setChecks(s.checks);}}catch(e){}
+      setLoaded(true);
+    })();
+  },[]);
+  const save=async(nr,nc)=>{
+    const val=JSON.stringify({rules:nr??rules,checks:nc??checks});
+    localStorage.setItem("pref_"+SKEY,val);
+    try{await (async()=>{const{data:{user}}=await supabase.auth.getUser();await supabase.from("user_preferences").upsert({user_id:user?.id,key:SKEY,value:val,updated_at:new Date().toISOString()},{onConflict:"user_id,key"});})();}catch(e){}
+  };
   const today=new Date().toISOString().slice(0,10);
   const todayChecks=checks[today]||{};
   const toggle=(id)=>{const u={...checks,[today]:{...todayChecks,[id]:!todayChecks[id]}};setChecks(u);save(undefined,u);};
@@ -3084,8 +3199,17 @@ function ReportWidget({trades}){
   const SKEY="tca_report_v2";
   const [selected,setSelected]=useState(["netPnl","winRate","profitFactor"]);
   const [showPicker,setShowPicker]=useState(false);
-  useEffect(()=>{(async()=>{try{const r=await window.storage.get(SKEY);if(r?.value)setSelected(JSON.parse(r.value));}catch(e){}})();},[]);
-  const toggle=(id)=>{let u;if(selected.includes(id)){u=selected.filter(s=>s!==id);}else if(selected.length<3){u=[...selected,id];}else{u=[...selected.slice(1),id];}setSelected(u);(async()=>{try{await window.storage.set(SKEY,JSON.stringify(u));}catch(e){}})();};
+  useEffect(()=>{
+    try{const l=localStorage.getItem("pref_"+SKEY);if(l)setSelected(JSON.parse(l));}catch(e){}
+    (async()=>{try{const{data}=await supabase.from("user_preferences").select("value").eq("key",SKEY).single();if(data?.value){localStorage.setItem("pref_"+SKEY,data.value);setSelected(JSON.parse(data.value));}}catch(e){}})();
+  },[]);
+  const toggle=(id)=>{
+    let u;if(selected.includes(id)){u=selected.filter(s=>s!==id);}else if(selected.length<3){u=[...selected,id];}else{u=[...selected.slice(1),id];}
+    setSelected(u);
+    const val=JSON.stringify(u);
+    localStorage.setItem("pref_"+SKEY,val);
+    (async()=>{const{data:{user}}=await supabase.auth.getUser();await supabase.from("user_preferences").upsert({user_id:user?.id,key:SKEY,value:val,updated_at:new Date().toISOString()},{onConflict:"user_id,key"});})().catch(()=>{});
+  };
   const grads=[GL,GTB,GBP];
   const selMetrics=ALL_METRICS.filter(m=>selected.includes(m.id));
   return(
@@ -3127,7 +3251,7 @@ function ReportWidget({trades}){
 
 // ── WIDGETS DASHBOARD ────────────────────────────────────────────────────────
 // ── Resources Page ────────────────────────────────────────────────────────────
-function ResourcesPage(){
+function ResourcesPage({session}){
   const SKEY="tca_yt_videos_v1";
   const [videos,setVideos]=useState([]);
   const [showAdd,setShowAdd]=useState(false);
@@ -3135,17 +3259,29 @@ function ResourcesPage(){
   const [newTitle,setNewTitle]=useState("");
   const [newDesc,setNewDesc]=useState("");
 
-  // Use localStorage for reliability
   useEffect(()=>{
+    // Load from localStorage instantly
     try{
-      const saved=localStorage.getItem(SKEY);
-      if(saved)setVideos(JSON.parse(saved));
+      const local=localStorage.getItem(`pref_${SKEY}`);
+      if(local)setVideos(JSON.parse(local));
     }catch(e){}
-  },[]);
+    // Then sync from Supabase
+    if(!session?.user?.id)return;
+    (async()=>{
+      try{
+        const val=await getPref(session.user.id, SKEY);
+        if(val)setVideos(JSON.parse(val));
+      }catch(e){}
+    })();
+  },[session]);
 
   const saveVideos=(vids)=>{
     setVideos(vids);
-    try{localStorage.setItem(SKEY,JSON.stringify(vids));}catch(e){}
+    if(session?.user?.id){
+      setPref(session.user.id, SKEY, JSON.stringify(vids)).catch(()=>{});
+    } else {
+      try{localStorage.setItem(`pref_${SKEY}`,JSON.stringify(vids));}catch(e){}
+    }
   };
 
   const extractId=(url)=>{
@@ -3364,9 +3500,10 @@ export default function App(){
       }
       // Load strategies for grading
       try{
-        const sr=await window.storage.get("tca_strategies_v1");
-        if(sr?.value)setStrategies(JSON.parse(sr.value));
-      }catch(e){}
+        const{data}=await supabase.from("user_preferences").select("value").eq("key","tca_strategies_v1").single();
+        if(data?.value)setStrategies(JSON.parse(data.value));
+        else{const l=localStorage.getItem("pref_tca_strategies_v1");if(l)setStrategies(JSON.parse(l));}
+      }catch(e){try{const l=localStorage.getItem("pref_tca_strategies_v1");if(l)setStrategies(JSON.parse(l));}catch(e2){}}
       setLoading(false);
     })();
   },[session]);
@@ -3526,7 +3663,7 @@ export default function App(){
     {showForm&&<TradeFormModal onClose={()=>{setShowForm(false);setEditTrade(null);}} onSave={handleSave} editTrade={editTrade}/>}
     {showImport&&<ImportModal onClose={()=>setShowImport(false)} onImport={handleImport} existingTrades={trades}/>}
     {delTrade&&<DeleteConfirm trade={delTrade} onConfirm={handleDelete} onCancel={()=>setDelTrade(null)}/>}
-    <div style={{position:"fixed",top:0,left:0,bottom:0,width:216,background:"rgba(8,8,10,0.98)",borderRight:`1px solid ${B.border}`,display:"flex",flexDirection:"column",zIndex:10,backdropFilter:"blur(24px)"}}>
+    <div className="tca-sidebar" style={{background:"rgba(8,8,10,0.98)",borderRight:`1px solid ${B.border}`,display:"flex",flexDirection:"column",zIndex:100}}>
       <div style={{padding:"22px 18px 18px",borderBottom:`1px solid ${B.border}`}}><div style={{display:"flex",alignItems:"center",gap:12}}><TCAIcon size={40}/><div><div style={{fontSize:10,fontWeight:800,color:B.text,letterSpacing:1,lineHeight:1.3,textTransform:"uppercase"}}>The Candlestick</div><div style={{fontSize:10,fontWeight:800,color:B.text,letterSpacing:1,lineHeight:1.3,textTransform:"uppercase"}}>Academy</div><div style={{marginTop:4,display:"inline-block",padding:"2px 8px",borderRadius:20,background:GL,fontSize:8,fontWeight:800,letterSpacing:2,color:"#0E0E10"}}>TRADE JOURNAL</div></div></div></div>
       <nav style={{padding:"16px 12px",flex:1}}>{NAV.map(n=>(<button key={n.id} onClick={()=>setActive(n.id)} style={{display:"flex",alignItems:"center",gap:10,width:"100%",padding:"10px 12px",borderRadius:9,border:"none",background:active===n.id?"rgba(0,212,168,0.07)":"transparent",borderLeft:active===n.id?`2px solid ${B.teal}`:"2px solid transparent",color:active===n.id?B.teal:B.textMuted,cursor:"pointer",fontSize:13,fontWeight:600,textAlign:"left",transition:"all 0.15s",marginBottom:2}}><span style={{fontSize:14}}>{n.icon}</span>{n.label}</button>))}</nav>
       <div style={{padding:"16px 18px",borderTop:`1px solid ${B.border}`}}>
@@ -3544,7 +3681,7 @@ export default function App(){
         <button onClick={()=>supabase.auth.signOut()} style={{marginTop:10,width:"100%",padding:"7px",borderRadius:8,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:11,fontWeight:600}}>Sign Out</button>
       </div>
     </div>
-    <div style={{marginLeft:216,padding:"28px 32px",minHeight:"100vh"}}>
+    <div className="tca-main" style={{minHeight:"100vh"}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
         <div><h1 style={{margin:0,fontSize:20,fontWeight:800,color:B.text,letterSpacing:-0.5}}>{NAV.find(n=>n.id===active)?.label}</h1><div style={{fontSize:12,color:B.textMuted,marginTop:4}}>{session.user.email} - {trades.filter(t=>!t.id?.startsWith("s")).length} trades logged</div></div>
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
@@ -3555,12 +3692,12 @@ export default function App(){
         </div>
       </div>
       {hasSample&&(<div style={{marginBottom:18,padding:"10px 16px",borderRadius:10,background:"rgba(79,142,247,0.07)",border:"1px solid rgba(79,142,247,0.2)",fontSize:12,color:B.blue,display:"flex",alignItems:"center",justifyContent:"space-between"}}><span>Viewing sample data. Import your Tradovate CSV or log a real trade to get started.</span><button onClick={()=>setTrades([])} style={{background:"none",border:"none",color:B.blue,cursor:"pointer",fontWeight:700,fontSize:12,textDecoration:"underline"}}>Clear it</button></div>)}
-      {active==="overview"&&<Overview trades={trades} onGradeUpdate={handleGradeUpdate}/>}
+      {active==="overview"&&<Overview trades={trades} onGradeUpdate={handleGradeUpdate} session={session}/>}
       {active==="journal"&&<Journal trades={trades} onEdit={handleEdit} onDelete={setDelTrade} onGradeUpdate={handleGradeUpdate}/>}
       {active==="analytics"&&<Analytics trades={trades}/>}
       {active==="calendar"&&<CalendarView trades={trades} onGradeUpdate={handleGradeUpdate}/>}
       {active==="playbooks"&&<PlaybookView/>}
-      {active==="resources"&&<ResourcesPage/>}
+      {active==="resources"&&<ResourcesPage session={session}/>}
     </div>
   </div>);
 }
