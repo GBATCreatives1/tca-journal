@@ -126,7 +126,32 @@ function execToTrade(exec) {
 }
 
 // ── Brand ─────────────────────────────────────────────────────────────────────
-const B={teal:"#00D4A8",blue:"#4F8EF7",purple:"#8B5CF6",spark:"#7B61FF",profit:"#00D4A8",loss:"#F05A7E",bg:"#0E0E10",surface:"rgba(255,255,255,0.025)",border:"rgba(255,255,255,0.07)",borderTeal:"rgba(0,212,168,0.25)",borderPurp:"rgba(139,92,246,0.25)",text:"#F0EEF8",textMuted:"#6B6880",textDim:"#2E2C3A"};
+// ── Theme System ──────────────────────────────────────────────────────────────
+const DARK_THEME={
+  teal:"#00D4A8",blue:"#4F8EF7",purple:"#8B5CF6",spark:"#7B61FF",
+  profit:"#059669",loss:"#E53E3E",
+  bg:"#0E0E10",surface:"rgba(255,255,255,0.025)",
+  border:"rgba(255,255,255,0.07)",borderTeal:"rgba(0,212,168,0.25)",
+  borderPurp:"rgba(139,92,246,0.25)",
+  text:"#F0EEF8",textMuted:"#6B6880",textDim:"#2E2C3A",
+  cardBg:"rgba(255,255,255,0.025)",
+  inputBg:"rgba(255,255,255,0.06)",
+  sidebarBg:"rgba(8,8,10,0.98)",
+  isDark:true,
+};
+const LIGHT_THEME={
+  teal:"#00A87D",blue:"#2B6CB0",purple:"#6B46C1",spark:"#553C9A",
+  profit:"#276749",loss:"#C53030",
+  bg:"#F7F8FC",surface:"#FFFFFF",
+  border:"rgba(0,0,0,0.09)",borderTeal:"rgba(0,168,125,0.25)",
+  borderPurp:"rgba(107,70,193,0.25)",
+  text:"#1A1A2E",textMuted:"#6B7280",textDim:"#D1D5DB",
+  cardBg:"#FFFFFF",
+  inputBg:"rgba(0,0,0,0.04)",
+  sidebarBg:"#1E2030",
+  isDark:false,
+};
+let B=DARK_THEME;
 const GL="linear-gradient(135deg,#00D4A8 0%,#4F8EF7 50%,#8B5CF6 100%)";
 const GTB="linear-gradient(90deg,#00D4A8,#4F8EF7)";
 const GBP="linear-gradient(90deg,#4F8EF7,#8B5CF6)";
@@ -1543,12 +1568,69 @@ function Overview({trades, onGradeUpdate, session}){
 
 function Journal({trades,onEdit,onDelete,onGradeUpdate}){
   const [selectedTrade,setSelectedTrade]=useState(null);
-  const [filter,setFilter]=useState("All");const [sort,setSort]=useState("date");
+  const [filterInst,setFilterInst]=useState("All");
+  const [filterResult,setFilterResult]=useState("All");
+  const [filterGrade,setFilterGrade]=useState("All");
+  const [filterSession,setFilterSession]=useState("All");
+  const [filterSetup,setFilterSetup]=useState("All");
+  const [filterAccount,setFilterAccount]=useState("All");
+  const [sort,setSort]=useState("date");
+  const [sortDir,setSortDir]=useState("desc");
+  const [search,setSearch]=useState("");
+
   const insts=["All",...[...new Set(trades.map(t=>t.instrument))]];
-  const filtered=filter==="All"?trades:trades.filter(t=>t.instrument===filter);
-  const sorted=[...filtered].sort((a,b)=>sort==="date"?b.date.localeCompare(a.date):b.pnl-a.pnl);
+  const setups=["All",...[...new Set(trades.map(t=>t.setup).filter(Boolean))]];
+  const accounts=["All",...[...new Set(trades.map(t=>t.account_id).filter(Boolean))]];
+
+  const filtered=trades.filter(t=>{
+    if(filterInst!=="All"&&t.instrument!==filterInst)return false;
+    if(filterResult!=="All"&&t.result!==filterResult)return false;
+    if(filterGrade!=="All"&&t.grade!==filterGrade)return false;
+    if(filterSession!=="All"&&t.session!==filterSession)return false;
+    if(filterSetup!=="All"&&t.setup!==filterSetup)return false;
+    if(filterAccount!=="All"&&t.account_id!==filterAccount)return false;
+    if(search){
+      const s=search.toLowerCase();
+      if(!t.instrument?.toLowerCase().includes(s)&&
+         !t.setup?.toLowerCase().includes(s)&&
+         !t.notes?.toLowerCase().includes(s)&&
+         !t.date?.includes(s))return false;
+    }
+    return true;
+  });
+
+  const sortFns={
+    date:(a,b)=>sortDir==="desc"?b.date.localeCompare(a.date):a.date.localeCompare(b.date),
+    pnl:(a,b)=>sortDir==="desc"?b.pnl-a.pnl:a.pnl-b.pnl,
+    grade:(a,b)=>{const g=["A+","A","B","C","D"];return sortDir==="desc"?g.indexOf(a.grade)-g.indexOf(b.grade):g.indexOf(b.grade)-g.indexOf(a.grade);},
+    rr:(a,b)=>{const rv=v=>parseFloat((v||"0").toString().replace("R",""))||0;return sortDir==="desc"?rv(b.rr)-rv(a.rr):rv(a.rr)-rv(b.rr);},
+  };
+  const sorted=[...filtered].sort(sortFns[sort]||sortFns.date);
+  const activeFilters=[filterInst!=="All",filterResult!=="All",filterGrade!=="All",filterSession!=="All",filterSetup!=="All",filterAccount!=="All",search].filter(Boolean).length;
   if(!trades.length)return(<div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:400,gap:16}}><TCAIcon size={64}/><div style={{fontSize:15,color:B.textMuted}}>No trades yet.</div></div>);
-  return(<div style={{display:"flex",flexDirection:"column",gap:16}}>{selectedTrade&&<TradeDetailModal trade={selectedTrade} onClose={()=>setSelectedTrade(null)} onEdit={t=>{onEdit(t);setSelectedTrade(null);}} onGradeUpdate={onGradeUpdate}/>}<div style={{display:"flex",gap:8,alignItems:"center"}}><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{insts.map(i=>(<button key={i} onClick={()=>setFilter(i)} style={{padding:"5px 14px",borderRadius:20,border:"1px solid",borderColor:filter===i?B.teal:B.border,background:filter===i?`${B.teal}18`:"transparent",color:filter===i?B.teal:B.textMuted,cursor:"pointer",fontSize:12,fontWeight:700}}>{i}</button>))}</div><div style={{marginLeft:"auto",display:"flex",gap:6}}>{["date","pnl"].map(s=>(<button key={s} onClick={()=>setSort(s)} style={{padding:"5px 12px",borderRadius:8,border:"1px solid",borderColor:sort===s?B.purple:B.border,background:sort===s?`${B.purple}18`:"transparent",color:sort===s?B.purple:B.textMuted,cursor:"pointer",fontSize:11,fontWeight:600}}>{s==="date"?"Date":"P&L"}</button>))}</div></div><div style={{display:"grid",gridTemplateColumns:"70px 72px 68px 52px 110px 72px 56px 56px 1fr 78px",padding:"8px 14px",fontSize:10,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",borderBottom:`1px solid ${B.border}`}}>{["Date","Symbol","Dir","Grade","Setup","P&L","R:R","Result","Notes",""].map((h,i)=><div key={i}>{h}</div>)}</div><div style={{display:"flex",flexDirection:"column",gap:4}}>{sorted.map(t=>(<div key={t.id} onClick={()=>setSelectedTrade(t)} style={{display:"grid",gridTemplateColumns:"70px 72px 68px 52px 110px 72px 56px 56px 1fr 78px",padding:"11px 14px",borderRadius:10,background:B.surface,border:`1px solid ${B.border}`,borderLeft:`3px solid ${t.result==="Win"?B.teal:B.loss}`,cursor:"pointer",transition:"background 0.15s"}} onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.04)"} onMouseLeave={e=>e.currentTarget.style.background=B.surface}><div style={{fontSize:11,color:B.textMuted}}>{t.date.slice(5)}</div><div><span style={{fontSize:11,padding:"2px 7px",borderRadius:5,fontWeight:700,background:`${INST_COLOR[t.instrument]||B.teal}20`,color:INST_COLOR[t.instrument]||B.teal}}>{t.instrument}</span></div><div style={{fontSize:12,color:t.direction==="Long"?"#4ade80":"#f87171"}}>{t.direction}</div><GradeBadge grade={t.grade||"B"} tradeId={t.id} onSave={g=>onGradeUpdate&&onGradeUpdate(t.id,g)} size="small"/><div style={{fontSize:11,color:"#9CA0BC",overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>{t.setup}</div><div style={{fontSize:13,fontWeight:800,fontFamily:"monospace",color:pnlColor(t.pnl)}}>{fmt(t.pnl)}</div><div style={{fontSize:11,fontFamily:"monospace",color:B.textMuted}}>{t.rr}</div><div style={{fontSize:11,fontWeight:700,color:t.result==="Win"?B.profit:B.loss}}>{t.result}</div><div style={{fontSize:11,color:B.textDim,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>{t.notes}</div><div style={{display:"flex",gap:5}}><button onClick={()=>onEdit(t)} style={{padding:"4px 8px",borderRadius:6,border:`1px solid ${B.blue}40`,background:`${B.blue}12`,color:B.blue,cursor:"pointer",fontSize:10,fontWeight:700}}>Edit</button><button onClick={()=>onDelete(t)} style={{padding:"4px 8px",borderRadius:6,border:`1px solid ${B.loss}40`,background:`${B.loss}12`,color:B.loss,cursor:"pointer",fontSize:10,fontWeight:700}}>Del</button></div></div>))}</div></div>);
+  return(<div style={{display:"flex",flexDirection:"column",gap:16}}>{selectedTrade&&<TradeDetailModal trade={selectedTrade} onClose={()=>setSelectedTrade(null)} onEdit={t=>{onEdit(t);setSelectedTrade(null);}} onGradeUpdate={onGradeUpdate}/>}<div style={{display:"flex",flexDirection:"column",gap:10}}>
+    {/* Search bar */}
+    <div style={{display:"flex",gap:8,alignItems:"center"}}>
+      <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Search trades by setup, notes, date..." style={{...iS,flex:1,padding:"8px 14px",fontSize:12}}/>
+      {activeFilters>0&&<button onClick={()=>{setFilterInst("All");setFilterResult("All");setFilterGrade("All");setFilterSession("All");setFilterSetup("All");setFilterAccount("All");setSearch("");}} style={{padding:"7px 12px",borderRadius:8,border:`1px solid ${B.loss}40`,background:`${B.loss}12`,color:B.loss,cursor:"pointer",fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>✕ Clear {activeFilters} filter{activeFilters!==1?"s":""}</button>}
+      <div style={{fontSize:11,color:B.textMuted,whiteSpace:"nowrap"}}>{sorted.length}/{trades.length} trades</div>
+    </div>
+    {/* Filter rows */}
+    <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+      <span style={{fontSize:10,color:B.textMuted,letterSpacing:1}}>INSTRUMENT</span>
+      {insts.map(i=>(<button key={i} onClick={()=>setFilterInst(i)} style={{padding:"4px 12px",borderRadius:20,border:"1px solid",borderColor:filterInst===i?B.teal:B.border,background:filterInst===i?`${B.teal}18`:"transparent",color:filterInst===i?B.teal:B.textMuted,cursor:"pointer",fontSize:11,fontWeight:700}}>{i}</button>))}
+      <span style={{fontSize:10,color:B.textMuted,letterSpacing:1,marginLeft:8}}>RESULT</span>
+      {["All","Win","Loss"].map(r=>(<button key={r} onClick={()=>setFilterResult(r)} style={{padding:"4px 12px",borderRadius:20,border:"1px solid",borderColor:filterResult===r?(r==="Win"?B.profit:r==="Loss"?B.loss:B.teal):B.border,background:filterResult===r?(r==="Win"?`${B.profit}18`:r==="Loss"?`${B.loss}18`:`${B.teal}18`):"transparent",color:filterResult===r?(r==="Win"?B.profit:r==="Loss"?B.loss:B.teal):B.textMuted,cursor:"pointer",fontSize:11,fontWeight:700}}>{r}</button>))}
+      <span style={{fontSize:10,color:B.textMuted,letterSpacing:1,marginLeft:8}}>GRADE</span>
+      {["All","A+","A","B","C","D"].map(g=>(<button key={g} onClick={()=>setFilterGrade(g)} style={{padding:"4px 10px",borderRadius:20,border:"1px solid",borderColor:filterGrade===g?(GRADE_COLOR[g]||B.teal):B.border,background:filterGrade===g?`${GRADE_COLOR[g]||B.teal}18`:"transparent",color:filterGrade===g?(GRADE_COLOR[g]||B.teal):B.textMuted,cursor:"pointer",fontSize:11,fontWeight:700}}>{g}</button>))}
+    </div>
+    <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+      <span style={{fontSize:10,color:B.textMuted,letterSpacing:1}}>SESSION</span>
+      {["All","AM","Mid","PM","After"].map(s=>(<button key={s} onClick={()=>setFilterSession(s)} style={{padding:"4px 12px",borderRadius:20,border:"1px solid",borderColor:filterSession===s?B.blue:B.border,background:filterSession===s?`${B.blue}18`:"transparent",color:filterSession===s?B.blue:B.textMuted,cursor:"pointer",fontSize:11,fontWeight:700}}>{s}</button>))}
+      <span style={{fontSize:10,color:B.textMuted,letterSpacing:1,marginLeft:8}}>SORT</span>
+      {[{k:"date",l:"Date"},{k:"pnl",l:"P&L"},{k:"grade",l:"Grade"},{k:"rr",l:"R:R"}].map(s=>(<button key={s.k} onClick={()=>{if(sort===s.k)setSortDir(d=>d==="desc"?"asc":"desc");else{setSort(s.k);setSortDir("desc");}}} style={{padding:"4px 12px",borderRadius:20,border:"1px solid",borderColor:sort===s.k?B.purple:B.border,background:sort===s.k?`${B.purple}18`:"transparent",color:sort===s.k?B.purple:B.textMuted,cursor:"pointer",fontSize:11,fontWeight:700}}>{s.l}{sort===s.k?(sortDir==="desc"?" ↓":" ↑"):""}</button>))}
+    </div>
+  </div><div style={{display:"grid",gridTemplateColumns:"70px 72px 68px 52px 110px 72px 56px 56px 1fr 78px",padding:"8px 14px",fontSize:10,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",borderBottom:`1px solid ${B.border}`}}>{["Date","Symbol","Dir","Grade","Setup","P&L","R:R","Result","Notes",""].map((h,i)=><div key={i}>{h}</div>)}</div><div style={{display:"flex",flexDirection:"column",gap:4}}>{sorted.map(t=>(<div key={t.id} onClick={()=>setSelectedTrade(t)} style={{display:"grid",gridTemplateColumns:"70px 72px 68px 52px 110px 72px 56px 56px 1fr 78px",padding:"11px 14px",borderRadius:10,background:B.surface,border:`1px solid ${B.border}`,borderLeft:`3px solid ${t.result==="Win"?B.teal:B.loss}`,cursor:"pointer",transition:"background 0.15s"}} onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.04)"} onMouseLeave={e=>e.currentTarget.style.background=B.surface}><div style={{fontSize:11,color:B.textMuted}}>{t.date.slice(5)}</div><div><span style={{fontSize:11,padding:"2px 7px",borderRadius:5,fontWeight:700,background:`${INST_COLOR[t.instrument]||B.teal}20`,color:INST_COLOR[t.instrument]||B.teal}}>{t.instrument}</span></div><div style={{fontSize:12,color:t.direction==="Long"?"#4ade80":"#f87171"}}>{t.direction}</div><GradeBadge grade={t.grade||"B"} tradeId={t.id} onSave={g=>onGradeUpdate&&onGradeUpdate(t.id,g)} size="small"/><div style={{fontSize:11,color:"#9CA0BC",overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>{t.setup}</div><div style={{fontSize:13,fontWeight:800,fontFamily:"monospace",color:pnlColor(t.pnl)}}>{fmt(t.pnl)}</div><div style={{fontSize:11,fontFamily:"monospace",color:B.textMuted}}>{t.rr}</div><div style={{fontSize:11,fontWeight:700,color:t.result==="Win"?B.profit:B.loss}}>{t.result}</div><div style={{fontSize:11,color:B.textDim,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>{t.notes}</div><div style={{display:"flex",gap:5}}><button onClick={()=>onEdit(t)} style={{padding:"4px 8px",borderRadius:6,border:`1px solid ${B.blue}40`,background:`${B.blue}12`,color:B.blue,cursor:"pointer",fontSize:10,fontWeight:700}}>Edit</button><button onClick={()=>onDelete(t)} style={{padding:"4px 8px",borderRadius:6,border:`1px solid ${B.loss}40`,background:`${B.loss}12`,color:B.loss,cursor:"pointer",fontSize:10,fontWeight:700}}>Del</button></div></div>))}</div></div>);
 }
 
 function Analytics({trades}){
@@ -2472,18 +2554,38 @@ function DayJournalModal({date, trades, onClose, onGradeUpdate}){
           {tab==="notes"&&(
             <div>
               <div style={{fontSize:11,color:B.textMuted,marginBottom:10}}>Your trading journal for this day — thoughts, observations, lessons learned.</div>
-              <textarea
-                value={notes}
-                onChange={e=>{setNotes(e.target.value);}}
-                onBlur={()=>save(notes,undefined)}
-                rows={14}
-                style={{...iS,resize:"vertical",lineHeight:1.7,fontSize:13}}
-                placeholder={`Journal entry for ${dateLabel}...
-
-What was your plan going into the session?
-What did you do well?
-What would you do differently?
-Any key observations about market structure?`}
+              {/* Rich Text Toolbar */}
+              <div style={{display:"flex",gap:4,padding:"6px 10px",borderRadius:"8px 8px 0 0",background:B.inputBg,border:`1px solid ${B.border}`,borderBottom:"none",flexWrap:"wrap",alignItems:"center"}}>
+                {[{cmd:"bold",label:"B",extra:{fontWeight:800}},{cmd:"italic",label:"I",extra:{fontStyle:"italic"}},{cmd:"underline",label:"U",extra:{textDecoration:"underline"}}].map(btn=>(
+                  <button key={btn.cmd} onMouseDown={e=>{e.preventDefault();document.execCommand(btn.cmd,false,null);}}
+                    style={{...btn.extra,padding:"2px 8px",borderRadius:4,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:12,minWidth:28,lineHeight:1.6}}>
+                    {btn.label}
+                  </button>
+                ))}
+                <div style={{width:1,height:16,background:B.border,margin:"0 3px"}}/>
+                {[{cmd:"insertUnorderedList",label:"• List"},{cmd:"insertOrderedList",label:"1. List"}].map(btn=>(
+                  <button key={btn.cmd} onMouseDown={e=>{e.preventDefault();document.execCommand(btn.cmd,false,null);}}
+                    style={{padding:"2px 8px",borderRadius:4,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:11}}>
+                    {btn.label}
+                  </button>
+                ))}
+                <div style={{width:1,height:16,background:B.border,margin:"0 3px"}}/>
+                {[{e:"🔴",c:"#E53E3E"},{e:"🟡",c:"#D97706"},{e:"🟢",c:"#059669"},{e:"🔵",c:"#3B82F6"}].map(({e:emoji,c:color})=>(
+                  <button key={color} onMouseDown={ev=>{ev.preventDefault();document.execCommand("foreColor",false,color);}}
+                    title="Color text" style={{padding:"1px 5px",borderRadius:4,border:`1px solid ${B.border}`,background:"transparent",cursor:"pointer",fontSize:13}}>
+                    {emoji}
+                  </button>
+                ))}
+                <div style={{marginLeft:"auto",fontSize:10,color:B.textDim}}>Rich text · Ctrl+B/I/U</div>
+              </div>
+              {/* Editable rich text area */}
+              <div
+                contentEditable
+                suppressContentEditableWarning
+                onInput={e=>{const html=e.currentTarget.innerHTML;setNotes(html);}}
+                onBlur={e=>{save(e.currentTarget.innerHTML,undefined);}}
+                dangerouslySetInnerHTML={{__html:notes||""}}
+                style={{...iS,minHeight:220,resize:"none",lineHeight:1.8,fontSize:13,borderRadius:"0 0 8px 8px",overflowY:"auto",whiteSpace:"pre-wrap"}}
               />
               <div style={{display:"flex",justifyContent:"flex-end",marginTop:10}}>
                 <button onClick={()=>save(notes,undefined)} style={{padding:"8px 20px",borderRadius:8,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:12,fontWeight:800}}>Save Notes</button>
@@ -2594,6 +2696,17 @@ function CalendarView({trades, onGradeUpdate}){
   const greenDays=Object.entries(calMap).filter(([k,v])=>k.startsWith(monthKey)&&v.pnl>0).length;
   const redDays=Object.entries(calMap).filter(([k,v])=>k.startsWith(monthKey)&&v.pnl<0).length;
 
+  // Compute weekly P&L for sidebar
+  const weeklyPnl = weeks.map((week) => {
+    let wpnl=0,wdays=0,wwins=0;
+    week.forEach(day=>{
+      if(!day)return;
+      const ds=`${yr}-${String(mo+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
+      if(calMap[ds]){wpnl+=calMap[ds].pnl;wdays++;if(calMap[ds].pnl>0)wwins++;}
+    });
+    return{pnl:Math.round(wpnl*100)/100,days:wdays,wins:wwins};
+  });
+
   return(
     <div style={{display:"flex",flexDirection:"column",gap:20}}>
       {selectedDay&&<DayJournalModal date={selectedDay} trades={trades} onClose={()=>setSelectedDay(null)} onGradeUpdate={onGradeUpdate}/>}
@@ -2621,14 +2734,14 @@ function CalendarView({trades, onGradeUpdate}){
           </div>
         </div>
 
-        {/* Day headers */}
-        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:6,marginBottom:8}}>
+        {/* Day headers + Week total header */}
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr) 100px",gap:6,marginBottom:8}}>
           {calDays.map(d=><div key={d} style={{textAlign:"center",fontSize:10,color:B.textMuted,letterSpacing:1.5,paddingBottom:6}}>{d}</div>)}
         </div>
 
         {/* Weeks */}
         {weeks.map((w,wi)=>(
-          <div key={wi} style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:6,marginBottom:6}}>
+          <div key={wi} style={{display:"grid",gridTemplateColumns:"repeat(7,1fr) 100px",gap:6,marginBottom:6}}>
             {w.map((day,di)=>{
               if(!day)return <div key={di}/>;
               const ds=`${yr}-${String(mo+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
@@ -2657,6 +2770,19 @@ function CalendarView({trades, onGradeUpdate}){
                 </div>
               );
             })}
+            {/* Weekly total */}
+            <div style={{
+              borderRadius:10,padding:"8px 10px",
+              background:weeklyPnl[wi]?.pnl>0?`${B.teal}08`:weeklyPnl[wi]?.pnl<0?`${B.loss}08`:"rgba(255,255,255,0.01)",
+              border:`1px solid ${weeklyPnl[wi]?.pnl>0?`${B.teal}30`:weeklyPnl[wi]?.pnl<0?`${B.loss}30`:B.border}`,
+              display:"flex",flexDirection:"column",justifyContent:"center",alignItems:"center",minHeight:72,
+            }}>
+              <div style={{fontSize:9,color:B.textMuted,letterSpacing:1,marginBottom:3}}>WK {wi+1}</div>
+              {weeklyPnl[wi]?.days>0?<>
+                <div style={{fontSize:12,fontWeight:800,fontFamily:"monospace",color:weeklyPnl[wi].pnl>0?B.profit:B.loss,lineHeight:1.2}}>{weeklyPnl[wi].pnl>0?"+":""}{Math.round(weeklyPnl[wi].pnl)}</div>
+                <div style={{fontSize:9,color:B.textMuted,marginTop:3}}>{weeklyPnl[wi].days}d</div>
+              </>:<div style={{fontSize:9,color:B.textDim}}>—</div>}
+            </div>
           </div>
         ))}
       </div>
@@ -4727,6 +4853,185 @@ function RecurringPatternsWidget({trades}){
 }
 
 
+
+// ── Economic Calendar ─────────────────────────────────────────────────────────
+function EconomicCalendar(){
+  const [events,setEvents]=useState([]);
+  const [loading,setLoading]=useState(false);
+  const [error,setError]=useState(null);
+  const [selectedDate,setSelectedDate]=useState(new Date().toISOString().slice(0,10));
+  const [filter,setFilter]=useState("high"); // high | medium | all
+
+  const fetchEvents=async(date)=>{
+    setLoading(true);setError(null);
+    try{
+      // Use ForexFactory RSS feed via a public CORS proxy
+      const dateObj=new Date(date+"T12:00:00");
+      const month=dateObj.toLocaleString("en-US",{month:"short"}).toLowerCase();
+      const year=dateObj.getFullYear();
+
+      // Build events by calling our coach API to get AI-generated economic calendar
+      const res=await fetch("/api/coach",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({
+          type:"economic",
+          dayStats:{date, month, year}
+        }),
+      });
+      const data=await res.json();
+      if(data.error)throw new Error(data.error);
+      if(data.events)setEvents(data.events);
+      else setEvents([]);
+    }catch(e){
+      setError(e.message);
+      // Fallback: show known recurring events
+      setEvents(KNOWN_EVENTS.filter(e=>e.day===new Date(date+"T12:00:00").toLocaleDateString("en-US",{weekday:"long"})));
+    }
+    setLoading(false);
+  };
+
+  useEffect(()=>{fetchEvents(selectedDate);},[selectedDate]);
+
+  // Known recurring high-impact US events
+  const KNOWN_EVENTS=[
+    {time:"08:30",name:"Initial Jobless Claims",impact:"high",day:"Thursday",currency:"USD",forecast:"",previous:""},
+    {time:"08:30",name:"Non-Farm Payrolls",impact:"high",day:"Friday",currency:"USD",forecast:"",previous:""},
+    {time:"08:30",name:"CPI m/m",impact:"high",day:"",currency:"USD",forecast:"",previous:""},
+    {time:"14:00",name:"FOMC Statement",impact:"high",day:"",currency:"USD",forecast:"",previous:""},
+    {time:"08:30",name:"GDP q/q",impact:"high",day:"",currency:"USD",forecast:"",previous:""},
+    {time:"10:00",name:"ISM Manufacturing PMI",impact:"medium",day:"",currency:"USD",forecast:"",previous:""},
+    {time:"10:00",name:"CB Consumer Confidence",impact:"medium",day:"",currency:"USD",forecast:"",previous:""},
+  ];
+
+  const IMPACT_COLORS={high:"#E53E3E",medium:"#D97706",low:"#6B7280"};
+  const IMPACT_LABELS={high:"🔴 High",medium:"🟡 Medium",low:"⚪ Low"};
+
+  const filtered=filter==="all"?events:events.filter(e=>
+    filter==="high"?e.impact==="high":e.impact==="high"||e.impact==="medium"
+  );
+
+  // Week navigation
+  const getWeekDates=(date)=>{
+    const d=new Date(date+"T12:00:00");
+    const day=d.getDay();
+    const monday=new Date(d);monday.setDate(d.getDate()-day+1);
+    return Array.from({length:5},(_,i)=>{
+      const dd=new Date(monday);dd.setDate(monday.getDate()+i);
+      return dd.toISOString().slice(0,10);
+    });
+  };
+  const weekDates=getWeekDates(selectedDate);
+  const prevWeek=()=>{const d=new Date(selectedDate+"T12:00:00");d.setDate(d.getDate()-7);setSelectedDate(d.toISOString().slice(0,10));};
+  const nextWeek=()=>{const d=new Date(selectedDate+"T12:00:00");d.setDate(d.getDate()+7);setSelectedDate(d.toISOString().slice(0,10));};
+  const today=new Date().toISOString().slice(0,10);
+
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:16}}>
+      {/* Header */}
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+        <div>
+          <div style={{fontSize:18,fontWeight:800,color:B.text}}>Economic Calendar</div>
+          <div style={{fontSize:12,color:B.textMuted,marginTop:2}}>High-impact US events · 🔴 Red folder events from ForexFactory</div>
+        </div>
+        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          <button onClick={()=>setSelectedDate(today)} style={{padding:"6px 14px",borderRadius:8,border:`1px solid ${B.teal}40`,background:`${B.teal}12`,color:B.teal,cursor:"pointer",fontSize:12,fontWeight:700}}>This Week</button>
+          {["high","medium","all"].map(f=>(
+            <button key={f} onClick={()=>setFilter(f)} style={{padding:"6px 12px",borderRadius:8,border:`1px solid ${filter===f?(f==="high"?B.loss:f==="medium"?B.spark:B.border):B.border}`,background:filter===f?`${f==="high"?B.loss:f==="medium"?B.spark:B.teal}12`:"transparent",color:filter===f?(f==="high"?B.loss:f==="medium"?B.spark:B.teal):B.textMuted,cursor:"pointer",fontSize:11,fontWeight:700}}>
+              {f==="high"?"🔴 High Only":f==="medium"?"🔴🟡 High+Med":"All Events"}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Week nav */}
+      <div style={{display:"flex",alignItems:"center",gap:12}}>
+        <button onClick={prevWeek} style={{background:"none",border:`1px solid ${B.border}`,borderRadius:8,color:B.textMuted,cursor:"pointer",fontSize:16,width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center"}}>‹</button>
+        <div style={{display:"flex",gap:6,flex:1}}>
+          {weekDates.map(d=>{
+            const isSelected=d===selectedDate;
+            const isToday=d===today;
+            const dayName=new Date(d+"T12:00:00").toLocaleDateString("en-US",{weekday:"short"});
+            const dayNum=new Date(d+"T12:00:00").getDate();
+            return(
+              <button key={d} onClick={()=>setSelectedDate(d)} style={{flex:1,padding:"10px 8px",borderRadius:10,border:`1px solid ${isSelected?B.teal:isToday?`${B.blue}50`:B.border}`,background:isSelected?`${B.teal}15`:isToday?`${B.blue}08`:"transparent",color:isSelected?B.teal:B.text,cursor:"pointer",textAlign:"center",transition:"all 0.15s"}}>
+                <div style={{fontSize:10,color:isSelected?B.teal:B.textMuted}}>{dayName}</div>
+                <div style={{fontSize:16,fontWeight:800,marginTop:2}}>{dayNum}</div>
+                {isToday&&<div style={{width:4,height:4,borderRadius:"50%",background:B.blue,margin:"3px auto 0"}}/>}
+              </button>
+            );
+          })}
+        </div>
+        <button onClick={nextWeek} style={{background:"none",border:`1px solid ${B.border}`,borderRadius:8,color:B.textMuted,cursor:"pointer",fontSize:16,width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center"}}>›</button>
+      </div>
+
+      {/* Events list */}
+      <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,overflow:"hidden"}}>
+        {/* Table header */}
+        <div style={{display:"grid",gridTemplateColumns:"80px 60px 1fr 80px 100px 100px",gap:0,padding:"10px 20px",background:"rgba(0,0,0,0.2)",borderBottom:`1px solid ${B.border}`}}>
+          {["Time","Impact","Event","Currency","Forecast","Previous"].map(h=>(
+            <div key={h} style={{fontSize:10,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",fontWeight:700}}>{h}</div>
+          ))}
+        </div>
+
+        {loading&&(
+          <div style={{padding:"40px",textAlign:"center",color:B.textMuted,fontSize:13}}>
+            <div style={{marginBottom:8}}>Loading events...</div>
+            <div style={{height:3,background:B.border,borderRadius:2,overflow:"hidden",maxWidth:200,margin:"0 auto"}}>
+              <div style={{height:"100%",width:"60%",background:GL,borderRadius:2}}/>
+            </div>
+          </div>
+        )}
+
+        {!loading&&filtered.length===0&&(
+          <div style={{padding:"40px",textAlign:"center"}}>
+            <div style={{fontSize:24,marginBottom:8}}>📅</div>
+            <div style={{fontSize:14,fontWeight:700,color:B.text,marginBottom:4}}>No {filter==="high"?"high-impact":filter==="medium"?"high/medium-impact":""} events</div>
+            <div style={{fontSize:12,color:B.textMuted}}>
+              {new Date(selectedDate+"T12:00:00").toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric"})}
+            </div>
+            <div style={{marginTop:12,padding:"10px 16px",borderRadius:10,background:`${B.blue}10`,border:`1px solid ${B.blue}30`,display:"inline-block"}}>
+              <div style={{fontSize:11,color:B.blue}}>
+                💡 For live data visit <a href="https://www.forexfactory.com/calendar" target="_blank" rel="noopener noreferrer" style={{color:B.teal,fontWeight:700}}>ForexFactory.com</a>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {!loading&&filtered.map((evt,i)=>(
+          <div key={i} style={{display:"grid",gridTemplateColumns:"80px 60px 1fr 80px 100px 100px",gap:0,padding:"14px 20px",borderBottom:`1px solid ${B.border}`,background:evt.impact==="high"?`rgba(229,62,62,0.03)`:"transparent",transition:"background 0.15s"}}
+            onMouseEnter={e=>e.currentTarget.style.background=`rgba(255,255,255,0.03)`}
+            onMouseLeave={e=>e.currentTarget.style.background=evt.impact==="high"?"rgba(229,62,62,0.03)":"transparent"}>
+            <div style={{fontSize:13,fontWeight:600,color:B.text,fontFamily:"monospace"}}>{evt.time||"All Day"}</div>
+            <div style={{display:"flex",alignItems:"center",gap:4}}>
+              <div style={{width:10,height:10,borderRadius:"50%",background:IMPACT_COLORS[evt.impact]||"#6B7280",flexShrink:0}}/>
+            </div>
+            <div>
+              <div style={{fontSize:13,fontWeight:700,color:evt.impact==="high"?B.text:B.textMuted}}>{evt.name}</div>
+              {evt.notes&&<div style={{fontSize:11,color:B.textMuted,marginTop:2}}>{evt.notes}</div>}
+            </div>
+            <div style={{fontSize:12,fontWeight:700,color:B.blue}}>{evt.currency||"USD"}</div>
+            <div style={{fontSize:12,fontFamily:"monospace",color:B.textMuted}}>{evt.forecast||"—"}</div>
+            <div style={{fontSize:12,fontFamily:"monospace",color:B.textMuted}}>{evt.previous||"—"}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* ForexFactory link */}
+      <div style={{padding:"12px 16px",borderRadius:10,background:`${B.teal}08`,border:`1px solid ${B.borderTeal}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+        <div style={{fontSize:12,color:B.teal}}>
+          🔴 Red folder events have the highest market impact on MES/ES futures trading
+        </div>
+        <a href="https://www.forexfactory.com/calendar" target="_blank" rel="noopener noreferrer"
+          style={{padding:"6px 14px",borderRadius:8,border:`1px solid ${B.teal}40`,background:`${B.teal}12`,color:B.teal,textDecoration:"none",fontSize:12,fontWeight:700}}>
+          Open ForexFactory ↗
+        </a>
+      </div>
+    </div>
+  );
+}
+
+
 // ── Tradovate Sync Modal ──────────────────────────────────────────────────────
 function TradovateSyncModal({onClose, onSync, syncing, accounts=[]}){
   const [range,setRange]=useState("today");
@@ -4813,10 +5118,15 @@ function TradovateSyncModal({onClose, onSync, syncing, accounts=[]}){
 }
 
 
-const NAV=[{id:"overview",label:"Overview",icon:"▦"},{id:"journal",label:"Journal",icon:"⊟"},{id:"analytics",label:"Analytics",icon:"◈"},{id:"calendar",label:"Calendar",icon:"⊞"},{id:"playbooks",label:"Strategies",icon:"⊕"},{id:"library",label:"Playbook",icon:"📚"},{id:"resources",label:"Resources",icon:"◎"}];
+const NAV=[{id:"overview",label:"Overview",icon:"▦"},{id:"journal",label:"Journal",icon:"⊟"},{id:"analytics",label:"Analytics",icon:"◈"},{id:"calendar",label:"P&L Calendar",icon:"⊞"},{id:"playbooks",label:"Strategies",icon:"⊕"},{id:"economiccalendar",label:"Eco Calendar",icon:"📰"},{id:"library",label:"Playbook",icon:"📚"},{id:"resources",label:"Resources",icon:"◎"}];
 
 export default function App(){
   const [session,setSession]=useState(null);
+  const [isDark,setIsDark]=useState(()=>{
+    try{return localStorage.getItem("tca_theme")!=="light";}catch(e){return true;}
+  });
+  // Update B whenever theme changes
+  B = isDark ? DARK_THEME : LIGHT_THEME;
   const [active,setActive]=useState("overview");
   const [time,setTime]=useState(new Date());
   const [trades,setTrades]=useState([]);
@@ -4958,6 +5268,19 @@ export default function App(){
     setEditTrade(null);
   };
 
+  const handleClearImported=async(accountId=null)=>{
+    const toDelete=accountId
+      ?trades.filter(t=>t.account_id===accountId)
+      :trades.filter(t=>!t.tradovate_id||String(t.id).startsWith("perf_")||String(t.id).startsWith("imp_"));
+    if(!toDelete.length){showT("No imported trades found.");return;}
+    const msg=`Delete ${toDelete.length} imported trade${toDelete.length!==1?"s":""}${accountId?` from "${accountId}"`:""}? This cannot be undone.`;
+    if(!confirm(msg))return;
+    const ids=toDelete.map(t=>t.id).filter(Boolean);
+    if(ids.length)await supabase.from("trades").delete().in("id",ids);
+    setTrades(ts=>ts.filter(t=>!toDelete.some(d=>d.id===t.id)));
+    showT(`Deleted ${toDelete.length} imported trade${toDelete.length!==1?"s":""}`);
+  };
+
   const handleImport=async(imported, mode="add")=>{
     if(mode==="replace"){
       // Delete all existing trades first
@@ -5016,13 +5339,13 @@ export default function App(){
   if(!session)return <LoginScreen/>;
   if(loading)return(<div style={{minHeight:"100vh",background:B.bg,display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{fontSize:14,color:B.textMuted}}>Loading your trades...</div></div>);
 
-  return(<div style={{minHeight:"100vh",background:B.bg,fontFamily:"'DM Sans','Segoe UI',sans-serif",color:B.text}}><style>{`@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,600;0,9..40,700;0,9..40,800&family=Space+Mono:wght@400;700&display=swap');*{box-sizing:border-box;}body{margin:0;}::-webkit-scrollbar{width:4px;}::-webkit-scrollbar-track{background:transparent;}::-webkit-scrollbar-thumb{background:rgba(0,212,168,0.2);border-radius:2px;}input[type=date]::-webkit-calendar-picker-indicator{filter:invert(0.5);}select option{background:#13121A;color:#F0EEF8;}`}</style>
+  return(<div style={{minHeight:"100vh",background:B.bg,fontFamily:"'DM Sans','Segoe UI',sans-serif",color:B.text,transition:"background 0.3s,color 0.3s"}}><style>{`@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,600;0,9..40,700;0,9..40,800&family=Space+Mono:wght@400;700&display=swap');*{box-sizing:border-box;}body{margin:0;}::-webkit-scrollbar{width:4px;}::-webkit-scrollbar-track{background:transparent;}::-webkit-scrollbar-thumb{background:rgba(0,212,168,0.2);border-radius:2px;}input[type=date]::-webkit-calendar-picker-indicator{filter:invert(0.5);}select option{background:#13121A;color:#F0EEF8;}`}</style>
     {toast&&(<div style={{position:"fixed",top:20,right:24,zIndex:200,padding:"12px 20px",borderRadius:10,background:toast.type==="error"?`${B.loss}18`:`${B.teal}15`,border:`1px solid ${toast.type==="error"?`${B.loss}40`:`${B.teal}40`}`,color:toast.type==="error"?B.loss:B.teal,fontWeight:700,fontSize:13,boxShadow:"0 8px 32px rgba(0,0,0,0.5)"}}>{toast.msg}</div>)}
     {showSyncModal&&<TradovateSyncModal onClose={()=>setShowSyncModal(false)} onSync={handleManualSync} syncing={syncStatus==="syncing"} accounts={accounts}/>}
     {showForm&&<TradeFormModal onClose={()=>{setShowForm(false);setEditTrade(null);}} onSave={handleSave} editTrade={editTrade}/>}
     {showImport&&<ImportModal onClose={()=>setShowImport(false)} onImport={handleImport} existingTrades={trades}/>}
     {delTrade&&<DeleteConfirm trade={delTrade} onConfirm={handleDelete} onCancel={()=>setDelTrade(null)}/>}
-    <div style={{position:"fixed",top:0,left:0,bottom:0,width:216,background:"rgba(8,8,10,0.98)",borderRight:`1px solid ${B.border}`,display:"flex",flexDirection:"column",zIndex:100}}>
+    <div style={{position:"fixed",top:0,left:0,bottom:0,width:216,background:B.sidebarBg,borderRight:`1px solid ${B.border}`,display:"flex",flexDirection:"column",zIndex:100}}>
       <div style={{padding:"22px 18px 18px",borderBottom:`1px solid ${B.border}`}}><div style={{display:"flex",alignItems:"center",gap:12}}><TCAIcon size={36}/><div><div style={{fontSize:13,fontWeight:800,background:GL,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",letterSpacing:-0.3}}>TCA Journal</div><div style={{fontSize:9,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",marginTop:1}}>Candlestick Academy</div><div style={{marginTop:4,display:"inline-block",padding:"2px 8px",borderRadius:20,background:GL,fontSize:8,fontWeight:800,letterSpacing:2,color:"#0E0E10"}}>TRADE JOURNAL</div></div></div></div>
       <nav style={{padding:"16px 12px",flex:1}}>{NAV.map(n=>(<button key={n.id} onClick={()=>setActive(n.id)} style={{display:"flex",alignItems:"center",gap:10,width:"100%",padding:"10px 12px",borderRadius:9,border:"none",background:active===n.id?"rgba(0,212,168,0.07)":"transparent",borderLeft:active===n.id?`2px solid ${B.teal}`:"2px solid transparent",color:active===n.id?B.teal:B.textMuted,cursor:"pointer",fontSize:13,fontWeight:600,textAlign:"left",transition:"all 0.15s",marginBottom:2}}><span style={{fontSize:14}}>{n.icon}</span>{n.label}</button>))}</nav>
       <div style={{padding:"16px 18px",borderTop:`1px solid ${B.border}`}}>
@@ -5046,12 +5369,18 @@ export default function App(){
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
           {hasSample&&(<button onClick={()=>setTrades([])} style={{padding:"8px 14px",borderRadius:9,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:11,fontWeight:600}}>Clear Sample Data</button>)}
           {active==="overview"&&<button onClick={()=>document.dispatchEvent(new CustomEvent("tca-toggle-edit"))} style={{padding:"8px 14px",borderRadius:9,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:12,fontWeight:600}}>✏ Edit Layout</button>}
+          {/* Theme toggle */}
+          <button onClick={()=>{const next=!isDark;setIsDark(next);try{localStorage.setItem("tca_theme",next?"dark":"light");}catch(e){}}} title={isDark?"Switch to Light Mode":"Switch to Dark Mode"}
+            style={{padding:"7px 14px",borderRadius:9,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:13,display:"flex",alignItems:"center",gap:6}}>
+            {isDark?"☀️ Light":"🌙 Dark"}
+          </button>
           <select value={activeAccount} onChange={e=>setActiveAccount(e.target.value)}
             style={{padding:"7px 12px",borderRadius:9,border:`1px solid ${B.border}`,background:"rgba(0,0,0,0.5)",color:B.text,cursor:"pointer",fontSize:12,fontFamily:"'DM Sans',sans-serif"}}>
             <option value="all">All Accounts</option>
             {accounts.map(a=>(<option key={a.id} value={a.id}>{a.label}</option>))}
           </select>
           <button onClick={()=>setShowImport(true)} style={{padding:"8px 16px",borderRadius:9,border:`1px solid ${B.blue}40`,background:`${B.blue}12`,color:B.blue,cursor:"pointer",fontSize:12,fontWeight:700}}>⬆ Import CSV</button>
+          <button onClick={()=>handleClearImported()} style={{padding:"8px 14px",borderRadius:9,border:`1px solid ${B.loss}40`,background:`${B.loss}10`,color:B.loss,cursor:"pointer",fontSize:12,fontWeight:600}} title="Delete all imported trades">🗑 Clear Imports</button>
           <button onClick={()=>{setEditTrade(null);setShowForm(true);}} style={{padding:"8px 18px",borderRadius:9,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:12,fontWeight:800}}>+ Log Trade</button>
         </div>
       </div>
@@ -5062,6 +5391,7 @@ export default function App(){
       {active==="calendar"&&<CalendarView trades={activeAccount==="all"?trades:trades.filter(t=>t.account_id===activeAccount)} onGradeUpdate={handleGradeUpdate}/>}
       {active==="playbooks"&&<PlaybookView/>}
       {active==="resources"&&<ResourcesPage session={session}/>}
+      {active==="economiccalendar"&&<EconomicCalendar/>}
       {active==="library"&&<PlaybookLibrary session={session}/>}
     </div>
   </div>);
