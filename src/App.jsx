@@ -1156,6 +1156,11 @@ function Overview({trades, onGradeUpdate, session}){
     {id:"report",     label:"Report",               icon:"📋"},
     {id:"aicoach",    label:"AI Trade Coach",       icon:"🧠"},
     {id:"calendar",   label:"Calendar (main)",      icon:"📅"},
+    {id:"dailygoals", label:"Daily Goals",           icon:"🎯"},
+    {id:"apex",       label:"Apex Account Tracker",  icon:"📈"},
+    {id:"ictags",     label:"ICT Concept Tagger",    icon:"🧠"},
+    {id:"emotions",   label:"Emotional Tracker",     icon:"😤"},
+    {id:"achievements",label:"Achievements",          icon:"🏆"},
   ];
 
   // Calendar state
@@ -1284,6 +1289,11 @@ function Overview({trades, onGradeUpdate, session}){
       case "progress":   return <ProgressTrackerWidget trades={trades}/>;
       case "report":     return <ReportWidget trades={trades}/>;
       case "aicoach":    return <AICoachWidget trades={trades}/>;
+      case "dailygoals": return <DailyGoalsWidget trades={trades} session={session}/>;
+      case "apex":       return <ApexTrackerWidget trades={trades} session={session}/>;
+      case "ictags":     return <ICTTaggerWidget trades={trades} session={session}/>;
+      case "emotions":   return <EmotionalTrackerWidget trades={trades} session={session}/>;
+      case "achievements":return <AchievementsWidget trades={trades} session={session}/>;
       default: return null;
     }
   };
@@ -1499,6 +1509,56 @@ function TradeDetailModal({trade, onClose, onEdit, onGradeUpdate}){
   const isWin = trade.result === "Win";
   const [aiAnalysis, setAiAnalysis] = useState(null);
   const [aiLoading, setAiLoading] = useState(false);
+  const [screenshot, setScreenshot] = useState(null);
+  const [screenshotUrl, setScreenshotUrl] = useState(null);
+  const [uploadLoading, setUploadLoading] = useState(false);
+  const [uploadError, setUploadError] = useState(null);
+  const fileInputRef = useRef(null);
+  const [tradeTags, setTradeTags] = useState({});
+
+  // Load ICT tags
+  useEffect(()=>{
+    try{const l=localStorage.getItem("pref_tca_ict_tags_v1");if(l)setTradeTags(JSON.parse(l));}catch(e){}
+    (async()=>{try{const{data}=await supabase.from("user_preferences").select("value").eq("key","tca_ict_tags_v1").single();if(data?.value){setTradeTags(JSON.parse(data.value));localStorage.setItem("pref_tca_ict_tags_v1",data.value);}}catch(e){}})();
+  },[]);
+
+  // Load existing screenshot on mount
+  useEffect(()=>{
+    (async()=>{
+      try{
+        const{data}=await supabase.storage.from("trade-screenshots").list(`${trade.id}`);
+        if(data?.length){
+          const{data:urlData}=supabase.storage.from("trade-screenshots").getPublicUrl(`${trade.id}/${data[0].name}`);
+          setScreenshotUrl(urlData.publicUrl);
+        }
+      }catch(e){}
+    })();
+  },[trade.id]);
+
+  const uploadScreenshot=async(file)=>{
+    if(!file)return;
+    setUploadLoading(true);setUploadError(null);
+    try{
+      const ext=file.name.split(".").pop();
+      const path=`${trade.id}/chart.${ext}`;
+      const{error}=await supabase.storage.from("trade-screenshots").upload(path,file,{upsert:true});
+      if(error)throw error;
+      const{data:urlData}=supabase.storage.from("trade-screenshots").getPublicUrl(path);
+      setScreenshotUrl(urlData.publicUrl);
+      setScreenshot(file);
+    }catch(e){setUploadError("Upload failed. Check bucket permissions.");}
+    setUploadLoading(false);
+  };
+
+  const removeScreenshot=async()=>{
+    try{
+      const{data}=await supabase.storage.from("trade-screenshots").list(`${trade.id}`);
+      if(data?.length){
+        await supabase.storage.from("trade-screenshots").remove(data.map(f=>`${trade.id}/${f.name}`));
+      }
+    }catch(e){}
+    setScreenshotUrl(null);setScreenshot(null);
+  };
 
   const runAI = async () => {
     setAiLoading(true);
@@ -1522,10 +1582,20 @@ function TradeDetailModal({trade, onClose, onEdit, onGradeUpdate}){
         notes: trade.notes || "none",
       };
 
+      // If screenshot exists, convert to base64 and include
+      let imageData = null;
+      if(screenshot){
+        imageData = await new Promise((res)=>{
+          const reader=new FileReader();
+          reader.onload=e=>res(e.target.result.split(",")[1]);
+          reader.readAsDataURL(screenshot);
+        });
+      }
+
       const res = await fetch("/api/coach", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({ type: "trade", dayStats: tradeData }),
+        body: JSON.stringify({ type: "trade", dayStats: tradeData, chartImage: imageData }),
       });
       const data = await res.json();
       const text = data.content?.[0]?.text || JSON.stringify(data);
@@ -1639,6 +1709,76 @@ function TradeDetailModal({trade, onClose, onEdit, onGradeUpdate}){
             </div>
           </div>
         )}
+
+        {/* ICT Concept Tags */}
+        <div style={{padding:"0 28px",marginBottom:20}}>
+          <div style={{background:"rgba(0,0,0,0.3)",borderRadius:12,padding:"16px 20px",border:`1px solid ${B.border}`}}>
+            <div style={{fontSize:10,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:10}}>ICT Concepts Used</div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+              {ICT_CONCEPTS.map(c=>{
+                const active=(tradeTags[trade.id]||[]).includes(c);
+                return(
+                  <button key={c} onClick={()=>{
+                    const current=tradeTags[trade.id]||[];
+                    const updated=active?current.filter(x=>x!==c):[...current,c];
+                    const newTags={...tradeTags,[trade.id]:updated};
+                    setTradeTags(newTags);
+                    const val=JSON.stringify(newTags);
+                    localStorage.setItem("pref_tca_ict_tags_v1",val);
+                    (async()=>{try{const{data:{user}}=await supabase.auth.getUser();await supabase.from("user_preferences").upsert({user_id:user?.id,key:"tca_ict_tags_v1",value:val,updated_at:new Date().toISOString()},{onConflict:"user_id,key"});}catch(e){}})();
+                  }} style={{
+                    padding:"4px 10px",borderRadius:20,cursor:"pointer",fontSize:11,fontWeight:active?700:400,
+                    border:`1px solid ${active?B.teal:B.border}`,
+                    background:active?`${B.teal}15`:"transparent",
+                    color:active?B.teal:B.textMuted,transition:"all 0.15s",
+                  }}>{c}</button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        {/* Screenshot Section */}
+        <div style={{padding:"0 28px",marginBottom:20}}>
+          <input ref={fileInputRef} type="file" accept="image/*" style={{display:"none"}}
+            onChange={e=>e.target.files[0]&&uploadScreenshot(e.target.files[0])}/>
+          {screenshotUrl?(
+            <div style={{borderRadius:12,overflow:"hidden",border:`1px solid ${B.border}`,position:"relative"}}>
+              <img src={screenshotUrl} alt="Trade chart" style={{width:"100%",maxHeight:300,objectFit:"cover",display:"block"}}/>
+              <div style={{position:"absolute",top:8,right:8,display:"flex",gap:6}}>
+                <button onClick={()=>fileInputRef.current?.click()}
+                  style={{padding:"4px 10px",borderRadius:6,border:`1px solid ${B.border}`,background:"rgba(0,0,0,0.8)",color:B.textMuted,cursor:"pointer",fontSize:11}}>
+                  Replace
+                </button>
+                <button onClick={removeScreenshot}
+                  style={{padding:"4px 10px",borderRadius:6,border:`1px solid ${B.loss}50`,background:"rgba(0,0,0,0.8)",color:B.loss,cursor:"pointer",fontSize:11}}>
+                  Remove
+                </button>
+              </div>
+              <div style={{padding:"8px 12px",background:"rgba(0,0,0,0.6)",fontSize:10,color:B.teal}}>
+                📸 Chart attached · AI will analyze this image with your trade data
+              </div>
+            </div>
+          ):(
+            <div onClick={()=>fileInputRef.current?.click()}
+              style={{padding:"14px",borderRadius:12,border:`2px dashed ${B.border}`,display:"flex",alignItems:"center",justifyContent:"center",gap:10,cursor:"pointer",transition:"all 0.2s"}}
+              onMouseEnter={e=>{e.currentTarget.style.borderColor=B.teal+"60";e.currentTarget.style.background=`${B.teal}05`;}}
+              onMouseLeave={e=>{e.currentTarget.style.borderColor=B.border;e.currentTarget.style.background="transparent";}}>
+              {uploadLoading?(
+                <span style={{fontSize:12,color:B.textMuted}}>Uploading...</span>
+              ):(
+                <>
+                  <span style={{fontSize:20}}>📸</span>
+                  <div>
+                    <div style={{fontSize:12,fontWeight:700,color:B.text}}>Attach chart screenshot</div>
+                    <div style={{fontSize:10,color:B.textMuted}}>AI coach will analyze your chart + trade data together</div>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+          {uploadError&&<div style={{fontSize:11,color:B.loss,marginTop:6}}>{uploadError}</div>}
+        </div>
 
         {/* AI Coach Section */}
         <div style={{padding:"0 28px",marginBottom:20}}>
@@ -3485,6 +3625,485 @@ function ResourcesPage({session}){
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+
+
+// ── Daily Goals & Targets ─────────────────────────────────────────────────────
+function DailyGoalsWidget({trades, session}){
+  const SKEY="tca_daily_goals_v1";
+  const today=new Date().toISOString().slice(0,10);
+  const [goals,setGoals]=useState({profitTarget:200,maxLoss:-100,maxTrades:5});
+  const [showEdit,setShowEdit]=useState(false);
+  const [draft,setDraft]=useState({});
+
+  useEffect(()=>{
+    try{const l=localStorage.getItem("pref_"+SKEY);if(l)setGoals(JSON.parse(l));}catch(e){}
+    if(session?.user?.id)(async()=>{
+      try{const{data}=await supabase.from("user_preferences").select("value").eq("key",SKEY).single();
+        if(data?.value){const v=JSON.parse(data.value);setGoals(v);localStorage.setItem("pref_"+SKEY,data.value);}}catch(e){}
+    })();
+  },[session]);
+
+  const saveGoals=async(g)=>{
+    setGoals(g);const val=JSON.stringify(g);
+    localStorage.setItem("pref_"+SKEY,val);
+    if(session?.user?.id)(async()=>{try{await supabase.from("user_preferences").upsert({user_id:session.user.id,key:SKEY,value:val,updated_at:new Date().toISOString()},{onConflict:"user_id,key"});}catch(e){}})();
+  };
+
+  const todayTrades=trades.filter(t=>t.date===today);
+  const todayPnl=todayTrades.reduce((a,t)=>a+t.pnl,0);
+  const tradeCount=todayTrades.length;
+
+  const pnlPct=goals.profitTarget>0?Math.min(Math.max(todayPnl/goals.profitTarget,0),1):0;
+  const lossPct=goals.maxLoss<0?Math.min(Math.max(todayPnl/goals.maxLoss,0),1):0;
+  const tradePct=Math.min(tradeCount/goals.maxTrades,1);
+
+  const atMaxLoss=todayPnl<=goals.maxLoss;
+  const atMaxTrades=tradeCount>=goals.maxTrades;
+  const hitTarget=todayPnl>=goals.profitTarget;
+
+  return(
+    <div style={{height:"100%",display:"flex",flexDirection:"column",gap:16}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <div style={{fontSize:9,color:B.textMuted,letterSpacing:2,textTransform:"uppercase"}}>Today's Goals</div>
+        <button onClick={()=>{setDraft({...goals});setShowEdit(true);}} style={{background:"none",border:`1px solid ${B.border}`,borderRadius:6,color:B.textMuted,cursor:"pointer",fontSize:10,padding:"3px 8px"}}>Edit</button>
+      </div>
+
+      {showEdit&&(
+        <div style={{padding:14,borderRadius:10,background:"rgba(0,0,0,0.4)",border:`1px solid ${B.border}`}}>
+          {[{key:"profitTarget",label:"Profit Target ($)",min:0},{key:"maxLoss",label:"Max Loss ($)",min:-9999},{key:"maxTrades",label:"Max Trades",min:1}].map(f=>(
+            <div key={f.key} style={{marginBottom:10}}>
+              <label style={lS}>{f.label}</label>
+              <input type="number" value={draft[f.key]} onChange={e=>setDraft(d=>({...d,[f.key]:parseFloat(e.target.value)||0}))} style={{...iS,fontSize:13}}/>
+            </div>
+          ))}
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={()=>setShowEdit(false)} style={{flex:1,padding:"7px",borderRadius:8,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:12}}>Cancel</button>
+            <button onClick={()=>{saveGoals(draft);setShowEdit(false);}} style={{flex:2,padding:"7px",borderRadius:8,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:12,fontWeight:800}}>Save</button>
+          </div>
+        </div>
+      )}
+
+      {/* Profit target */}
+      <div>
+        <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+          <span style={{fontSize:12,color:B.text}}>Profit Target</span>
+          <span style={{fontSize:12,fontFamily:"monospace",color:hitTarget?B.profit:pnlColor(todayPnl),fontWeight:700}}>{fmt(todayPnl)} / ${goals.profitTarget}</span>
+        </div>
+        <div style={{height:8,background:"rgba(255,255,255,0.05)",borderRadius:4,overflow:"hidden"}}>
+          <div style={{height:"100%",width:`${pnlPct*100}%`,background:hitTarget?"linear-gradient(90deg,#00D4A8,#4F8EF7)":GTB,borderRadius:4,transition:"width 0.5s"}}/>
+        </div>
+        {hitTarget&&<div style={{fontSize:10,color:B.profit,marginTop:4,fontWeight:700}}>🎯 Target reached!</div>}
+      </div>
+
+      {/* Max loss */}
+      <div>
+        <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+          <span style={{fontSize:12,color:atMaxLoss?B.loss:B.text}}>Max Loss Limit</span>
+          <span style={{fontSize:12,fontFamily:"monospace",color:atMaxLoss?B.loss:B.textMuted,fontWeight:700}}>{fmt(todayPnl)} / ${goals.maxLoss}</span>
+        </div>
+        <div style={{height:8,background:"rgba(255,255,255,0.05)",borderRadius:4,overflow:"hidden"}}>
+          <div style={{height:"100%",width:`${lossPct*100}%`,background:atMaxLoss?GBP:`rgba(240,90,126,0.4)`,borderRadius:4,transition:"width 0.5s"}}/>
+        </div>
+        {atMaxLoss&&<div style={{fontSize:10,color:B.loss,marginTop:4,fontWeight:700}}>🛑 Max loss hit — stop trading for today</div>}
+      </div>
+
+      {/* Max trades */}
+      <div>
+        <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+          <span style={{fontSize:12,color:atMaxTrades?B.spark:B.text}}>Trades Taken</span>
+          <span style={{fontSize:12,fontFamily:"monospace",color:atMaxTrades?B.spark:B.textMuted,fontWeight:700}}>{tradeCount} / {goals.maxTrades}</span>
+        </div>
+        <div style={{height:8,background:"rgba(255,255,255,0.05)",borderRadius:4,overflow:"hidden"}}>
+          <div style={{height:"100%",width:`${tradePct*100}%`,background:atMaxTrades?"linear-gradient(90deg,#F59E0B,#EF4444)":"linear-gradient(90deg,#4F8EF7,#8B5CF6)",borderRadius:4,transition:"width 0.5s"}}/>
+        </div>
+        {atMaxTrades&&<div style={{fontSize:10,color:B.spark,marginTop:4,fontWeight:700}}>⚠️ Max trades reached</div>}
+      </div>
+
+      {/* Today summary */}
+      {todayTrades.length>0&&(
+        <div style={{padding:"10px 14px",borderRadius:10,background:"rgba(0,0,0,0.3)",border:`1px solid ${B.border}`,marginTop:"auto"}}>
+          <div style={{fontSize:10,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:6}}>Today</div>
+          <div style={{display:"flex",gap:16}}>
+            {[{l:"P&L",v:fmt(todayPnl),c:pnlColor(todayPnl)},{l:"Trades",v:tradeCount,c:B.text},{l:"Win %",v:todayTrades.length?Math.round(todayTrades.filter(t=>t.result==="Win").length/todayTrades.length*100)+"%":"--",c:B.blue}].map(s=>(
+              <div key={s.l}><div style={{fontSize:9,color:B.textMuted}}>{s.l}</div><div style={{fontSize:14,fontWeight:800,fontFamily:"monospace",color:s.c}}>{s.v}</div></div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Apex Funding Tracker ──────────────────────────────────────────────────────
+function ApexTrackerWidget({trades, session}){
+  const SKEY="tca_apex_config_v1";
+  const [config,setConfig]=useState({accountSize:50000,trailingDrawdown:2500,dailyLoss:1500,profitTarget:3000,consistency:50});
+  const [showEdit,setShowEdit]=useState(false);
+  const [draft,setDraft]=useState({});
+  const [startingBalance,setStartingBalance]=useState(50000);
+
+  useEffect(()=>{
+    try{const l=localStorage.getItem("pref_"+SKEY);if(l){const v=JSON.parse(l);setConfig(v.config||config);setStartingBalance(v.balance||50000);}}catch(e){}
+  },[]);
+
+  const save=async(c,b)=>{
+    const val=JSON.stringify({config:c,balance:b});
+    localStorage.setItem("pref_"+SKEY,val);
+    if(session?.user?.id)try{await supabase.from("user_preferences").upsert({user_id:session.user.id,key:SKEY,value:val,updated_at:new Date().toISOString()},{onConflict:"user_id,key"});}catch(e){}
+  };
+
+  const today=new Date().toISOString().slice(0,10);
+  const todayPnl=trades.filter(t=>t.date===today).reduce((a,t)=>a+t.pnl,0);
+  const totalPnl=trades.reduce((a,t)=>a+t.pnl,0);
+  const currentBalance=startingBalance+totalPnl;
+
+  // Trailing drawdown: highest balance reached - current
+  let peak=startingBalance;
+  let runningBal=startingBalance;
+  const sorted=[...trades].sort((a,b)=>a.date.localeCompare(b.date));
+  sorted.forEach(t=>{runningBal+=t.pnl;if(runningBal>peak)peak=runningBal;});
+  const trailingDD=peak-currentBalance;
+  const trailingDDPct=Math.min(trailingDD/config.trailingDrawdown,1);
+  const dailyLossPct=Math.min(Math.abs(Math.min(todayPnl,0))/config.dailyLoss,1);
+  const profitPct=Math.min(Math.max(totalPnl/config.profitTarget,0),1);
+
+  // Consistency: biggest single day / total profit
+  const dayMap={};
+  sorted.forEach(t=>{if(!dayMap[t.date])dayMap[t.date]=0;dayMap[t.date]+=t.pnl;});
+  const dayPnls=Object.values(dayMap).filter(v=>v>0);
+  const biggestDay=dayPnls.length?Math.max(...dayPnls):0;
+  const consistencyPct=totalPnl>0?Math.round((biggestDay/totalPnl)*100):0;
+  const consistencyOk=consistencyPct<=config.consistency;
+
+  const atDailyLimit=todayPnl<=-config.dailyLoss;
+  const atTrailingDD=trailingDD>=config.trailingDrawdown;
+
+  return(
+    <div style={{height:"100%",display:"flex",flexDirection:"column",gap:12}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <div style={{fontSize:9,color:B.textMuted,letterSpacing:2,textTransform:"uppercase"}}>Apex Account Tracker</div>
+        <button onClick={()=>{setDraft({...config});setShowEdit(true);}} style={{background:"none",border:`1px solid ${B.border}`,borderRadius:6,color:B.textMuted,cursor:"pointer",fontSize:10,padding:"3px 8px"}}>Configure</button>
+      </div>
+
+      {showEdit&&(
+        <div style={{padding:14,borderRadius:10,background:"rgba(0,0,0,0.4)",border:`1px solid ${B.border}`}}>
+          {[
+            {key:"accountSize",label:"Account Size"},
+            {key:"profitTarget",label:"Profit Target"},
+            {key:"trailingDrawdown",label:"Trailing Drawdown"},
+            {key:"dailyLoss",label:"Daily Loss Limit"},
+            {key:"consistency",label:"Consistency % Max"},
+          ].map(f=>(
+            <div key={f.key} style={{marginBottom:8}}>
+              <label style={lS}>{f.label}</label>
+              <input type="number" value={draft[f.key]} onChange={e=>setDraft(d=>({...d,[f.key]:parseFloat(e.target.value)||0}))} style={{...iS,fontSize:12}}/>
+            </div>
+          ))}
+          <div style={{marginBottom:8}}>
+            <label style={lS}>Starting Balance</label>
+            <input type="number" value={startingBalance} onChange={e=>setStartingBalance(parseFloat(e.target.value)||50000)} style={{...iS,fontSize:12}}/>
+          </div>
+          <div style={{display:"flex",gap:8,marginTop:8}}>
+            <button onClick={()=>setShowEdit(false)} style={{flex:1,padding:"7px",borderRadius:8,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:11}}>Cancel</button>
+            <button onClick={()=>{setConfig(draft);save(draft,startingBalance);setShowEdit(false);}} style={{flex:2,padding:"7px",borderRadius:8,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:11,fontWeight:800}}>Save</button>
+          </div>
+        </div>
+      )}
+
+      {/* Account balance */}
+      <div style={{padding:"10px 14px",borderRadius:10,background:"rgba(0,0,0,0.3)",border:`1px solid ${B.border}`}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div><div style={{fontSize:9,color:B.textMuted,letterSpacing:1}}>ACCOUNT BALANCE</div><div style={{fontSize:20,fontWeight:800,fontFamily:"monospace",color:pnlColor(totalPnl)}}>${Math.round(currentBalance).toLocaleString()}</div></div>
+          <div style={{textAlign:"right"}}><div style={{fontSize:9,color:B.textMuted}}>TOTAL P&L</div><div style={{fontSize:16,fontWeight:700,fontFamily:"monospace",color:pnlColor(totalPnl)}}>{fmt(totalPnl)}</div></div>
+        </div>
+      </div>
+
+      {/* Profit target progress */}
+      {[
+        {label:"Profit Target",pct:profitPct,current:fmt(totalPnl),target:`$${config.profitTarget}`,color:B.teal,ok:totalPnl>=config.profitTarget,okMsg:"✅ Target reached!"},
+        {label:"Trailing Drawdown",pct:trailingDDPct,current:fmt(-trailingDD),target:`-$${config.trailingDrawdown}`,color:B.loss,ok:atTrailingDD,okMsg:"🚨 Account blown"},
+        {label:"Daily Loss",pct:dailyLossPct,current:fmt(todayPnl),target:`-$${config.dailyLoss}`,color:B.spark,ok:atDailyLimit,okMsg:"🛑 Daily limit hit"},
+      ].map(g=>(
+        <div key={g.label}>
+          <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+            <span style={{fontSize:11,color:g.ok?g.color:B.text}}>{g.label}</span>
+            <span style={{fontSize:11,fontFamily:"monospace",color:g.ok?g.color:B.textMuted}}>{g.current} / {g.target}</span>
+          </div>
+          <div style={{height:6,background:"rgba(255,255,255,0.05)",borderRadius:3,overflow:"hidden"}}>
+            <div style={{height:"100%",width:`${g.pct*100}%`,background:g.ok?g.color:`${g.color}60`,borderRadius:3,transition:"width 0.5s"}}/>
+          </div>
+          {g.ok&&<div style={{fontSize:10,color:g.color,marginTop:3,fontWeight:700}}>{g.okMsg}</div>}
+        </div>
+      ))}
+
+      {/* Consistency rule */}
+      <div style={{padding:"10px 14px",borderRadius:10,background:consistencyOk?`${B.teal}08`:`${B.loss}08`,border:`1px solid ${consistencyOk?B.borderTeal:`${B.loss}30`}`}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div>
+            <div style={{fontSize:10,color:B.textMuted,letterSpacing:1}}>CONSISTENCY RULE</div>
+            <div style={{fontSize:11,color:B.textMuted,marginTop:2}}>Biggest day must be ≤{config.consistency}% of total profit</div>
+          </div>
+          <div style={{textAlign:"right"}}>
+            <div style={{fontSize:18,fontWeight:800,fontFamily:"monospace",color:consistencyOk?B.teal:B.loss}}>{consistencyPct}%</div>
+            <div style={{fontSize:10,color:consistencyOk?B.teal:B.loss,fontWeight:700}}>{consistencyOk?"✓ Passing":"✗ Failing"}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── ICT Concept Tagger ────────────────────────────────────────────────────────
+const ICT_CONCEPTS=[
+  "FVG","OTE","CISD","Liquidity Sweep","PD Array","Order Block","Breaker Block",
+  "Mitigation Block","Rejection Block","ICT Killzone","Power of 3","SMT Divergence",
+  "PDH/PDL","Weekly High/Low","Turtle Soup","10AM Reversal","NWOG/NDOG",
+];
+
+function ICTTaggerWidget({trades, session}){
+  const SKEY="tca_ict_tags_v1";
+  const [tags,setTags]=useState({});// {tradeId: [concept,...]}
+
+  useEffect(()=>{
+    try{const l=localStorage.getItem("pref_"+SKEY);if(l)setTags(JSON.parse(l));}catch(e){}
+    if(session?.user?.id)(async()=>{
+      try{const{data}=await supabase.from("user_preferences").select("value").eq("key",SKEY).single();
+        if(data?.value){setTags(JSON.parse(data.value));localStorage.setItem("pref_"+SKEY,data.value);}}catch(e){}
+    })();
+  },[session]);
+
+  const saveTags=async(t)=>{
+    setTags(t);const val=JSON.stringify(t);
+    localStorage.setItem("pref_"+SKEY,val);
+    if(session?.user?.id)try{await supabase.from("user_preferences").upsert({user_id:session.user.id,key:SKEY,value:val,updated_at:new Date().toISOString()},{onConflict:"user_id,key"});}catch(e){}
+  };
+
+  // Build concept stats
+  const stats={};
+  ICT_CONCEPTS.forEach(c=>{stats[c]={wins:0,losses:0,pnl:0,total:0};});
+  trades.forEach(t=>{
+    const tradeTags=tags[t.id]||[];
+    tradeTags.forEach(c=>{
+      if(!stats[c])stats[c]={wins:0,losses:0,pnl:0,total:0};
+      stats[c].total++;stats[c].pnl+=t.pnl;
+      if(t.result==="Win")stats[c].wins++;else stats[c].losses++;
+    });
+  });
+
+  const ranked=Object.entries(stats).filter(([,v])=>v.total>0).sort((a,b)=>b[1].pnl-a[1].pnl);
+
+  return(
+    <div style={{height:"100%",display:"flex",flexDirection:"column",gap:12}}>
+      <div style={{fontSize:9,color:B.textMuted,letterSpacing:2,textTransform:"uppercase"}}>ICT Concept Performance</div>
+
+      {ranked.length===0?(
+        <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8,color:B.textMuted}}>
+          <div style={{fontSize:24}}>🧠</div>
+          <div style={{fontSize:12,textAlign:"center"}}>No ICT concepts tagged yet.<br/>Open a trade to add tags.</div>
+        </div>
+      ):(
+        <div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",gap:6}}>
+          {ranked.slice(0,8).map(([concept,s])=>(
+            <div key={concept} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",borderRadius:8,background:"rgba(0,0,0,0.3)",border:`1px solid ${s.pnl>0?`${B.teal}25`:`${B.loss}25`}`}}>
+              <div style={{flex:1}}>
+                <div style={{fontSize:12,fontWeight:700,color:B.text}}>{concept}</div>
+                <div style={{fontSize:10,color:B.textMuted}}>{s.total} trades · {Math.round((s.wins/s.total)*100)}% WR</div>
+              </div>
+              <div style={{fontSize:13,fontWeight:800,fontFamily:"monospace",color:pnlColor(s.pnl)}}>{fmt(s.pnl)}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div style={{fontSize:10,color:B.textMuted,textAlign:"center",paddingTop:4,borderTop:`1px solid ${B.border}`}}>
+        Tag ICT concepts when opening individual trades
+      </div>
+    </div>
+  );
+}
+
+// ── Emotional State Tracker ───────────────────────────────────────────────────
+const MOODS=[
+  {id:"confident",label:"Confident",emoji:"😤",color:"#4ade80"},
+  {id:"focused",label:"Focused",emoji:"🎯",color:"#00D4A8"},
+  {id:"neutral",label:"Neutral",emoji:"😐",color:"#94a3b8"},
+  {id:"anxious",label:"Anxious",emoji:"😰",color:"#f59e0b"},
+  {id:"fomo",label:"FOMO",emoji:"😬",color:"#f97316"},
+  {id:"revenge",label:"Revenge",emoji:"😤",color:"#f05a7e"},
+];
+
+function EmotionalTrackerWidget({trades, session}){
+  const SKEY="tca_moods_v1";
+  const today=new Date().toISOString().slice(0,10);
+  const [moodLog,setMoodLog]=useState({});
+  const [selectedMood,setSelectedMood]=useState(null);
+
+  useEffect(()=>{
+    try{const l=localStorage.getItem("pref_"+SKEY);if(l)setMoodLog(JSON.parse(l));}catch(e){}
+    if(session?.user?.id)(async()=>{
+      try{const{data}=await supabase.from("user_preferences").select("value").eq("key",SKEY).single();
+        if(data?.value){setMoodLog(JSON.parse(data.value));localStorage.setItem("pref_"+SKEY,data.value);}}catch(e){}
+    })();
+  },[session]);
+
+  useEffect(()=>{
+    if(moodLog[today])setSelectedMood(moodLog[today]);
+  },[moodLog,today]);
+
+  const logMood=async(moodId)=>{
+    setSelectedMood(moodId);
+    const updated={...moodLog,[today]:moodId};
+    setMoodLog(updated);const val=JSON.stringify(updated);
+    localStorage.setItem("pref_"+SKEY,val);
+    if(session?.user?.id)try{await supabase.from("user_preferences").upsert({user_id:session.user.id,key:SKEY,value:val,updated_at:new Date().toISOString()},{onConflict:"user_id,key"});}catch(e){}
+  };
+
+  // Correlate mood with P&L
+  const moodStats={};
+  MOODS.forEach(m=>{moodStats[m.id]={pnl:0,days:0,wins:0};});
+  const dayMap={};
+  trades.forEach(t=>{if(!dayMap[t.date])dayMap[t.date]={pnl:0,wins:0,total:0};dayMap[t.date].pnl+=t.pnl;dayMap[t.date].total++;if(t.result==="Win")dayMap[t.date].wins++;});
+  Object.entries(moodLog).forEach(([date,moodId])=>{
+    const day=dayMap[date];
+    if(day&&moodStats[moodId]){moodStats[moodId].pnl+=day.pnl;moodStats[moodId].days++;if(day.pnl>0)moodStats[moodId].wins++;}
+  });
+
+  const rankedMoods=MOODS.filter(m=>moodStats[m.id]?.days>0).sort((a,b)=>moodStats[b.id].pnl-moodStats[a.id].pnl);
+
+  return(
+    <div style={{height:"100%",display:"flex",flexDirection:"column",gap:14}}>
+      <div style={{fontSize:9,color:B.textMuted,letterSpacing:2,textTransform:"uppercase"}}>Emotional State Tracker</div>
+
+      {/* Today's mood */}
+      <div>
+        <div style={{fontSize:11,color:B.textMuted,marginBottom:8}}>How are you feeling today?</div>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+          {MOODS.map(m=>(
+            <button key={m.id} onClick={()=>logMood(m.id)} style={{
+              padding:"6px 12px",borderRadius:20,cursor:"pointer",
+              border:`1px solid ${selectedMood===m.id?m.color:B.border}`,
+              background:selectedMood===m.id?`${m.color}20`:"transparent",
+              color:selectedMood===m.id?m.color:B.textMuted,
+              fontSize:12,fontWeight:selectedMood===m.id?700:400,
+              transition:"all 0.15s",
+            }}>
+              {m.emoji} {m.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Mood vs P&L correlation */}
+      {rankedMoods.length>0&&(
+        <div style={{flex:1,overflowY:"auto"}}>
+          <div style={{fontSize:10,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:8}}>Mood vs Performance</div>
+          <div style={{display:"flex",flexDirection:"column",gap:6}}>
+            {rankedMoods.map(m=>{
+              const s=moodStats[m.id];
+              const avgPnl=s.days?Math.round(s.pnl/s.days):0;
+              return(
+                <div key={m.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",borderRadius:8,background:"rgba(0,0,0,0.3)",border:`1px solid ${s.pnl>0?`${m.color}30`:B.border}`}}>
+                  <span style={{fontSize:16}}>{m.emoji}</span>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:12,fontWeight:700,color:B.text}}>{m.label}</div>
+                    <div style={{fontSize:10,color:B.textMuted}}>{s.days} days · {Math.round((s.wins/s.days)*100)}% green days</div>
+                  </div>
+                  <div style={{textAlign:"right"}}>
+                    <div style={{fontSize:13,fontWeight:800,fontFamily:"monospace",color:pnlColor(avgPnl)}}>{avgPnl>=0?"+":""}{fmt(avgPnl)}</div>
+                    <div style={{fontSize:9,color:B.textMuted}}>avg/day</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+      {rankedMoods.length===0&&(
+        <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",color:B.textMuted,fontSize:12,textAlign:"center"}}>
+          Log your mood daily to see<br/>how emotions affect your trading
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Achievements System ───────────────────────────────────────────────────────
+function AchievementsWidget({trades, session}){
+  const dayMap={};
+  trades.forEach(t=>{if(!dayMap[t.date])dayMap[t.date]={pnl:0,wins:0,total:0};dayMap[t.date].pnl+=t.pnl;dayMap[t.date].total++;if(t.result==="Win")dayMap[t.date].wins++;});
+  const days=Object.values(dayMap);
+  const totalPnl=trades.reduce((a,t)=>a+t.pnl,0);
+  const winRate=trades.length?Math.round((trades.filter(t=>t.result==="Win").length/trades.length)*100):0;
+  const greenDays=days.filter(d=>d.pnl>0).length;
+  const bestDay=days.length?Math.max(...days.map(d=>d.pnl)):0;
+
+  // Consecutive green days
+  const sortedDays=Object.entries(dayMap).sort((a,b)=>b[0].localeCompare(a[0]));
+  let streak=0;for(const[,d] of sortedDays){if(d.pnl>0)streak++;else break;}
+
+  const ACHIEVEMENTS=[
+    {id:"first_trade",icon:"🌱",name:"First Step",desc:"Log your first trade",unlocked:trades.length>=1},
+    {id:"ten_trades",icon:"📊",name:"Getting Started",desc:"Complete 10 trades",unlocked:trades.length>=10,progress:Math.min(trades.length/10,1)},
+    {id:"fifty_trades",icon:"💪",name:"In The Zone",desc:"Complete 50 trades",unlocked:trades.length>=50,progress:Math.min(trades.length/50,1)},
+    {id:"green_week",icon:"🟢",name:"Green Week",desc:"5 consecutive green days",unlocked:streak>=5,progress:Math.min(streak/5,1)},
+    {id:"win_rate_60",icon:"🎯",name:"Sharp Shooter",desc:"Achieve 60% win rate",unlocked:winRate>=60,progress:Math.min(winRate/60,1)},
+    {id:"first_500",icon:"💰",name:"First $500",desc:"Reach $500 total P&L",unlocked:totalPnl>=500,progress:Math.min(Math.max(totalPnl/500,0),1)},
+    {id:"first_1000",icon:"🚀",name:"Four Figures",desc:"Reach $1,000 total P&L",unlocked:totalPnl>=1000,progress:Math.min(Math.max(totalPnl/1000,0),1)},
+    {id:"best_day_200",icon:"⚡",name:"Big Day",desc:"$200+ in a single day",unlocked:bestDay>=200,progress:Math.min(bestDay/200,1)},
+    {id:"green_days_10",icon:"📅",name:"Consistent",desc:"10 green trading days",unlocked:greenDays>=10,progress:Math.min(greenDays/10,1)},
+    {id:"discipline",icon:"🏆",name:"Disciplined Trader",desc:"30 green days total",unlocked:greenDays>=30,progress:Math.min(greenDays/30,1)},
+  ];
+
+  const unlocked=ACHIEVEMENTS.filter(a=>a.unlocked);
+  const locked=ACHIEVEMENTS.filter(a=>!a.unlocked);
+
+  return(
+    <div style={{height:"100%",display:"flex",flexDirection:"column",gap:12}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <div style={{fontSize:9,color:B.textMuted,letterSpacing:2,textTransform:"uppercase"}}>Achievements</div>
+        <div style={{fontSize:11,color:B.spark,fontWeight:700}}>{unlocked.length}/{ACHIEVEMENTS.length} unlocked</div>
+      </div>
+
+      {/* Unlocked */}
+      {unlocked.length>0&&(
+        <div>
+          <div style={{fontSize:10,color:B.teal,letterSpacing:1,marginBottom:6}}>✓ Unlocked</div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+            {unlocked.map(a=>(
+              <div key={a.id} title={a.desc} style={{padding:"6px 12px",borderRadius:20,background:`${B.teal}15`,border:`1px solid ${B.borderTeal}`,display:"flex",alignItems:"center",gap:6}}>
+                <span style={{fontSize:14}}>{a.icon}</span>
+                <span style={{fontSize:11,fontWeight:700,color:B.teal}}>{a.name}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* In progress */}
+      <div style={{flex:1,overflowY:"auto"}}>
+        <div style={{fontSize:10,color:B.textMuted,letterSpacing:1,marginBottom:6}}>In Progress</div>
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {locked.slice(0,4).map(a=>(
+            <div key={a.id} style={{padding:"10px 12px",borderRadius:10,background:"rgba(0,0,0,0.3)",border:`1px solid ${B.border}`}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+                <span style={{fontSize:16,opacity:0.4}}>{a.icon}</span>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:12,fontWeight:700,color:B.textMuted}}>{a.name}</div>
+                  <div style={{fontSize:10,color:B.textDim}}>{a.desc}</div>
+                </div>
+                <span style={{fontSize:11,fontFamily:"monospace",color:B.textMuted}}>{Math.round((a.progress||0)*100)}%</span>
+              </div>
+              <div style={{height:4,background:"rgba(255,255,255,0.05)",borderRadius:2}}>
+                <div style={{height:"100%",width:`${(a.progress||0)*100}%`,background:"linear-gradient(90deg,#4F8EF7,#8B5CF6)",borderRadius:2,transition:"width 0.8s"}}/>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

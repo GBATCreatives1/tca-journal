@@ -55,6 +55,20 @@ JSON structure:
   const prompt = prompts[type];
   if (!prompt) return res.status(400).json({ error: "Invalid type" });
 
+  // Build messages array - support chart image for trade analysis
+  let messages;
+  if (type === "trade" && req.body.chartImage) {
+    messages = [{
+      role: "user",
+      content: [
+        { type: "image", source: { type: "base64", media_type: "image/jpeg", data: req.body.chartImage }},
+        { type: "text", text: prompt + "\n\nA chart screenshot is attached. Use it to provide deeper analysis of the entry/exit timing, price action context, and whether the setup was valid." }
+      ]
+    }];
+  } else {
+    messages = [{ role: "user", content: prompt }];
+  }
+
   try {
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -66,7 +80,7 @@ JSON structure:
       body: JSON.stringify({
         model: "claude-sonnet-4-20250514",
         max_tokens: type === "full" ? 1000 : 600,
-        messages: [{ role: "user", content: prompt }],
+        messages,
       }),
     });
 
