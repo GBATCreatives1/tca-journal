@@ -5579,19 +5579,23 @@ function EconomicCalendar({isDark=true}){
   };
 
   const formatVal=(val)=>{
-    if(!val||val==="")return<span style={{color:textDim}}>—</span>;
-    return<span style={{color:textMuted,fontFamily:"monospace"}}>{val}</span>;
+    if(val===null||val===undefined||val===""||String(val).trim()==="null")return<span style={{color:textDim}}>—</span>;
+    return<span style={{color:textMuted,fontFamily:"monospace"}}>{String(val).trim()}</span>;
   };
 
   const formatActual=(evt)=>{
-    if(!evt.actual||evt.actual==="")return<span style={{color:textDim}}>—</span>;
-    // Try to determine if beat/miss vs forecast
-    const a=parseFloat(evt.actual);const f=parseFloat(evt.forecast);
-    if(!isNaN(a)&&!isNaN(f)){
-      const beat=a>f;
-      return<span style={{color:beat?posColor:negColor,fontFamily:"monospace",fontWeight:700}}>{evt.actual}</span>;
+    const val=evt.actual;
+    if(val===null||val===undefined||val==="")return<span style={{color:textDim}}>—</span>;
+    const str=String(val).trim();
+    if(!str||str==="null")return<span style={{color:textDim}}>—</span>;
+    // Try beat/miss coloring vs forecast
+    const cleanA=parseFloat(str.replace(/[KMBkm%]/g,""));
+    const cleanF=parseFloat(String(evt.forecast||"").replace(/[KMBkm%]/g,""));
+    if(!isNaN(cleanA)&&!isNaN(cleanF)&&cleanF!==0){
+      const beat=cleanA>=cleanF;
+      return<span style={{color:beat?posColor:negColor,fontFamily:"monospace",fontWeight:700}}>{str}</span>;
     }
-    return<span style={{color:textPrimary,fontFamily:"monospace",fontWeight:700}}>{evt.actual}</span>;
+    return<span style={{color:textPrimary,fontFamily:"monospace",fontWeight:700}}>{str}</span>;
   };
 
   return(

@@ -10,6 +10,64 @@ export default async function handler(req, res) {
   // Try multiple sources in order
   const errors = [];
 
+  // ── Source 0: ForexFactory JSON mirror (most accurate, matches FF exactly) ──────
+  try {
+    const urls = [
+      `https://nfs.faireconomy.media/ff_calendar_thisweek.json?version=${Date.now()}`,
+      `https://nfs.faireconomy.media/ff_calendar_nextweek.json?version=${Date.now()}`,
+    ];
+
+    for (const url of urls) {
+      try {
+        const r = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0", "Accept": "application/json" } });
+        if (!r.ok) continue;
+        const data = await r.json();
+        if (!Array.isArray(data)) continue;
+
+        const events = data
+          .filter(e => (e.country === "USD" || e.currency === "USD" || e.country === "US"))
+          .map(e => {
+            // FF dates are like "04-03-2026T08:30:00-0400"
+            let dateStr = "", timeStr = "";
+            try {
+              const dt = new Date(e.date);
+              if (!isNaN(dt)) {
+                // Convert to EST
+                const estOffset = -5 * 60;
+                const local = new Date(dt.getTime() + estOffset * 60000);
+                dateStr = local.toISOString().slice(0, 10);
+                timeStr = local.toISOString().slice(11, 16);
+              }
+            } catch(ex) {}
+
+            return {
+              date: dateStr,
+              time: timeStr,
+              name: e.title || e.name || "",
+              impact: e.impact === "High" ? "high" : e.impact === "Medium" ? "medium" : "low",
+              currency: "USD",
+              actual: (e.actual != null && e.actual !== "") ? String(e.actual) : "",
+              forecast: (e.forecast != null && e.forecast !== "") ? String(e.forecast) : "",
+              previous: (e.previous != null && e.previous !== "") ? String(e.previous) : "",
+              id: Math.random(),
+              source: "forexfactory",
+            };
+          })
+          .filter(e => e.name && e.date >= from && e.date <= to)
+          .sort((a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time));
+
+        if (events.length > 0) {
+          console.log(`ForexFactory JSON (${url.includes("next") ? "next" : "this"} week): ${events.length} events`);
+          return res.status(200).json({ events, source: "forexfactory" });
+        }
+      } catch(innerErr) {
+        console.warn("FF URL failed:", innerErr.message);
+      }
+    }
+  } catch (e) {
+    errors.push(`ForexFactory JSON: ${e.message}`);
+  }
+
   // ── Source 1: TradingEconomics (server-side, no CORS issue) ──────────────────
   try {
     const url = `https://api.tradingeconomics.com/calendar/country/united%20states/${from}/${to}?c=guest:guest&f=json`;
@@ -25,9 +83,9 @@ export default async function handler(req, res) {
             name: e.Event || "",
             impact: e.Importance === 3 ? "high" : e.Importance === 2 ? "medium" : "low",
             currency: e.Currency || "USD",
-            actual: e.Actual != null ? String(e.Actual) : "",
-            forecast: e.Forecast != null ? String(e.Forecast) : "",
-            previous: e.Previous != null ? String(e.Previous) : "",
+            actual: e.Actual != null && e.Actual !== "" ? String(e.Actual) : "",
+            forecast: e.Forecast != null && e.Forecast !== "" ? String(e.Forecast) : "",
+            previous: e.Previous != null && e.Previous !== "" ? String(e.Previous) : "",
             id: e.CalendarId || Math.random(),
             source: "tradingeconomics",
           }))
@@ -133,9 +191,9 @@ export default async function handler(req, res) {
               name: e.title || e.name || "",
               impact: e.impact === "High" ? "high" : e.impact === "Medium" ? "medium" : "low",
               currency: "USD",
-              actual: e.actual || "",
-              forecast: e.forecast || "",
-              previous: e.previous || e.prev || "",
+              actual: (e.actual != null && e.actual !== "") ? String(e.actual) : "",
+              forecast: (e.forecast != null && e.forecast !== "") ? String(e.forecast) : "",
+              previous: (e.previous != null && e.previous !== "" ? String(e.previous) : (e.prev != null ? String(e.prev) : "")),
               id: Math.random(),
               source: "forexfactory",
             };
