@@ -5941,6 +5941,370 @@ function EconomicCalendar({isDark=true}){
 
 
 
+// ── PDF Report Generator ──────────────────────────────────────────────────────
+function PDFReportModal({trades, session, onClose}){
+  const [period, setPeriod] = useState("week");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
+  const [generating, setGenerating] = useState(false);
+  const [done, setDone] = useState(false);
+
+  const getDateRange = ()=>{
+    const now = new Date();
+    const today = now.toISOString().slice(0,10);
+    if(period==="week"){
+      const d = new Date(); d.setDate(d.getDate()-7);
+      return {from:d.toISOString().slice(0,10), to:today, label:"Last 7 Days"};
+    }
+    if(period==="this_week"){
+      const d = new Date(); const dow = d.getDay();
+      d.setDate(d.getDate()-(dow===0?6:dow-1));
+      return {from:d.toISOString().slice(0,10), to:today, label:"This Week"};
+    }
+    if(period==="month"){
+      return {from:today.slice(0,7)+"-01", to:today, label:"This Month"};
+    }
+    if(period==="last_month"){
+      const d = new Date(); d.setMonth(d.getMonth()-1);
+      const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,"0");
+      const last=new Date(y,d.getMonth()+1,0).getDate();
+      return {from:`${y}-${m}-01`, to:`${y}-${m}-${last}`, label:`${d.toLocaleString("en-US",{month:"long"})} ${y}`};
+    }
+    if(period==="custom") return {from:customFrom, to:customTo, label:`${customFrom} to ${customTo}`};
+    return {from:today.slice(0,4)+"-01-01", to:today, label:"Year to Date"};
+  };
+
+  const filteredTrades = ()=>{
+    const {from,to} = getDateRange();
+    return trades.filter(t=>t.date>=from && t.date<=to).sort((a,b)=>a.date.localeCompare(b.date));
+  };
+
+  const generatePDF = async()=>{
+    setGenerating(true);
+    const ft = filteredTrades();
+    if(!ft.length){alert("No trades found in this period.");setGenerating(false);return;}
+    const range = getDateRange();
+    const userName = session?.user?.user_metadata?.full_name || session?.user?.email?.split("@")[0] || "Trader";
+
+    // Compute all stats
+    const wins = ft.filter(t=>t.result==="Win");
+    const losses = ft.filter(t=>t.result==="Loss");
+    const totalPnl = ft.reduce((a,t)=>a+t.pnl,0);
+    const wr = Math.round(wins.length/ft.length*100);
+    const grossW = wins.reduce((a,t)=>a+t.pnl,0);
+    const grossL = Math.abs(losses.reduce((a,t)=>a+t.pnl,0));
+    const pf = grossL>0?(grossW/grossL).toFixed(2): wins.length>0?"Perfect":"0";
+    const avgW = wins.length?(grossW/wins.length).toFixed(2):"0";
+    const avgL = losses.length?(grossL/losses.length).toFixed(2):"0";
+    const exp = (totalPnl/ft.length).toFixed(2);
+
+    // By session
+    const bySess={};
+    ft.forEach(t=>{if(!bySess[t.session])bySess[t.session]={w:0,n:0,pnl:0};bySess[t.session].n++;bySess[t.session].pnl+=t.pnl;if(t.result==="Win")bySess[t.session].w++;});
+
+    // By setup
+    const bySetup={};
+    ft.forEach(t=>{const s=t.strategy||t.setup||"Unknown";if(!bySetup[s])bySetup[s]={w:0,n:0,pnl:0};bySetup[s].n++;bySetup[s].pnl+=t.pnl;if(t.result==="Win")bySetup[s].w++;});
+
+    // By day of week
+    const byDay={};
+    ft.forEach(t=>{const d=new Date(t.date+"T12:00:00").toLocaleDateString("en-US",{weekday:"short"});if(!byDay[d])byDay[d]={w:0,n:0,pnl:0};byDay[d].n++;byDay[d].pnl+=t.pnl;if(t.result==="Win")byDay[d].w++;});
+
+    // Generate HTML for the PDF
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #1a1a2e; background: #fff; padding: 0; }
+  .page { width: 794px; min-height: 1123px; padding: 48px; position: relative; page-break-after: always; }
+  .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 36px; padding-bottom: 20px; border-bottom: 3px solid #00B894; }
+  .logo { font-size: 22px; font-weight: 900; color: #1a1a2e; letter-spacing: -0.5px; }
+  .logo span { color: #00B894; }
+  .report-meta { text-align: right; }
+  .report-meta .period { font-size: 18px; font-weight: 800; color: #1a1a2e; }
+  .report-meta .sub { font-size: 11px; color: #888; margin-top: 3px; }
+  .section-title { font-size: 10px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: #888; margin-bottom: 14px; margin-top: 28px; }
+  .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 4px; }
+  .stat-box { background: #f8f9fa; border-radius: 10px; padding: 14px 16px; border: 1px solid #e9ecef; }
+  .stat-label { font-size: 9px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: #aaa; margin-bottom: 6px; }
+  .stat-value { font-size: 22px; font-weight: 900; color: #1a1a2e; font-family: 'Courier New', monospace; }
+  .stat-value.green { color: #00B894; }
+  .stat-value.red { color: #FF6B6B; }
+  .stat-value.blue { color: #4F8EF7; }
+  .pnl-banner { background: linear-gradient(135deg, #00B894, #00CEC9); border-radius: 14px; padding: 24px 28px; margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center; }
+  .pnl-banner.loss { background: linear-gradient(135deg, #FF6B6B, #ee5a24); }
+  .pnl-label { font-size: 11px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: rgba(255,255,255,0.75); margin-bottom: 6px; }
+  .pnl-value { font-size: 40px; font-weight: 900; color: #fff; font-family: 'Courier New', monospace; letter-spacing: -1px; }
+  .pnl-sub { font-size: 12px; color: rgba(255,255,255,0.8); margin-top: 4px; }
+  .pnl-right { text-align: right; }
+  .pnl-wr { font-size: 36px; font-weight: 900; color: #fff; font-family: 'Courier New', monospace; }
+  table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  th { background: #f1f3f4; padding: 8px 10px; text-align: left; font-size: 9px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: #888; border-bottom: 2px solid #e9ecef; }
+  td { padding: 7px 10px; border-bottom: 1px solid #f1f3f4; color: #333; }
+  tr:last-child td { border-bottom: none; }
+  .win { color: #00B894; font-weight: 700; }
+  .loss-c { color: #FF6B6B; font-weight: 700; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 9px; font-weight: 700; }
+  .badge-win { background: #e8f8f4; color: #00B894; }
+  .badge-loss { background: #fff0f0; color: #FF6B6B; }
+  .footer { position: absolute; bottom: 28px; left: 48px; right: 48px; display: flex; justify-content: space-between; font-size: 9px; color: #bbb; border-top: 1px solid #f1f3f4; padding-top: 10px; }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .insight-box { background: #fff8e1; border: 1px solid #ffd54f; border-left: 4px solid #FFB700; border-radius: 8px; padding: 14px 16px; margin-top: 16px; }
+  .insight-title { font-size: 10px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #e65100; margin-bottom: 8px; }
+  .insight-item { font-size: 11px; color: #555; margin-bottom: 4px; padding-left: 12px; position: relative; }
+  .insight-item:before { content: "→"; position: absolute; left: 0; color: #FFB700; font-weight: 700; }
+</style>
+</head><body>
+
+<!-- PAGE 1: SUMMARY -->
+<div class="page">
+  <div class="header">
+    <div>
+      <div class="logo">TCA <span>Journal</span></div>
+      <div style="font-size:11px;color:#888;margin-top:4px;">The Candlestick Academy</div>
+    </div>
+    <div class="report-meta">
+      <div class="period">${range.label}</div>
+      <div class="sub">Performance Report · ${userName}</div>
+      <div class="sub">Generated ${new Date().toLocaleDateString("en-US",{month:"long",day:"numeric",year:"numeric"})}</div>
+    </div>
+  </div>
+
+  <!-- P&L Banner -->
+  <div class="pnl-banner${totalPnl<0?" loss":""}">
+    <div>
+      <div class="pnl-label">Net P&L</div>
+      <div class="pnl-value">${totalPnl>=0?"+":""}$${Math.abs(totalPnl).toFixed(2)}</div>
+      <div class="pnl-sub">${ft.length} trades · ${wins.length}W / ${losses.length}L</div>
+    </div>
+    <div class="pnl-right">
+      <div class="pnl-label">Win Rate</div>
+      <div class="pnl-wr">${wr}%</div>
+      <div class="pnl-sub">Profit Factor: ${pf}</div>
+    </div>
+  </div>
+
+  <!-- Key Stats -->
+  <div class="section-title">Performance Metrics</div>
+  <div class="stat-grid">
+    <div class="stat-box"><div class="stat-label">Avg Winner</div><div class="stat-value green">+$${avgW}</div></div>
+    <div class="stat-box"><div class="stat-label">Avg Loser</div><div class="stat-value red">-$${avgL}</div></div>
+    <div class="stat-box"><div class="stat-label">Expectancy</div><div class="stat-value ${parseFloat(exp)>=0?"green":"red"}">${parseFloat(exp)>=0?"+":""}$${exp}</div></div>
+    <div class="stat-box"><div class="stat-label">Profit Factor</div><div class="stat-value blue">${pf}</div></div>
+    <div class="stat-box"><div class="stat-label">Gross Wins</div><div class="stat-value green">+$${grossW.toFixed(2)}</div></div>
+    <div class="stat-box"><div class="stat-label">Gross Loss</div><div class="stat-value red">-$${grossL.toFixed(2)}</div></div>
+    <div class="stat-box"><div class="stat-label">Total Trades</div><div class="stat-value">${ft.length}</div></div>
+    <div class="stat-box"><div class="stat-label">Win / Loss</div><div class="stat-value">${wins.length}<span style="color:#ccc;font-size:16px"> / </span>${losses.length}</div></div>
+  </div>
+
+  <!-- Session + Day breakdown -->
+  <div class="two-col" style="margin-top:24px;">
+    <div>
+      <div class="section-title">By Session</div>
+      <table>
+        <tr><th>Session</th><th>Trades</th><th>Win %</th><th>P&L</th></tr>
+        ${Object.entries(bySess).sort((a,b)=>b[1].pnl-a[1].pnl).map(([s,d])=>`
+        <tr>
+          <td><strong>${s}</strong></td>
+          <td>${d.n}</td>
+          <td class="${d.w/d.n>=0.5?"win":"loss-c"}">${Math.round(d.w/d.n*100)}%</td>
+          <td class="${d.pnl>=0?"win":"loss-c"}">${d.pnl>=0?"+":""}$${d.pnl.toFixed(2)}</td>
+        </tr>`).join("")}
+      </table>
+    </div>
+    <div>
+      <div class="section-title">By Day of Week</div>
+      <table>
+        <tr><th>Day</th><th>Trades</th><th>Win %</th><th>P&L</th></tr>
+        ${Object.entries(byDay).map(([d,v])=>`
+        <tr>
+          <td><strong>${d}</strong></td>
+          <td>${v.n}</td>
+          <td class="${v.w/v.n>=0.5?"win":"loss-c"}">${Math.round(v.w/v.n*100)}%</td>
+          <td class="${v.pnl>=0?"win":"loss-c"}">${v.pnl>=0?"+":""}$${v.pnl.toFixed(2)}</td>
+        </tr>`).join("")}
+      </table>
+    </div>
+  </div>
+
+  <!-- Insights -->
+  <div class="insight-box">
+    <div class="insight-title">Key Insights</div>
+    ${(()=>{
+      const insights = [];
+      const bestSess = Object.entries(bySess).sort((a,b)=>b[1].pnl-a[1].pnl)[0];
+      const worstSess = Object.entries(bySess).sort((a,b)=>a[1].pnl-b[1].pnl)[0];
+      const bestSetup = Object.entries(bySetup).sort((a,b)=>b[1].pnl-a[1].pnl)[0];
+      if(bestSess)insights.push(`Best session: <strong>${bestSess[0]}</strong> with ${Math.round(bestSess[1].w/bestSess[1].n*100)}% win rate and $${bestSess[1].pnl.toFixed(2)} P&L`);
+      if(worstSess&&worstSess[0]!==bestSess?.[0])insights.push(`Avoid: <strong>${worstSess[0]}</strong> session — $${worstSess[1].pnl.toFixed(2)} total loss`);
+      if(bestSetup)insights.push(`Top setup: <strong>${bestSetup[0]}</strong> generating $${bestSetup[1].pnl.toFixed(2)} across ${bestSetup[1].n} trades`);
+      if(parseFloat(avgW)>0&&parseFloat(avgL)>0)insights.push(`Risk/reward profile: avg win $${avgW} vs avg loss $${avgL} (ratio: ${(parseFloat(avgW)/parseFloat(avgL)).toFixed(2)}x)`);
+      return insights.map(i=>`<div class="insight-item">${i}</div>`).join("");
+    })()}
+  </div>
+
+  <div class="footer">
+    <span>TCA Journal · The Candlestick Academy</span>
+    <span>${range.label} Performance Report · Page 1 of 2</span>
+    <span>${new Date().toLocaleDateString()}</span>
+  </div>
+</div>
+
+<!-- PAGE 2: TRADE LOG -->
+<div class="page">
+  <div class="header">
+    <div>
+      <div class="logo">TCA <span>Journal</span></div>
+      <div style="font-size:11px;color:#888;margin-top:4px;">Trade Log</div>
+    </div>
+    <div class="report-meta">
+      <div class="period">${range.label}</div>
+      <div class="sub">${userName} · ${ft.length} trades</div>
+    </div>
+  </div>
+
+  <!-- Setup performance -->
+  <div class="section-title">Setup / Strategy Performance</div>
+  <table style="margin-bottom:24px;">
+    <tr><th>Setup / Strategy</th><th>Trades</th><th>Win %</th><th>Gross P&L</th><th>Avg P&L</th></tr>
+    ${Object.entries(bySetup).sort((a,b)=>b[1].pnl-a[1].pnl).slice(0,8).map(([s,d])=>`
+    <tr>
+      <td><strong>${s}</strong></td>
+      <td>${d.n}</td>
+      <td class="${d.w/d.n>=0.5?"win":"loss-c"}">${Math.round(d.w/d.n*100)}%</td>
+      <td class="${d.pnl>=0?"win":"loss-c"}">${d.pnl>=0?"+":""}$${d.pnl.toFixed(2)}</td>
+      <td class="${d.pnl/d.n>=0?"win":"loss-c"}">${d.pnl/d.n>=0?"+":""}$${(d.pnl/d.n).toFixed(2)}</td>
+    </tr>`).join("")}
+  </table>
+
+  <!-- Full trade log -->
+  <div class="section-title">Full Trade Log (${ft.length} trades)</div>
+  <table>
+    <tr><th>Date</th><th>Instrument</th><th>Dir</th><th>Entry</th><th>Exit</th><th>Contracts</th><th>Session</th><th>Setup</th><th>Grade</th><th>Result</th><th>P&L</th></tr>
+    ${ft.slice(0,40).map(t=>`
+    <tr>
+      <td>${t.date}</td>
+      <td><strong>${t.instrument||"—"}</strong></td>
+      <td>${t.direction==="Long"?"▲ Long":"▼ Short"}</td>
+      <td style="font-family:monospace">${t.entry||"—"}</td>
+      <td style="font-family:monospace">${t.exit||"—"}</td>
+      <td>${t.contracts||1}</td>
+      <td>${t.session||"—"}</td>
+      <td>${(t.strategy||t.setup||"—").slice(0,15)}</td>
+      <td>${t.grade||"—"}</td>
+      <td><span class="badge ${t.result==="Win"?"badge-win":"badge-loss"}">${t.result||"—"}</span></td>
+      <td class="${t.pnl>=0?"win":"loss-c"}" style="font-family:monospace;font-weight:700">${t.pnl>=0?"+":""}$${t.pnl?.toFixed(2)||"0"}</td>
+    </tr>`).join("")}
+  </table>
+  ${ft.length>40?`<div style="text-align:center;padding:10px;font-size:10px;color:#aaa;">Showing 40 of ${ft.length} trades</div>`:""}
+
+  <div class="footer">
+    <span>TCA Journal · The Candlestick Academy</span>
+    <span>${range.label} Performance Report · Page 2 of 2</span>
+    <span>${new Date().toLocaleDateString()}</span>
+  </div>
+</div>
+
+</body></html>`;
+
+    // Open in new window and trigger print-to-PDF
+    const win = window.open("","_blank","width=900,height=700");
+    if(!win){alert("Please allow popups to generate the PDF.");setGenerating(false);return;}
+    win.document.write(html);
+    win.document.close();
+    win.onload = ()=>{
+      setTimeout(()=>{
+        win.print();
+        setDone(true);
+        setGenerating(false);
+      }, 800);
+    };
+  };
+
+  const {from,to,label} = getDateRange();
+  const count = filteredTrades().length;
+  const previewPnl = filteredTrades().reduce((a,t)=>a+t.pnl,0);
+
+  const iS={padding:"8px 12px",borderRadius:9,border:`1px solid ${B.border}`,background:"rgba(0,0,0,0.3)",color:B.text,fontSize:12,outline:"none",width:"100%"};
+
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",zIndex:400,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={onClose}>
+      <div style={{background:"#13121A",border:`1px solid ${B.border}`,borderRadius:20,width:"100%",maxWidth:480,padding:28}} onClick={e=>e.stopPropagation()}>
+        <div style={{height:3,background:"linear-gradient(90deg,#00D4A8,#4F8EF7,#8B5CF6)",borderRadius:"20px 20px 0 0",margin:"-28px -28px 24px"}}/>
+
+        {/* Header */}
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:20}}>
+          <div style={{width:40,height:40,borderRadius:10,background:"linear-gradient(135deg,#00D4A8,#4F8EF7)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>📄</div>
+          <div>
+            <div style={{fontSize:16,fontWeight:800,color:B.text}}>Export PDF Report</div>
+            <div style={{fontSize:11,color:B.textMuted}}>Weekly or monthly trading summary</div>
+          </div>
+        </div>
+
+        {/* Period selector */}
+        <div style={{marginBottom:16}}>
+          <label style={{fontSize:10,color:B.textMuted,letterSpacing:1.5,display:"block",marginBottom:8}}>REPORT PERIOD</label>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+            {[
+              {id:"this_week",label:"This Week"},
+              {id:"week",label:"Last 7 Days"},
+              {id:"month",label:"This Month"},
+              {id:"last_month",label:"Last Month"},
+              {id:"ytd",label:"Year to Date"},
+              {id:"custom",label:"Custom Range"},
+            ].map(p=>(
+              <button key={p.id} onClick={()=>setPeriod(p.id)} style={{
+                padding:"9px",borderRadius:9,cursor:"pointer",fontSize:12,fontWeight:600,
+                border:`1px solid ${period===p.id?B.teal:B.border}`,
+                background:period===p.id?`${B.teal}15`:"transparent",
+                color:period===p.id?B.teal:B.textMuted,transition:"all 0.12s",
+              }}>{p.label}</button>
+            ))}
+          </div>
+        </div>
+
+        {/* Custom range */}
+        {period==="custom"&&(
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
+            <div><label style={{fontSize:10,color:B.textMuted,display:"block",marginBottom:4}}>FROM</label><input type="date" value={customFrom} onChange={e=>setCustomFrom(e.target.value)} style={iS}/></div>
+            <div><label style={{fontSize:10,color:B.textMuted,display:"block",marginBottom:4}}>TO</label><input type="date" value={customTo} onChange={e=>setCustomTo(e.target.value)} style={iS}/></div>
+          </div>
+        )}
+
+        {/* Preview */}
+        <div style={{padding:"14px 16px",borderRadius:10,background:"rgba(0,212,168,0.05)",border:`1px solid rgba(0,212,168,0.15)`,marginBottom:20}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <div>
+              <div style={{fontSize:12,fontWeight:700,color:B.text}}>{label}</div>
+              <div style={{fontSize:11,color:B.textMuted,marginTop:2}}>{from} → {to}</div>
+            </div>
+            <div style={{textAlign:"right"}}>
+              <div style={{fontSize:18,fontWeight:800,fontFamily:"monospace",color:previewPnl>=0?B.teal:B.loss}}>{previewPnl>=0?"+":""}${Math.abs(previewPnl).toFixed(2)}</div>
+              <div style={{fontSize:10,color:B.textMuted}}>{count} trades</div>
+            </div>
+          </div>
+        </div>
+
+        {done&&(
+          <div style={{padding:"10px 14px",borderRadius:9,background:"rgba(0,212,168,0.1)",border:`1px solid rgba(0,212,168,0.2)`,marginBottom:16,fontSize:12,color:B.teal}}>
+            ✅ PDF opened in new tab — use your browser's print dialog to save as PDF. Set paper size to A4 or Letter.
+          </div>
+        )}
+
+        {/* Buttons */}
+        <div style={{display:"flex",gap:10}}>
+          <button onClick={onClose} style={{flex:1,padding:"11px",borderRadius:10,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:13}}>Cancel</button>
+          <button onClick={generatePDF} disabled={generating||count===0} style={{flex:2,padding:"11px",borderRadius:10,border:"none",
+            background:count===0?"rgba(255,255,255,0.05)":generating?"rgba(0,212,168,0.3)":"linear-gradient(135deg,#00D4A8,#4F8EF7)",
+            color:count===0||generating?"#6B6880":"#0E0E10",cursor:count===0?"not-allowed":"pointer",fontSize:13,fontWeight:800}}>
+            {generating?"Generating...":count===0?"No trades in range":`📄 Generate PDF (${count} trades)`}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 // ── User Profile Modal ────────────────────────────────────────────────────────
 function ProfileModal({session, onClose}){
   const [name, setName] = useState(session?.user?.user_metadata?.full_name||"");
@@ -6412,6 +6776,7 @@ export default function App(){
   const [chatOpen,setChatOpen]=useState(false);
   const [showAdmin,setShowAdmin]=useState(false);
   const [showProfile,setShowProfile]=useState(false);
+  const [showReport,setShowReport]=useState(false);
     const [isDark,setIsDark]=useState(()=>{
     try{return localStorage.getItem("tca_theme")!=="light";}catch(e){return true;}
   });
@@ -6664,6 +7029,7 @@ export default function App(){
         <div><h1 style={{margin:0,fontSize:20,fontWeight:800,color:B.text,letterSpacing:-0.5}}>{NAV.find(n=>n.id===active)?.label}</h1></div>
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
           {hasSample&&(<button onClick={()=>setTrades([])} style={{padding:"8px 14px",borderRadius:9,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:11,fontWeight:600}}>Clear Sample Data</button>)}
+          <button onClick={()=>setShowReport(true)} style={{padding:"7px 14px",borderRadius:9,border:`1px solid rgba(0,212,168,0.3)`,background:"rgba(0,212,168,0.06)",color:B.teal,cursor:"pointer",fontSize:11,fontWeight:700,display:"flex",alignItems:"center",gap:5}}>📄 Export PDF</button>
           {active==="overview"&&<button onClick={()=>document.dispatchEvent(new CustomEvent("tca-toggle-edit"))} style={{padding:"8px 14px",borderRadius:9,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:12,fontWeight:600}}>✏ Edit Layout</button>}
           {/* Theme toggle */}
           <button onClick={()=>{const next=!isDark;setIsDark(next);try{localStorage.setItem("tca_theme",next?"dark":"light");}catch(e){}}} title={isDark?"Switch to Light Mode":"Switch to Dark Mode"}
@@ -6691,6 +7057,7 @@ export default function App(){
       {active==="library"&&<PlaybookLibrary session={session}/>}
     </div>
   <TCAChat trades={trades} strategies={strategies} isOpen={chatOpen} onClose={()=>setChatOpen(false)}/>
+  {showReport&&<PDFReportModal trades={trades} session={session} onClose={()=>setShowReport(false)}/>}
   {showProfile&&<ProfileModal session={session} onClose={()=>setShowProfile(false)}/>}
   {showAdmin&&isAdmin&&<AdminPanel onClose={()=>setShowAdmin(false)}/>}
   </div>);
