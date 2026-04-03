@@ -589,15 +589,21 @@ function TradeFormModal({onClose,onSave,editTrade}){
   const saveCustomSetups=(s)=>{setCustomSetups(s);try{localStorage.setItem("tca_custom_setups_v1",JSON.stringify(s));}catch(e){}};
 
   useEffect(()=>{
-    try{
-      const s=JSON.parse(localStorage.getItem("tca_strategies_v1")||"[]");
-      setFormStrategies(s);
-    }catch(e){}
-    const handler=()=>{
-      try{const s=JSON.parse(localStorage.getItem("tca_strategies_v1")||"[]");setFormStrategies(s);}catch(e){}
-    };
-    window.addEventListener("storage",handler);
-    return()=>window.removeEventListener("storage",handler);
+    // Load from localStorage first (fast)
+    try{const l=localStorage.getItem("tca_strategies_v1");if(l){const s=JSON.parse(l);if(s.length)setFormStrategies(s);}}catch(e){}
+    // Then load from Supabase (authoritative)
+    (async()=>{
+      try{
+        const{data}=await supabase.from("user_preferences").select("value").eq("key","tca_strategies_v1").single();
+        if(data?.value){
+          const s=JSON.parse(data.value);
+          if(Array.isArray(s)&&s.length){
+            setFormStrategies(s);
+            localStorage.setItem("tca_strategies_v1",data.value);
+          }
+        }
+      }catch(e){}
+    })();
   },[]);
 
   const DEFAULT_TP_CATS=["PDH/PDL","FVG Fill","Order Block","VWAP","Round Number","Session High/Low","Fib Level","Swing High/Low","Custom"];
@@ -651,39 +657,8 @@ function TradeFormModal({onClose,onSave,editTrade}){
                   ))}
                 </select>
               </div>
-              <div style={{gridColumn:"1/-1"}}>
-                <label style={lS}>Setup / Entry Type <button type="button" onClick={()=>setShowSetupMgr(p=>!p)} style={{background:"none",border:"none",color:B.textMuted,cursor:"pointer",fontSize:10,marginLeft:4}}>⚙ edit</button></label>
-                <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                  {customSetups.map(s=>(
-                    <button key={s} type="button" onClick={()=>set("setup",form.setup===s?"":s)}
-                      style={{padding:"4px 12px",borderRadius:20,cursor:"pointer",fontSize:11,fontWeight:600,
-                        border:`1px solid ${form.setup===s?B.purple:B.border}`,
-                        background:form.setup===s?`${B.purple}18`:"transparent",
-                        color:form.setup===s?B.purple:B.textMuted,transition:"all 0.12s"}}>
-                      {s}
-                    </button>
-                  ))}
-                </div>
-                {showSetupMgr&&(
-                  <div style={{marginTop:10,padding:"12px 14px",borderRadius:10,background:"rgba(0,0,0,0.3)",border:`1px solid ${B.border}`}}>
-                    <div style={{fontSize:10,color:B.textMuted,letterSpacing:1,marginBottom:8}}>MANAGE SETUPS</div>
-                    <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:10}}>
-                      {customSetups.map(s=>(
-                        <div key={s} style={{display:"flex",alignItems:"center",gap:4,padding:"3px 8px",borderRadius:6,background:`${B.purple}10`,border:`1px solid ${B.borderPurp}`}}>
-                          <span style={{fontSize:11,color:B.purple}}>{s}</span>
-                          <button type="button" onClick={()=>saveCustomSetups(customSetups.filter(x=>x!==s))} style={{background:"none",border:"none",color:B.loss,cursor:"pointer",fontSize:12,padding:"0 2px",lineHeight:1}}>×</button>
-                        </div>
-                      ))}
-                    </div>
-                    <div style={{display:"flex",gap:6}}>
-                      <input value={newSetupName} onChange={e=>setNewSetupName(e.target.value)}
-                        onKeyDown={e=>e.key==="Enter"&&newSetupName.trim()&&(saveCustomSetups([...customSetups,newSetupName.trim()]),setNewSetupName(""))}
-                        placeholder="Add new setup..." style={{...iS,flex:1,padding:"5px 10px",fontSize:11}}/>
-                      <button type="button" onClick={()=>{if(newSetupName.trim()){saveCustomSetups([...customSetups,newSetupName.trim()]);setNewSetupName("");}}}
-                        style={{padding:"5px 12px",borderRadius:7,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:11,fontWeight:800}}>Add</button>
-                    </div>
-                  </div>
-                )}
+              <div><label style={lS}>Setup / Entry Type</label>
+                <input value={form.setup||""} onChange={e=>set("setup",e.target.value)} style={iS} placeholder="e.g. ERL to IRL, FVG Fill, 10AM Reversal..."/>
               </div>
               <div><label style={lS}>Account</label><select value={form.account_id||"main"} onChange={e=>set("account_id",e.target.value)} style={{...iS,cursor:"pointer"}}>{formAccounts.map(a=>(<option key={a.id} value={a.id}>{a.label}</option>))}</select></div><div style={{gridColumn:"1/-1"}}><label style={lS}>Grade</label><div style={{display:"flex",gap:6}}>{GRADES.map(g=>(<button key={g} onClick={()=>set("grade",g)} style={{flex:1,padding:"7px 0",borderRadius:8,border:"1px solid",cursor:"pointer",fontWeight:800,fontSize:12,borderColor:form.grade===g?GRADE_COLOR[g]:B.border,background:form.grade===g?`${GRADE_COLOR[g]}18`:"transparent",color:form.grade===g?GRADE_COLOR[g]:B.textMuted}}>{g}</button>))}</div></div><div style={{gridColumn:"1/-1"}}><label style={lS}>Notes</label><textarea value={form.notes} onChange={e=>set("notes",e.target.value)} rows={3} style={{...iS,resize:"vertical"}} placeholder="What happened?"/></div></div><div style={{display:"flex",gap:10,marginTop:24,justifyContent:"flex-end"}}><button onClick={onClose} style={{padding:"10px 22px",borderRadius:10,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:13,fontWeight:600}}>Cancel</button><button onClick={handleSave} style={{padding:"10px 28px",borderRadius:10,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:13,fontWeight:800}}>{editTrade?"Save Changes":"Log Trade"}</button></div></div></div>);
 }
@@ -3122,7 +3097,7 @@ function DayJournalModal({date, trades, onClose, onGradeUpdate}){
           {/* Trades Tab */}
           {tab==="trades"&&(
             <div>
-              {selectedTrade&&<TradeDetailModal trade={selectedTrade} onClose={()=>setSelectedTrade(null)} onEdit={(t)=>{onClose();}} onGradeUpdate={onGradeUpdate}/>}
+              {selectedTrade&&<TradeDetailModal trade={selectedTrade} onClose={()=>setSelectedTrade(null)} onEdit={(t)=>{setSelectedTrade(null);if(onEdit)onEdit(t);}} onGradeUpdate={onGradeUpdate}/>}
               {dayTrades.length===0?(
                 <div style={{textAlign:"center",padding:"40px 0",color:B.textMuted,fontSize:13}}>No trades on this day.</div>
               ):(
@@ -5659,15 +5634,8 @@ function EconomicCalendar({isDark=true}){
   return(
     <div style={{display:"flex",flexDirection:"column",gap:16,fontFamily:"'DM Sans',sans-serif"}}>
 
-      {/* Header */}
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10}}>
-        <div>
-          <div style={{fontSize:18,fontWeight:800,color:B.text}}>Economic Calendar</div>
-          <div style={{fontSize:12,color:B.textMuted,marginTop:2,display:"flex",alignItems:"center",gap:6}}>
-            <div style={{width:8,height:8,borderRadius:"50%",background:"#E53E3E",flexShrink:0}}/>
-            High-impact US events · Track news that moves MES/ES futures
-          </div>
-        </div>
+      {/* My Events toggle */}
+      <div style={{display:"flex",justifyContent:"flex-end"}}>
         <button onClick={()=>setView(v=>v==="live"?"manual":"live")} style={{
           padding:"7px 16px",borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:700,
           border:`1px solid ${view==="manual"?B.teal:B.border}`,
@@ -6108,7 +6076,7 @@ export default function App(){
     </div>
     <div style={{marginLeft:216,padding:"28px 32px",minHeight:"100vh"}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
-        <div><h1 style={{margin:0,fontSize:20,fontWeight:800,color:B.text,letterSpacing:-0.5}}>{NAV.find(n=>n.id===active)?.label}</h1><div style={{fontSize:12,color:B.textMuted,marginTop:4}}>{session.user.email} - {trades.filter(t=>!t.id?.startsWith("s")).length} trades logged</div></div>
+        <div><h1 style={{margin:0,fontSize:20,fontWeight:800,color:B.text,letterSpacing:-0.5}}>{NAV.find(n=>n.id===active)?.label}</h1></div>
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
           {hasSample&&(<button onClick={()=>setTrades([])} style={{padding:"8px 14px",borderRadius:9,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:11,fontWeight:600}}>Clear Sample Data</button>)}
           {active==="overview"&&<button onClick={()=>document.dispatchEvent(new CustomEvent("tca-toggle-edit"))} style={{padding:"8px 14px",borderRadius:9,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:12,fontWeight:600}}>✏ Edit Layout</button>}
