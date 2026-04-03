@@ -111,15 +111,25 @@ JSON structure:
         },
         body: JSON.stringify({
           model: "claude-sonnet-4-20250514",
-          max_tokens: 600,
+          max_tokens: 500,
           system: chatContext,
           messages: chatHistory,
         }),
       });
+      if (!response.ok) {
+        const errText = await response.text();
+        console.error("Anthropic API error:", response.status, errText.slice(0,200));
+        return res.status(200).json({ content: [{ type: "text", text: `I ran into an API issue (${response.status}). Please try again in a moment.` }] });
+      }
       const data = await response.json();
+      if (data.error) {
+        console.error("Anthropic error:", data.error);
+        return res.status(200).json({ content: [{ type: "text", text: "I hit a rate limit or API issue. Please try again in a moment." }] });
+      }
       return res.status(200).json(data);
     } catch (err) {
-      return res.status(500).json({ error: err.message });
+      console.error("Chat handler error:", err.message);
+      return res.status(200).json({ content: [{ type: "text", text: "Connection issue on my end. Please try again." }] });
     }
   }
 
@@ -161,7 +171,11 @@ JSON structure:
     const parsed = JSON.parse(cleaned);
     return res.status(200).json(parsed);
   } catch (err) {
-    console.error("Coach error:", err);
-    return res.status(500).json({ error: err.message });
+    console.error("Coach error:", err.message);
+    // Always return JSON even on error
+    return res.status(200).json({ 
+      content: [{ type: "text", text: "I encountered an error processing your request. Please try again." }],
+      error: err.message 
+    });
   }
 }

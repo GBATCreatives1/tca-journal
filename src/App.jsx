@@ -5884,7 +5884,14 @@ RECENT 15: ${recent.join(" / ")}`;
         method:"POST",headers:{"Content-Type":"application/json"},
         body:JSON.stringify({type:"chat",chatContext:buildContext(),chatHistory:[...messages.slice(-8).map(m=>({role:m.role,content:m.content})),{role:"user",content:currentInput}]}),
       });
-      const data=await res.json();
+      if(!res.ok){
+        const errText=await res.text();
+        console.error("Coach API error:",res.status,errText.slice(0,200));
+        throw new Error(`Server error ${res.status}`);
+      }
+      const raw=await res.text();
+      let data;
+      try{data=JSON.parse(raw);}catch(e){console.error("Bad JSON:",raw.slice(0,200));throw new Error("Server returned invalid response");}
       const text=data.content?.[0]?.text||data.response||"I couldn't process that. Try again.";
       setMessages(m=>[...m,{role:"assistant",content:text,id:Date.now()}]);
     }catch(e){
