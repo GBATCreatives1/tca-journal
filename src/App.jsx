@@ -574,15 +574,60 @@ function LoginScreen(){
 }
 
 function TradeFormModal({onClose,onSave,editTrade}){
-  const blank={date:new Date().toISOString().slice(0,10),account_id:"main",instrument:"MES",direction:"Long",contracts:1,entry:"",exit:"",pnl:"",rr:"",setup:SETUPS[0],grade:"A",session:"AM",notes:"",result:"Win"};
+  const blank={date:new Date().toISOString().slice(0,10),account_id:"main",instrument:"MES",direction:"Long",contracts:1,entry:"",exit:"",stop_loss:"",take_profit:"",tp_category:"",pnl:"",rr:"",setup:SETUPS[0],grade:"A",session:"AM",notes:"",result:"Win"};
   const [form,setForm]=useState(editTrade?{...editTrade}:blank);const [auto,setAuto]=useState(!editTrade);
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
   // accounts from parent - we'll read from localStorage
   const [formAccounts,setFormAccounts]=useState([{id:"main",label:"Live Account"},{id:"apex_eval",label:"Apex Eval"},{id:"apex_demo",label:"Apex Demo"}]);
+  const DEFAULT_TP_CATS=["PDH/PDL","FVG Fill","Order Block","VWAP","Round Number","Session High/Low","Fib Level","Swing High/Low","Custom"];
+  const [tpCats,setTpCats]=useState(()=>{try{return JSON.parse(localStorage.getItem("tca_tp_categories")||"null")||DEFAULT_TP_CATS;}catch(e){return DEFAULT_TP_CATS;}});
+  const [showTpMgr,setShowTpMgr]=useState(false);
+  const [newTpCat,setNewTpCat]=useState("");
+  const saveTpCats=(cats)=>{setTpCats(cats);try{localStorage.setItem("tca_tp_categories",JSON.stringify(cats));}catch(e){}};
   useEffect(()=>{try{const l=localStorage.getItem("pref_tca_accounts_v1");if(l)setFormAccounts(JSON.parse(l));}catch(e){};},[]);
   useEffect(()=>{if(!auto)return;const en=parseFloat(form.entry),ex=parseFloat(form.exit),qty=parseInt(form.contracts)||1;if(isNaN(en)||isNaN(ex))return;const inst=form.instrument;let tv=1,ts=0.25;if(inst==="MES"){tv=1.25;ts=0.25;}else if(inst==="ES"){tv=12.5;ts=0.25;}else if(inst==="NQ"){tv=5;ts=0.25;}else if(inst==="MNQ"){tv=0.5;ts=0.25;}const pts=form.direction==="Long"?ex-en:en-ex;const p=Math.round((pts/ts)*tv*qty*100)/100;set("pnl",p);set("result",p>=0?"Win":"Loss");},[form.entry,form.exit,form.contracts,form.instrument,form.direction,auto]);
   const handleSave=()=>{onSave({...form,id:editTrade?.id||`t_${Date.now()}`,pnl:parseFloat(form.pnl)||0,contracts:parseInt(form.contracts)||1,entry:parseFloat(form.entry)||0,exit:parseFloat(form.exit)||0,result:parseFloat(form.pnl)>=0?"Win":"Loss"});onClose();};
-  return(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.82)",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(6px)"}}><div style={{background:"#13121A",border:`1px solid ${B.border}`,borderRadius:18,padding:32,width:580,maxHeight:"90vh",overflowY:"auto"}}><div style={{height:3,background:GL,borderRadius:3,marginBottom:24}}/><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:24}}><div style={{fontSize:18,fontWeight:800,color:B.text}}>{editTrade?"Edit Trade":"Log New Trade"}</div><button onClick={onClose} style={{background:"none",border:"none",color:B.textMuted,cursor:"pointer",fontSize:22}}>x</button></div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}><div><label style={lS}>Date</label><input type="date" value={form.date} onChange={e=>set("date",e.target.value)} style={iS}/></div><div><label style={lS}>Instrument</label><select value={form.instrument} onChange={e=>set("instrument",e.target.value)} style={iS}>{INSTRUMENTS.map(i=><option key={i}>{i}</option>)}</select></div><div><label style={lS}>Direction</label><div style={{display:"flex",gap:8}}>{["Long","Short"].map(d=>(<button key={d} onClick={()=>set("direction",d)} style={{flex:1,padding:"9px",borderRadius:8,border:"1px solid",cursor:"pointer",fontWeight:700,fontSize:13,borderColor:form.direction===d?(d==="Long"?"#4ade80":"#f87171"):B.border,background:form.direction===d?(d==="Long"?"rgba(74,222,128,0.1)":"rgba(248,113,113,0.1)"):"transparent",color:form.direction===d?(d==="Long"?"#4ade80":"#f87171"):B.textMuted}}>{d}</button>))}</div></div><div><label style={lS}>Contracts</label><input type="number" value={form.contracts} onChange={e=>set("contracts",e.target.value)} style={iS} min="1"/></div><div><label style={lS}>Entry Price</label><input type="number" step="0.01" value={form.entry} onChange={e=>set("entry",e.target.value)} style={iS} placeholder="e.g. 5780.25"/></div><div><label style={lS}>Exit Price</label><input type="number" step="0.01" value={form.exit} onChange={e=>set("exit",e.target.value)} style={iS} placeholder="e.g. 5794.00"/></div><div><label style={lS}>P&L ($) <span onClick={()=>setAuto(a=>!a)} style={{marginLeft:8,cursor:"pointer",color:auto?B.teal:B.textMuted,fontSize:9}}>{auto?"AUTO":"MANUAL"}</span></label><input type="number" step="0.01" value={form.pnl} onChange={e=>{set("pnl",e.target.value);setAuto(false);}} style={{...iS,color:parseFloat(form.pnl)>=0?B.profit:B.loss,fontWeight:700}} placeholder="0.00"/></div><div><label style={lS}>R:R Ratio</label><input value={form.rr} onChange={e=>set("rr",e.target.value)} style={iS} placeholder="e.g. 2.1R"/></div><div><label style={lS}>Setup</label><select value={form.setup} onChange={e=>set("setup",e.target.value)} style={iS}>{SETUPS.map(s=><option key={s}>{s}</option>)}</select></div><div><label style={lS}>Session</label><select value={form.session} onChange={e=>set("session",e.target.value)} style={iS}>{SESSIONS.map(s=><option key={s}>{s}</option>)}</select></div><div><label style={lS}>Account</label><select value={form.account_id||"main"} onChange={e=>set("account_id",e.target.value)} style={{...iS,cursor:"pointer"}}>{formAccounts.map(a=>(<option key={a.id} value={a.id}>{a.label}</option>))}</select></div><div style={{gridColumn:"1/-1"}}><label style={lS}>Grade</label><div style={{display:"flex",gap:6}}>{GRADES.map(g=>(<button key={g} onClick={()=>set("grade",g)} style={{flex:1,padding:"7px 0",borderRadius:8,border:"1px solid",cursor:"pointer",fontWeight:800,fontSize:12,borderColor:form.grade===g?GRADE_COLOR[g]:B.border,background:form.grade===g?`${GRADE_COLOR[g]}18`:"transparent",color:form.grade===g?GRADE_COLOR[g]:B.textMuted}}>{g}</button>))}</div></div><div style={{gridColumn:"1/-1"}}><label style={lS}>Notes</label><textarea value={form.notes} onChange={e=>set("notes",e.target.value)} rows={3} style={{...iS,resize:"vertical"}} placeholder="What happened?"/></div></div><div style={{display:"flex",gap:10,marginTop:24,justifyContent:"flex-end"}}><button onClick={onClose} style={{padding:"10px 22px",borderRadius:10,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:13,fontWeight:600}}>Cancel</button><button onClick={handleSave} style={{padding:"10px 28px",borderRadius:10,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:13,fontWeight:800}}>{editTrade?"Save Changes":"Log Trade"}</button></div></div></div>);
+  return(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.82)",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(6px)"}}><div style={{background:"#13121A",border:`1px solid ${B.border}`,borderRadius:18,padding:32,width:580,maxHeight:"90vh",overflowY:"auto"}}><div style={{height:3,background:GL,borderRadius:3,marginBottom:24}}/><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:24}}><div style={{fontSize:18,fontWeight:800,color:B.text}}>{editTrade?"Edit Trade":"Log New Trade"}</div><button onClick={onClose} style={{background:"none",border:"none",color:B.textMuted,cursor:"pointer",fontSize:22}}>x</button></div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}><div><label style={lS}>Date</label><input type="date" value={form.date} onChange={e=>set("date",e.target.value)} style={iS}/></div><div><label style={lS}>Instrument</label><select value={form.instrument} onChange={e=>set("instrument",e.target.value)} style={iS}>{INSTRUMENTS.map(i=><option key={i}>{i}</option>)}</select></div><div><label style={lS}>Direction</label><div style={{display:"flex",gap:8}}>{["Long","Short"].map(d=>(<button key={d} onClick={()=>set("direction",d)} style={{flex:1,padding:"9px",borderRadius:8,border:"1px solid",cursor:"pointer",fontWeight:700,fontSize:13,borderColor:form.direction===d?(d==="Long"?"#4ade80":"#f87171"):B.border,background:form.direction===d?(d==="Long"?"rgba(74,222,128,0.1)":"rgba(248,113,113,0.1)"):"transparent",color:form.direction===d?(d==="Long"?"#4ade80":"#f87171"):B.textMuted}}>{d}</button>))}</div></div><div><label style={lS}>Contracts</label><input type="number" value={form.contracts} onChange={e=>set("contracts",e.target.value)} style={iS} min="1"/></div><div><label style={lS}>Entry Price</label><input type="number" step="0.01" value={form.entry} onChange={e=>set("entry",e.target.value)} style={iS} placeholder="e.g. 5780.25"/></div><div><label style={lS}>Exit Price</label><input type="number" step="0.01" value={form.exit} onChange={e=>set("exit",e.target.value)} style={iS} placeholder="e.g. 5794.00"/></div>
+              <div><label style={lS}>Stop Loss</label><input type="number" step="0.25" value={form.stop_loss||""} onChange={e=>set("stop_loss",e.target.value)} style={iS} placeholder="Price level"/></div>
+              <div><label style={lS}>Take Profit</label><input type="number" step="0.25" value={form.take_profit||""} onChange={e=>set("take_profit",e.target.value)} style={iS} placeholder="Price level"/></div>
+              <div style={{gridColumn:"1/-1"}}><label style={lS}>TP Category <button type="button" onClick={()=>setShowTpMgr(p=>!p)} style={{background:"none",border:"none",color:B.textMuted,cursor:"pointer",fontSize:10,marginLeft:4}}>⚙ edit</button></label>
+                <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                  {tpCats.map(c=>(
+                    <button key={c} type="button" onClick={()=>set("tp_category",form.tp_category===c?"":c)}
+                      style={{padding:"4px 12px",borderRadius:20,cursor:"pointer",fontSize:11,fontWeight:600,
+                        border:`1px solid ${form.tp_category===c?B.teal:B.border}`,
+                        background:form.tp_category===c?`${B.teal}18`:"transparent",
+                        color:form.tp_category===c?B.teal:B.textMuted,transition:"all 0.12s"}}>
+                      {c}
+                    </button>
+                  ))}
+                </div>
+                {showTpMgr&&(
+                  <div style={{marginTop:10,padding:"12px 14px",borderRadius:10,background:"rgba(0,0,0,0.3)",border:`1px solid ${B.border}`}}>
+                    <div style={{fontSize:10,color:B.textMuted,letterSpacing:1,marginBottom:8}}>MANAGE TP CATEGORIES</div>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:10}}>
+                      {tpCats.map(c=>(
+                        <div key={c} style={{display:"flex",alignItems:"center",gap:4,padding:"3px 8px",borderRadius:6,background:`${B.teal}10`,border:`1px solid ${B.borderTeal}`}}>
+                          <span style={{fontSize:11,color:B.teal}}>{c}</span>
+                          {tpCats.length>1&&<button type="button" onClick={()=>saveTpCats(tpCats.filter(x=>x!==c))} style={{background:"none",border:"none",color:B.loss,cursor:"pointer",fontSize:12,padding:"0 2px",lineHeight:1}}>×</button>}
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{display:"flex",gap:6}}>
+                      <input value={newTpCat} onChange={e=>setNewTpCat(e.target.value)} onKeyDown={e=>e.key==="Enter"&&newTpCat.trim()&&(saveTpCats([...tpCats,newTpCat.trim()]),setNewTpCat(""))} placeholder="New category..." style={{...iS,flex:1,padding:"5px 10px",fontSize:11}}/>
+                      <button type="button" onClick={()=>{if(newTpCat.trim()){saveTpCats([...tpCats,newTpCat.trim()]);setNewTpCat("");}}} style={{padding:"5px 12px",borderRadius:7,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:11,fontWeight:800}}>Add</button>
+                    </div>
+                  </div>
+                )}
+              </div><div><label style={lS}>P&L ($) <span onClick={()=>setAuto(a=>!a)} style={{marginLeft:8,cursor:"pointer",color:auto?B.teal:B.textMuted,fontSize:9}}>{auto?"AUTO":"MANUAL"}</span></label><input type="number" step="0.01" value={form.pnl} onChange={e=>{set("pnl",e.target.value);setAuto(false);}} style={{...iS,color:parseFloat(form.pnl)>=0?B.profit:B.loss,fontWeight:700}} placeholder="0.00"/></div><div><label style={lS}>R:R Ratio</label><input value={form.rr} onChange={e=>set("rr",e.target.value)} style={iS} placeholder="e.g. 2.1R"/></div><div><label style={lS}>Setup</label><select value={form.setup} onChange={e=>set("setup",e.target.value)} style={iS}>{SETUPS.map(s=><option key={s}>{s}</option>)}</select></div><div><label style={lS}>Session</label><select value={form.session} onChange={e=>set("session",e.target.value)} style={iS}>{SESSIONS.map(s=><option key={s}>{s}</option>)}</select></div>
+              <div><label style={lS}>Strategy</label>
+                <select value={form.setup} onChange={e=>set("setup",e.target.value)} style={iS}>
+                  <option value="">— Select Strategy —</option>
+                  {formAccounts&&(()=>{try{const s=JSON.parse(localStorage.getItem("tca_strategies_v1")||"[]");return s.map(st=><option key={st.id} value={st.name}>{st.name}</option>);}catch(e){return null;}})()}
+                  {SETUPS.map(s=><option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+              <div><label style={lS}>Account</label><select value={form.account_id||"main"} onChange={e=>set("account_id",e.target.value)} style={{...iS,cursor:"pointer"}}>{formAccounts.map(a=>(<option key={a.id} value={a.id}>{a.label}</option>))}</select></div><div style={{gridColumn:"1/-1"}}><label style={lS}>Grade</label><div style={{display:"flex",gap:6}}>{GRADES.map(g=>(<button key={g} onClick={()=>set("grade",g)} style={{flex:1,padding:"7px 0",borderRadius:8,border:"1px solid",cursor:"pointer",fontWeight:800,fontSize:12,borderColor:form.grade===g?GRADE_COLOR[g]:B.border,background:form.grade===g?`${GRADE_COLOR[g]}18`:"transparent",color:form.grade===g?GRADE_COLOR[g]:B.textMuted}}>{g}</button>))}</div></div><div style={{gridColumn:"1/-1"}}><label style={lS}>Notes</label><textarea value={form.notes} onChange={e=>set("notes",e.target.value)} rows={3} style={{...iS,resize:"vertical"}} placeholder="What happened?"/></div></div><div style={{display:"flex",gap:10,marginTop:24,justifyContent:"flex-end"}}><button onClick={onClose} style={{padding:"10px 22px",borderRadius:10,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:13,fontWeight:600}}>Cancel</button><button onClick={handleSave} style={{padding:"10px 28px",borderRadius:10,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:13,fontWeight:800}}>{editTrade?"Save Changes":"Log Trade"}</button></div></div></div>);
 }
 
 function ImportModal({onClose,onImport,existingTrades}){
@@ -2159,6 +2204,51 @@ function TradeDetailModal({trade, onClose, onEdit, onGradeUpdate}){
           </div>
         </div>
 
+        {/* Strategy Entry Rules Checklist */}
+        {trade.setup&&trade.setup!=="Auto-synced"&&(()=>{
+          try{
+            const strats=JSON.parse(localStorage.getItem("tca_strategies_v1")||"[]");
+            const strat=strats.find(s=>s.name===trade.setup);
+            if(!strat)return null;
+            const rules=Array.isArray(strat.rules)?strat.rules:
+              strat.rules?strat.rules.split("\n").filter(Boolean).map((r,i)=>({id:i,text:r})):[];
+            if(!rules.length)return null;
+            const [checked,setChecked]=React.useState(()=>{
+              try{return JSON.parse(localStorage.getItem(`tca_tradeck_${trade.id}`)||"{}");}catch(e){return {};}
+            });
+            const toggle=(id)=>{
+              const next={...checked,[id]:!checked[id]};
+              setChecked(next);
+              try{localStorage.setItem(`tca_tradeck_${trade.id}`,JSON.stringify(next));}catch(e){}
+            };
+            const doneCount=rules.filter(r=>checked[r.id||r]).length;
+            return(
+              <div style={{padding:"0 28px",marginBottom:20}}>
+                <div style={{background:"rgba(0,0,0,0.3)",borderRadius:12,padding:"16px 20px",border:`1px solid ${B.borderPurp}`}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+                    <div style={{fontSize:10,color:B.purple,letterSpacing:1.5,textTransform:"uppercase"}}>⚡ {strat.name} — Entry Checklist</div>
+                    <div style={{fontSize:11,color:doneCount===rules.length?B.teal:B.textMuted,fontWeight:700}}>{doneCount}/{rules.length}</div>
+                  </div>
+                  <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                    {rules.map((r,i)=>{
+                      const id=r.id??i;
+                      const done=!!checked[id];
+                      return(
+                        <div key={id} onClick={()=>toggle(id)} style={{display:"flex",alignItems:"flex-start",gap:10,cursor:"pointer",padding:"6px 0",borderBottom:`1px solid ${B.border}20`}}>
+                          <div style={{width:16,height:16,borderRadius:4,border:`2px solid ${done?B.teal:B.border}`,background:done?B.teal:"transparent",flexShrink:0,marginTop:1,display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.15s"}}>
+                            {done&&<span style={{color:"#0E0E10",fontSize:10,fontWeight:800}}>✓</span>}
+                          </div>
+                          <div style={{fontSize:12,color:done?B.textMuted:B.text,textDecoration:done?"line-through":"none",lineHeight:1.5}}>{r.text||r}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            );
+          }catch(e){return null;}
+        })()}
+
         {/* Notes */}
         {trade.notes&&(
           <div style={{padding:"0 28px",marginBottom:20}}>
@@ -2666,6 +2756,26 @@ function DayJournalModal({date, trades, onClose, onGradeUpdate}){
   const [newItem,setNewItem]=useState("");
   const [editingCheck,setEditingCheck]=useState(null);
   const [editCheckText,setEditCheckText]=useState("");
+  const [ckTemplates,setCkTemplates]=useState([]);
+  const [showCkTemplates,setShowCkTemplates]=useState(false);
+  const [newTplName,setNewTplName]=useState("");
+
+  // Load checklist templates
+  useEffect(()=>{
+    try{const l=localStorage.getItem("tca_ck_templates_v1");if(l)setCkTemplates(JSON.parse(l));}catch(e){}
+  },[]);
+  const saveCkTemplates=(tpls)=>{setCkTemplates(tpls);try{localStorage.setItem("tca_ck_templates_v1",JSON.stringify(tpls));}catch(e){}};
+  const saveAsTemplate=()=>{
+    if(!checklist.length||!newTplName.trim())return;
+    const tpl={id:Date.now(),name:newTplName.trim(),items:checklist.map(i=>({...i,done:false}))};
+    saveCkTemplates([...ckTemplates,tpl]);
+    setNewTplName("");setShowCkTemplates(false);
+  };
+  const applyTemplate=(tpl)=>{
+    const merged=[...checklist,...tpl.items.filter(ti=>!checklist.some(ci=>ci.text===ti.text))];
+    setChecklist(merged);save(undefined,merged);setShowCkTemplates(false);
+  };
+  const deleteCkTemplate=(id)=>saveCkTemplates(ckTemplates.filter(t=>t.id!==id));
   const [selectedTrade,setSelectedTrade]=useState(null);
   const [loaded,setLoaded]=useState(false);
   const [saving,setSaving]=useState(false);
@@ -2862,7 +2972,34 @@ function DayJournalModal({date, trades, onClose, onGradeUpdate}){
                   onKeyDown={e=>e.key==="Enter"&&addItem()}
                   style={{...iS,flex:1}} placeholder="Add a checklist item..."/>
                 <button onClick={addItem} style={{padding:"9px 18px",borderRadius:8,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:12,fontWeight:800,whiteSpace:"nowrap"}}>+ Add</button>
+                <button onClick={()=>setShowCkTemplates(p=>!p)} title="Templates" style={{padding:"9px 12px",borderRadius:8,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:13}}>📋</button>
               </div>
+              {showCkTemplates&&(
+                <div style={{marginTop:12,padding:"14px 16px",borderRadius:10,background:"rgba(0,0,0,0.3)",border:`1px solid ${B.border}`}}>
+                  <div style={{fontSize:11,color:B.textMuted,marginBottom:10,letterSpacing:1}}>CHECKLIST TEMPLATES</div>
+                  {ckTemplates.length>0&&(
+                    <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:12}}>
+                      {ckTemplates.map(t=>(
+                        <div key={t.id} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",borderRadius:8,background:`${B.teal}08`,border:`1px solid ${B.borderTeal}`}}>
+                          <div style={{flex:1}}>
+                            <div style={{fontSize:12,fontWeight:700,color:B.teal}}>{t.name}</div>
+                            <div style={{fontSize:10,color:B.textMuted}}>{t.items.length} items</div>
+                          </div>
+                          <button onClick={()=>applyTemplate(t)} style={{padding:"4px 10px",borderRadius:6,border:`1px solid ${B.teal}40`,background:`${B.teal}12`,color:B.teal,cursor:"pointer",fontSize:11,fontWeight:700}}>Apply</button>
+                          <button onClick={()=>deleteCkTemplate(t.id)} style={{background:"none",border:"none",color:B.textMuted,cursor:"pointer",fontSize:14}}>×</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {checklist.length>0&&(
+                    <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                      <input value={newTplName} onChange={e=>setNewTplName(e.target.value)} placeholder="Template name..." style={{...iS,flex:1,padding:"6px 10px",fontSize:12}}/>
+                      <button onClick={saveAsTemplate} style={{padding:"6px 14px",borderRadius:7,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:11,fontWeight:800,whiteSpace:"nowrap"}}>Save Current</button>
+                    </div>
+                  )}
+                  {ckTemplates.length===0&&checklist.length===0&&<div style={{fontSize:11,color:B.textMuted}}>Add items to your checklist first, then save as a template.</div>}
+                </div>
+              )}
             </div>
           )}
 
@@ -3344,7 +3481,31 @@ function StrategyForm({strat, onSave, onClose}){
           </div>
           <div style={{gridColumn:"1/-1"}}>
             <label style={lS}>Entry Rules</label>
-            <textarea value={form.rules} onChange={e=>set("rules",e.target.value)} rows={4} style={{...iS,resize:"vertical"}} placeholder="List your specific entry rules, conditions, and checklist items..."/>
+            {/* Entry rules as checklist items */}
+            <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:8}}>
+              {(Array.isArray(form.rules)?form.rules:(form.rules?form.rules.split("\n").filter(Boolean).map((r,i)=>({id:i,text:r,required:true})):[]))
+                .map((rule,i)=>(
+                  <div key={rule.id||i} style={{display:"flex",gap:8,alignItems:"center"}}>
+                    <div style={{width:14,height:14,borderRadius:3,border:`2px solid ${B.teal}`,flexShrink:0}}/>
+                    <input value={rule.text} onChange={e=>{
+                      const arr=Array.isArray(form.rules)?[...form.rules]:[];
+                      arr[i]={...arr[i],text:e.target.value};
+                      set("rules",arr);
+                    }} style={{...iS,padding:"5px 10px",fontSize:12,flex:1}}/>
+                    <button onClick={()=>{
+                      const arr=Array.isArray(form.rules)?form.rules.filter((_,j)=>j!==i):[];
+                      set("rules",arr);
+                    }} style={{background:"none",border:"none",color:B.loss,cursor:"pointer",fontSize:14,padding:"2px 4px"}}>×</button>
+                  </div>
+                ))}
+            </div>
+            <button onClick={()=>{
+              const arr=Array.isArray(form.rules)?[...form.rules]:[];
+              arr.push({id:Date.now(),text:"",required:true});
+              set("rules",arr);
+            }} style={{padding:"5px 12px",borderRadius:7,border:`1px dashed ${B.teal}40`,background:"transparent",color:B.teal,cursor:"pointer",fontSize:11}}>
+              + Add Rule
+            </button>
           </div>
         </div>
         <div style={{display:"flex",gap:10,marginTop:24,justifyContent:"flex-end"}}>
@@ -3416,33 +3577,48 @@ function TimeOfDayWidget({trades}){
 // ── Session Heatmap ──────────────────────────────────────────────────────────
 function SessionHeatmapWidget({trades}){
   const sessions=["AM","Mid","PM","After"];
+  const [selectedSession,setSelectedSession]=useState(null);
+
   const data=sessions.map(s=>{
     const st=trades.filter(t=>t.session===s);
     const wins=st.filter(t=>t.result==="Win");
     const pnl=st.reduce((a,t)=>a+t.pnl,0);
     const wr=st.length?Math.round((wins.length/st.length)*100):0;
-    return{session:s,trades:st.length,wins:wins.length,pnl,wr};
-  }).filter(s=>s.trades>0);
+    return{session:s,trades:st,count:st.length,wins:wins.length,pnl,wr};
+  }).filter(s=>s.count>0);
+
   const maxPnl=Math.max(...data.map(d=>Math.abs(d.pnl)),1);
+  const sessionTrades=selectedSession?data.find(d=>d.session===selectedSession)?.trades||[]:[];
+
   return(
-    <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:20,height:"100%"}}>
+    <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:20,height:"100%",display:"flex",flexDirection:"column"}}>
       <div style={{fontSize:11,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",marginBottom:16}}>🌡️ Session Heatmap</div>
-      <div style={{display:"flex",flexDirection:"column",gap:10}}>
+
+      {/* Session cards */}
+      <div style={{display:"flex",flexDirection:"column",gap:10,flexShrink:0}}>
         {data.map(d=>{
           const intensity=Math.abs(d.pnl)/maxPnl;
+          const isSelected=selectedSession===d.session;
           const bg=d.pnl>0
             ?`rgba(0,212,168,${0.08+intensity*0.25})`
             :`rgba(240,90,126,${0.08+intensity*0.25})`;
           return(
-            <div key={d.session} style={{borderRadius:10,padding:"12px 16px",background:bg,border:`1px solid ${d.pnl>0?B.borderTeal:B.borderPurp}`}}>
+            <div key={d.session}
+              onClick={()=>setSelectedSession(isSelected?null:d.session)}
+              style={{borderRadius:10,padding:"12px 16px",background:isSelected?`${d.pnl>0?B.teal:B.loss}20`:bg,
+                border:`2px solid ${isSelected?(d.pnl>0?B.teal:B.loss):(d.pnl>0?B.borderTeal:B.borderPurp)}`,
+                cursor:"pointer",transition:"all 0.15s"}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                 <div>
-                  <div style={{fontSize:13,fontWeight:700,color:B.text}}>{d.session} Session</div>
-                  <div style={{fontSize:10,color:B.textMuted,marginTop:2}}>{d.trades} trades · {d.wr}% WR</div>
+                  <div style={{display:"flex",alignItems:"center",gap:6}}>
+                    <div style={{fontSize:13,fontWeight:700,color:B.text}}>{d.session} Session</div>
+                    {isSelected&&<div style={{fontSize:9,padding:"1px 6px",borderRadius:4,background:`${B.teal}20`,color:B.teal,fontWeight:700}}>▼ open</div>}
+                  </div>
+                  <div style={{fontSize:10,color:B.textMuted,marginTop:2}}>{d.count} trades · {d.wr}% WR · click to view</div>
                 </div>
                 <div style={{textAlign:"right"}}>
                   <div style={{fontSize:18,fontWeight:800,fontFamily:"monospace",color:pnlColor(d.pnl)}}>{fmt(d.pnl)}</div>
-                  <div style={{fontSize:10,color:B.textMuted}}>{d.wins}W / {d.trades-d.wins}L</div>
+                  <div style={{fontSize:10,color:B.textMuted}}>{d.wins}W / {d.count-d.wins}L</div>
                 </div>
               </div>
               <div style={{marginTop:8,height:4,background:"rgba(255,255,255,0.05)",borderRadius:2,overflow:"hidden"}}>
@@ -3452,11 +3628,40 @@ function SessionHeatmapWidget({trades}){
           );
         })}
       </div>
+
+      {/* Drill-down trade list */}
+      {selectedSession&&sessionTrades.length>0&&(
+        <div style={{marginTop:14,flex:1,overflowY:"auto"}}>
+          <div style={{fontSize:10,color:B.teal,letterSpacing:1.5,textTransform:"uppercase",marginBottom:8,fontWeight:700}}>
+            {selectedSession} Session — {sessionTrades.length} Trades
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:5}}>
+            {[...sessionTrades].sort((a,b)=>b.date.localeCompare(a.date)).map(t=>(
+              <div key={t.id} style={{
+                display:"grid",gridTemplateColumns:"80px 55px 1fr 75px",gap:8,
+                padding:"8px 10px",borderRadius:8,
+                background:t.result==="Win"?`${B.teal}08`:`${B.loss}08`,
+                border:`1px solid ${t.result==="Win"?`${B.teal}20`:`${B.loss}20`}`,
+                alignItems:"center",
+              }}>
+                <div style={{fontSize:10,color:B.textMuted,fontFamily:"monospace"}}>{t.date.slice(5)}</div>
+                <div style={{fontSize:10}}>
+                  <span style={{padding:"1px 6px",borderRadius:4,fontWeight:700,fontSize:9,
+                    background:`${INST_COLOR[t.instrument]||B.teal}20`,
+                    color:INST_COLOR[t.instrument]||B.teal}}>{t.instrument}</span>
+                </div>
+                <div style={{fontSize:11,color:t.direction==="Long"?"#4ade80":"#f87171",fontWeight:600}}>{t.direction} · {t.setup||"—"}</div>
+                <div style={{fontSize:12,fontWeight:800,fontFamily:"monospace",color:pnlColor(t.pnl),textAlign:"right"}}>{fmt(t.pnl)}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-// ── Setup Leaderboard ────────────────────────────────────────────────────────
+
 function SetupLeaderboardWidget({trades}){
   const setups=trades.reduce((m,t)=>{
     if(!m[t.setup])m[t.setup]={wins:0,total:0,pnl:0,name:t.setup};
@@ -4006,6 +4211,7 @@ function ResourcesPage({session}){
   const SKEY="tca_yt_videos_v1";
   const [videos,setVideos]=useState([]);
   const [showAdd,setShowAdd]=useState(false);
+  const [editingVideo,setEditingVideo]=useState(null); // {idx, title, desc}
   const [newUrl,setNewUrl]=useState("");
   const [newTitle,setNewTitle]=useState("");
   const [newDesc,setNewDesc]=useState("");
@@ -4128,10 +4334,30 @@ function ResourcesPage({session}){
               {/* Info + remove */}
               <div style={{padding:"14px 16px",display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10}}>
                 <div style={{flex:1}}>
-                  <div style={{fontSize:13,fontWeight:700,color:B.text,marginBottom:3}}>{v.title}</div>
-                  {v.desc&&<div style={{fontSize:11,color:B.textMuted,lineHeight:1.5}}>{v.desc}</div>}
+                  {editingVideo?.idx===i?(
+                    <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                      <input value={editingVideo.title} onChange={e=>setEditingVideo(v=>({...v,title:e.target.value}))}
+                        style={{...iS,fontSize:13,padding:"6px 10px"}} placeholder="Video title"/>
+                      <input value={editingVideo.desc} onChange={e=>setEditingVideo(v=>({...v,desc:e.target.value}))}
+                        style={{...iS,fontSize:11,padding:"5px 10px"}} placeholder="Description (optional)"/>
+                      <div style={{display:"flex",gap:6}}>
+                        <button onClick={()=>{
+                          const updated=videos.map((vid,j)=>j===i?{...vid,title:editingVideo.title,desc:editingVideo.desc}:vid);
+                          saveVideos(updated);setEditingVideo(null);
+                        }} style={{padding:"4px 12px",borderRadius:6,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:11,fontWeight:700}}>Save</button>
+                        <button onClick={()=>setEditingVideo(null)} style={{padding:"4px 10px",borderRadius:6,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:11}}>Cancel</button>
+                      </div>
+                    </div>
+                  ):(
+                    <div>
+                      <div style={{fontSize:13,fontWeight:700,color:B.text,marginBottom:3}}>{v.title}</div>
+                      {v.desc&&<div style={{fontSize:11,color:B.textMuted,lineHeight:1.5}}>{v.desc}</div>}
+                    </div>
+                  )}
                 </div>
-                <button onClick={()=>removeVideo(i)} style={{flexShrink:0,background:"none",border:`1px solid ${B.border}`,borderRadius:6,color:B.textMuted,cursor:"pointer",fontSize:11,padding:"3px 8px"}}>Remove</button>
+                <div style={{display:"flex",gap:6,flexShrink:0}}>
+                  {editingVideo?.idx!==i&&<button onClick={()=>setEditingVideo({idx:i,title:v.title,desc:v.desc||""})} style={{background:"none",border:`1px solid ${B.border}`,borderRadius:6,color:B.textMuted,cursor:"pointer",fontSize:11,padding:"4px 8px"}}>✏</button>}
+                  <button onClick={()=>removeVideo(i)} style={{flexShrink:0,background:"none",border:`1px solid ${B.border}`,borderRadius:6,color:B.textMuted,cursor:"pointer",fontSize:11,padding:"3px 8px"}}>Remove</button>
               </div>
             </div>
           ))}
