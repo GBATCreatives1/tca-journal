@@ -2009,6 +2009,51 @@ function Analytics({trades}){
 }
 
 
+// ── Strategy Checklist (used inside TradeDetailModal) ────────────────────────
+function StrategyChecklist({trade}){
+  const [checked,setChecked]=useState(()=>{
+    try{return JSON.parse(localStorage.getItem(`tca_tradeck_${trade.id}`)||"{}");}catch(e){return {};}
+  });
+  try{
+    const strats=JSON.parse(localStorage.getItem("tca_strategies_v1")||"[]");
+    const strat=strats.find(s=>s.name===trade.setup);
+    if(!strat)return null;
+    const rules=Array.isArray(strat.rules)?strat.rules:
+      (strat.rules?strat.rules.split("\n").filter(Boolean).map((r,i)=>({id:i,text:r})):[]);
+    if(!rules.length)return null;
+    const toggle=(id)=>{
+      const next={...checked,[id]:!checked[id]};
+      setChecked(next);
+      try{localStorage.setItem(`tca_tradeck_${trade.id}`,JSON.stringify(next));}catch(e){}
+    };
+    const doneCount=rules.filter((r,i)=>checked[r.id??i]===true).length;
+    return(
+      <div style={{padding:"0 28px",marginBottom:20}}>
+        <div style={{background:"rgba(0,0,0,0.3)",borderRadius:12,padding:"16px 20px",border:`1px solid ${B.borderPurp}`}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+            <div style={{fontSize:10,color:B.purple,letterSpacing:1.5,textTransform:"uppercase"}}>⚡ {strat.name} — Entry Checklist</div>
+            <div style={{fontSize:11,color:doneCount===rules.length?B.teal:B.textMuted,fontWeight:700}}>{doneCount}/{rules.length}</div>
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            {rules.map((r,i)=>{
+              const id=r.id??i;
+              const done=!!checked[id];
+              return(
+                <div key={id} onClick={()=>toggle(id)} style={{display:"flex",alignItems:"flex-start",gap:10,cursor:"pointer",padding:"6px 0",borderBottom:"1px solid rgba(255,255,255,0.04)"}}>
+                  <div style={{width:16,height:16,borderRadius:4,border:`2px solid ${done?B.teal:B.border}`,background:done?B.teal:"transparent",flexShrink:0,marginTop:1,display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.15s"}}>
+                    {done&&<span style={{color:"#0E0E10",fontSize:10,fontWeight:800}}>✓</span>}
+                  </div>
+                  <div style={{fontSize:12,color:done?B.textMuted:B.text,textDecoration:done?"line-through":"none",lineHeight:1.5}}>{r.text||r}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    );
+  }catch(e){return null;}
+}
+
 function TradeDetailModal({trade, onClose, onEdit, onGradeUpdate}){
   const isWin = trade.result === "Win";
   const [aiAnalysis, setAiAnalysis] = useState(null);
@@ -2205,49 +2250,7 @@ function TradeDetailModal({trade, onClose, onEdit, onGradeUpdate}){
         </div>
 
         {/* Strategy Entry Rules Checklist */}
-        {trade.setup&&trade.setup!=="Auto-synced"&&(()=>{
-          try{
-            const strats=JSON.parse(localStorage.getItem("tca_strategies_v1")||"[]");
-            const strat=strats.find(s=>s.name===trade.setup);
-            if(!strat)return null;
-            const rules=Array.isArray(strat.rules)?strat.rules:
-              strat.rules?strat.rules.split("\n").filter(Boolean).map((r,i)=>({id:i,text:r})):[];
-            if(!rules.length)return null;
-            const [checked,setChecked]=React.useState(()=>{
-              try{return JSON.parse(localStorage.getItem(`tca_tradeck_${trade.id}`)||"{}");}catch(e){return {};}
-            });
-            const toggle=(id)=>{
-              const next={...checked,[id]:!checked[id]};
-              setChecked(next);
-              try{localStorage.setItem(`tca_tradeck_${trade.id}`,JSON.stringify(next));}catch(e){}
-            };
-            const doneCount=rules.filter(r=>checked[r.id||r]).length;
-            return(
-              <div style={{padding:"0 28px",marginBottom:20}}>
-                <div style={{background:"rgba(0,0,0,0.3)",borderRadius:12,padding:"16px 20px",border:`1px solid ${B.borderPurp}`}}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-                    <div style={{fontSize:10,color:B.purple,letterSpacing:1.5,textTransform:"uppercase"}}>⚡ {strat.name} — Entry Checklist</div>
-                    <div style={{fontSize:11,color:doneCount===rules.length?B.teal:B.textMuted,fontWeight:700}}>{doneCount}/{rules.length}</div>
-                  </div>
-                  <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                    {rules.map((r,i)=>{
-                      const id=r.id??i;
-                      const done=!!checked[id];
-                      return(
-                        <div key={id} onClick={()=>toggle(id)} style={{display:"flex",alignItems:"flex-start",gap:10,cursor:"pointer",padding:"6px 0",borderBottom:`1px solid ${B.border}20`}}>
-                          <div style={{width:16,height:16,borderRadius:4,border:`2px solid ${done?B.teal:B.border}`,background:done?B.teal:"transparent",flexShrink:0,marginTop:1,display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.15s"}}>
-                            {done&&<span style={{color:"#0E0E10",fontSize:10,fontWeight:800}}>✓</span>}
-                          </div>
-                          <div style={{fontSize:12,color:done?B.textMuted:B.text,textDecoration:done?"line-through":"none",lineHeight:1.5}}>{r.text||r}</div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-            );
-          }catch(e){return null;}
-        })()}
+        {trade.setup&&trade.setup!=="Auto-synced"&&<StrategyChecklist trade={trade}/>}
 
         {/* Notes */}
         {trade.notes&&(
@@ -4358,9 +4361,9 @@ function ResourcesPage({session}){
                 <div style={{display:"flex",gap:6,flexShrink:0}}>
                   {editingVideo?.idx!==i&&<button onClick={()=>setEditingVideo({idx:i,title:v.title,desc:v.desc||""})} style={{background:"none",border:`1px solid ${B.border}`,borderRadius:6,color:B.textMuted,cursor:"pointer",fontSize:11,padding:"4px 8px"}}>✏</button>}
                   <button onClick={()=>removeVideo(i)} style={{flexShrink:0,background:"none",border:`1px solid ${B.border}`,borderRadius:6,color:B.textMuted,cursor:"pointer",fontSize:11,padding:"3px 8px"}}>Remove</button>
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
         </div>
       )}
     </div>
