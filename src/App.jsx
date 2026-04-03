@@ -4324,30 +4324,19 @@ function ResourcesPage({session}){
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(360px,1fr))",gap:18}}>
           {videos.map((v,i)=>(
             <div key={i} style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,overflow:"hidden"}}>
-              {/* Embed */}
               <div style={{position:"relative",paddingBottom:"56.25%",height:0,background:"#000"}}>
-                <iframe
-                  src={`https://www.youtube.com/embed/${v.id}?rel=0&modestbranding=1`}
-                  title={v.title}
+                <iframe src={`https://www.youtube.com/embed/${v.id}?rel=0&modestbranding=1`} title={v.title}
                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowFullScreen
-                  style={{position:"absolute",top:0,left:0,width:"100%",height:"100%",border:"none"}}
-                />
+                  allowFullScreen style={{position:"absolute",top:0,left:0,width:"100%",height:"100%",border:"none"}}/>
               </div>
-              {/* Info + remove */}
-              <div style={{padding:"14px 16px",display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10}}>
+              <div style={{padding:"12px 14px",display:"flex",gap:10,alignItems:"flex-start"}}>
                 <div style={{flex:1}}>
                   {editingVideo?.idx===i?(
                     <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                      <input value={editingVideo.title} onChange={e=>setEditingVideo(v=>({...v,title:e.target.value}))}
-                        style={{...iS,fontSize:13,padding:"6px 10px"}} placeholder="Video title"/>
-                      <input value={editingVideo.desc} onChange={e=>setEditingVideo(v=>({...v,desc:e.target.value}))}
-                        style={{...iS,fontSize:11,padding:"5px 10px"}} placeholder="Description (optional)"/>
+                      <input value={editingVideo.title} onChange={e=>setEditingVideo(x=>({...x,title:e.target.value}))} style={{...iS,fontSize:13,padding:"6px 10px"}} placeholder="Video title"/>
+                      <input value={editingVideo.desc} onChange={e=>setEditingVideo(x=>({...x,desc:e.target.value}))} style={{...iS,fontSize:11,padding:"5px 10px"}} placeholder="Description (optional)"/>
                       <div style={{display:"flex",gap:6}}>
-                        <button onClick={()=>{
-                          const updated=videos.map((vid,j)=>j===i?{...vid,title:editingVideo.title,desc:editingVideo.desc}:vid);
-                          saveVideos(updated);setEditingVideo(null);
-                        }} style={{padding:"4px 12px",borderRadius:6,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:11,fontWeight:700}}>Save</button>
+                        <button onClick={()=>{saveVideos(videos.map((vid,j)=>j===i?{...vid,title:editingVideo.title,desc:editingVideo.desc}:vid));setEditingVideo(null);}} style={{padding:"4px 12px",borderRadius:6,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:11,fontWeight:700}}>Save</button>
                         <button onClick={()=>setEditingVideo(null)} style={{padding:"4px 10px",borderRadius:6,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:11}}>Cancel</button>
                       </div>
                     </div>
@@ -4360,10 +4349,11 @@ function ResourcesPage({session}){
                 </div>
                 <div style={{display:"flex",gap:6,flexShrink:0}}>
                   {editingVideo?.idx!==i&&<button onClick={()=>setEditingVideo({idx:i,title:v.title,desc:v.desc||""})} style={{background:"none",border:`1px solid ${B.border}`,borderRadius:6,color:B.textMuted,cursor:"pointer",fontSize:11,padding:"4px 8px"}}>✏</button>}
-                  <button onClick={()=>removeVideo(i)} style={{flexShrink:0,background:"none",border:`1px solid ${B.border}`,borderRadius:6,color:B.textMuted,cursor:"pointer",fontSize:11,padding:"3px 8px"}}>Remove</button>
+                  <button onClick={()=>removeVideo(i)} style={{background:"none",border:`1px solid ${B.border}`,borderRadius:6,color:B.textMuted,cursor:"pointer",fontSize:11,padding:"3px 8px"}}>✕</button>
                 </div>
               </div>
-            ))}
+            </div>
+          ))}
         </div>
       )}
     </div>
