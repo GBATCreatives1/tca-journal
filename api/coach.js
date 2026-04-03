@@ -97,6 +97,32 @@ JSON structure:
 }`
   };
 
+  // Special handler for chat type (conversational with history)
+  if (type === "chat") {
+    const { chatContext, chatHistory } = req.body;
+    if (!chatHistory?.length) return res.status(400).json({ error: "No chat history" });
+    try {
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": process.env.ANTHROPIC_API_KEY,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 600,
+          system: chatContext,
+          messages: chatHistory,
+        }),
+      });
+      const data = await response.json();
+      return res.status(200).json(data);
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
+  }
+
   const prompt = prompts[type];
   if (!prompt) return res.status(400).json({ error: "Invalid type" });
 

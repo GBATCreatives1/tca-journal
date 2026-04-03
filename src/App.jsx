@@ -5832,6 +5832,122 @@ function EconomicCalendar({isDark=true}){
 }
 
 
+
+// ── TCA AI Chatbot ────────────────────────────────────────────────────────────
+function TCAChat({trades, strategies, isOpen, onClose}){
+  const [messages, setMessages] = useState([{
+    role:"assistant",
+    content:"Hey! I'm your TCA trading coach. I have full access to your trade history, strategies, and performance data. Ask me anything — like \"what's my best session?\", \"why am I losing on Fridays?\", or \"review my last 10 trades\".",
+    id:1,
+  }]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const bottomRef = useRef(null);
+  const inputRef = useRef(null);
+
+  useEffect(()=>{bottomRef.current?.scrollIntoView({behavior:"smooth"});},[messages]);
+  useEffect(()=>{if(isOpen)setTimeout(()=>inputRef.current?.focus(),150);},[isOpen]);
+
+  const buildContext=()=>{
+    const wins=trades.filter(t=>t.result==="Win");
+    const losses=trades.filter(t=>t.result==="Loss");
+    const totalPnl=trades.reduce((a,t)=>a+t.pnl,0);
+    const winRate=trades.length?Math.round((wins.length/trades.length)*100):0;
+    const bySession={};
+    trades.forEach(t=>{if(!bySession[t.session])bySession[t.session]={wins:0,total:0,pnl:0};bySession[t.session].total++;bySession[t.session].pnl+=t.pnl;if(t.result==="Win")bySession[t.session].wins++;});
+    const byDay={};
+    trades.forEach(t=>{const d=new Date(t.date+"T12:00:00").toLocaleDateString("en-US",{weekday:"short"});if(!byDay[d])byDay[d]={wins:0,total:0,pnl:0};byDay[d].total++;byDay[d].pnl+=t.pnl;if(t.result==="Win")byDay[d].wins++;});
+    const bySetup={};
+    trades.forEach(t=>{const s=t.strategy||t.setup||"Unknown";if(!bySetup[s])bySetup[s]={wins:0,total:0,pnl:0};bySetup[s].total++;bySetup[s].pnl+=t.pnl;if(t.result==="Win")bySetup[s].wins++;});
+    const recent=[...trades].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,20).map(t=>({date:t.date,instrument:t.instrument,direction:t.direction,pnl:Math.round(t.pnl*100)/100,result:t.result,setup:t.strategy||t.setup,grade:t.grade,session:t.session,rr:t.rr}));
+    const avgWin=wins.length?Math.round(wins.reduce((a,t)=>a+t.pnl,0)/wins.length*100)/100:0;
+    const avgLoss=losses.length?Math.round(Math.abs(losses.reduce((a,t)=>a+t.pnl,0))/losses.length*100)/100:0;
+    return `You are TCA Coach, an expert MES futures and ICT methodology trading coach for The Candlestick Academy. You have FULL access to this trader's performance data. Be specific, honest, and actionable. Use their real numbers. Keep responses concise (3-5 sentences) unless they ask for a full review.
+
+PERFORMANCE: ${trades.length} trades | $${Math.round(totalPnl*100)/100} P&L | ${winRate}% WR | Avg Win $${avgWin} | Avg Loss $${avgLoss}
+
+SESSION: ${Object.entries(bySession).map(([s,d])=>`${s}: ${d.total}t ${Math.round(d.wins/d.total*100)}%WR $${Math.round(d.pnl*100)/100}`).join(" | ")}
+
+DAY: ${Object.entries(byDay).map(([d,v])=>`${d}: ${v.total}t ${Math.round(v.wins/v.total*100)}%WR $${Math.round(v.pnl*100)/100}`).join(" | ")}
+
+SETUPS: ${Object.entries(bySetup).slice(0,8).map(([s,d])=>`${s}: ${d.total}t ${Math.round(d.wins/d.total*100)}%WR $${Math.round(d.pnl*100)/100}`).join(" | ")}
+
+STRATEGIES: ${strategies.map(s=>s.name).join(", ")||"None yet"}
+
+LAST 20 TRADES:
+${recent.map(t=>`${t.date}|${t.instrument}|${t.direction}|${t.result}|$${t.pnl}|${t.setup||"?"}|${t.session}|${t.grade}`).join("\n")}`;
+  };
+
+  const send=async()=>{
+    if(!input.trim()||loading)return;
+    const userMsg={role:"user",content:input.trim(),id:Date.now()};
+    const currentInput=input.trim();
+    setMessages(m=>[...m,userMsg]);
+    setInput("");setLoading(true);
+    try{
+      const res=await fetch("/api/coach",{
+        method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({type:"chat",chatContext:buildContext(),chatHistory:[...messages.slice(-8).map(m=>({role:m.role,content:m.content})),{role:"user",content:currentInput}]}),
+      });
+      const data=await res.json();
+      const text=data.content?.[0]?.text||data.response||"I couldn't process that. Try again.";
+      setMessages(m=>[...m,{role:"assistant",content:text,id:Date.now()}]);
+    }catch(e){setMessages(m=>[...m,{role:"assistant",content:"Connection error. Try again.",id:Date.now()}]);}
+    setLoading(false);
+  };
+
+  const SUGGESTIONS=["What's my best session?","Why am I losing money?","Review my last 10 trades","What's my strongest setup?","How can I improve my win rate?","What day is best for me?"];
+
+  if(!isOpen)return null;
+  return(
+    <div style={{position:"fixed",right:0,top:0,bottom:0,width:380,zIndex:300,background:"#13121A",borderLeft:"1px solid rgba(255,255,255,0.08)",display:"flex",flexDirection:"column",fontFamily:"'DM Sans',sans-serif"}}>
+      <div style={{height:3,background:"linear-gradient(90deg,#00D4A8,#4F8EF7,#8B5CF6)",flexShrink:0}}/>
+      <div style={{padding:"16px 18px",borderBottom:"1px solid rgba(255,255,255,0.07)",display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
+        <div style={{width:34,height:34,borderRadius:"50%",background:"linear-gradient(135deg,#00D4A8,#8B5CF6)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>🧠</div>
+        <div style={{flex:1}}>
+          <div style={{fontSize:14,fontWeight:800,color:"#F0EEF8"}}>TCA Coach</div>
+          <div style={{fontSize:10,color:"#6B6880"}}>{trades.length} trades · Always learning</div>
+        </div>
+        <button onClick={onClose} style={{background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:8,color:"#6B6880",cursor:"pointer",fontSize:18,width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
+      </div>
+      <div style={{flex:1,overflowY:"auto",padding:"16px 16px 0",display:"flex",flexDirection:"column",gap:12}}>
+        {messages.map(msg=>(
+          <div key={msg.id} style={{display:"flex",gap:8,alignItems:"flex-start",flexDirection:msg.role==="user"?"row-reverse":"row"}}>
+            {msg.role==="assistant"&&<div style={{width:28,height:28,borderRadius:"50%",background:"linear-gradient(135deg,#00D4A8,#8B5CF6)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,flexShrink:0,marginTop:2}}>🧠</div>}
+            <div style={{maxWidth:"85%",padding:"10px 14px",borderRadius:msg.role==="user"?"14px 14px 4px 14px":"14px 14px 14px 4px",background:msg.role==="user"?"rgba(0,212,168,0.1)":"rgba(255,255,255,0.04)",border:`1px solid ${msg.role==="user"?"rgba(0,212,168,0.2)":"rgba(255,255,255,0.06)"}`,fontSize:13,color:"#D4D0E8",lineHeight:1.65,whiteSpace:"pre-wrap"}}>
+              {msg.content}
+            </div>
+          </div>
+        ))}
+        {loading&&(
+          <div style={{display:"flex",gap:8,alignItems:"flex-start"}}>
+            <div style={{width:28,height:28,borderRadius:"50%",background:"linear-gradient(135deg,#00D4A8,#8B5CF6)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,flexShrink:0}}>🧠</div>
+            <div style={{padding:"12px 16px",borderRadius:"14px 14px 14px 4px",background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.06)",display:"flex",gap:5,alignItems:"center"}}>
+              {[0,1,2].map(i=><div key={i} style={{width:6,height:6,borderRadius:"50%",background:"#00D4A8",opacity:0.7}}/>)}
+            </div>
+          </div>
+        )}
+        <div ref={bottomRef}/>
+      </div>
+      {messages.length<=2&&(
+        <div style={{padding:"10px 16px 0",display:"flex",flexWrap:"wrap",gap:5}}>
+          {SUGGESTIONS.map(s=><button key={s} onClick={()=>setInput(s)} style={{padding:"4px 10px",borderRadius:20,fontSize:11,cursor:"pointer",border:"1px solid rgba(0,212,168,0.25)",background:"rgba(0,212,168,0.05)",color:"#00D4A8",fontFamily:"'DM Sans',sans-serif"}}>{s}</button>)}
+        </div>
+      )}
+      <div style={{padding:"12px 16px 16px",flexShrink:0}}>
+        <div style={{display:"flex",gap:8,alignItems:"flex-end",background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:12,padding:"8px 8px 8px 14px"}}>
+          <textarea ref={inputRef} value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send();}}} placeholder="Ask anything about your trading..." rows={1}
+            style={{flex:1,background:"none",border:"none",outline:"none",resize:"none",color:"#F0EEF8",fontSize:13,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5,maxHeight:100,overflowY:"auto"}}
+            onInput={e=>{e.target.style.height="auto";e.target.style.height=e.target.scrollHeight+"px";}}/>
+          <button onClick={send} disabled={!input.trim()||loading} style={{width:34,height:34,borderRadius:9,border:"none",flexShrink:0,background:input.trim()&&!loading?"linear-gradient(135deg,#00D4A8,#8B5CF6)":"rgba(255,255,255,0.06)",color:input.trim()&&!loading?"#0E0E10":"#6B6880",cursor:input.trim()&&!loading?"pointer":"not-allowed",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center"}}>↑</button>
+        </div>
+        <div style={{fontSize:9,color:"rgba(255,255,255,0.2)",textAlign:"center",marginTop:5}}>Enter to send · Shift+Enter for new line</div>
+      </div>
+    </div>
+  );
+}
+
+
 // ── Tradovate Sync Modal ──────────────────────────────────────────────────────
 function TradovateSyncModal({onClose, onSync, syncing, accounts=[]}){
   const [range,setRange]=useState("today");
@@ -5922,7 +6038,8 @@ const NAV=[{id:"overview",label:"Overview",icon:"▦"},{id:"journal",label:"Jour
 
 export default function App(){
   const [session,setSession]=useState(null);
-  const [isDark,setIsDark]=useState(()=>{
+  const [chatOpen,setChatOpen]=useState(false);
+    const [isDark,setIsDark]=useState(()=>{
     try{return localStorage.getItem("tca_theme")!=="light";}catch(e){return true;}
   });
   // Update B whenever theme changes
@@ -6160,10 +6277,11 @@ export default function App(){
         <div style={{marginTop:10,padding:"12px 14px",borderRadius:10,background:`${B.teal}08`,border:`1px solid ${B.teal}22`,position:"relative",overflow:"hidden"}}><div style={{position:"absolute",top:0,left:0,right:0,height:2,background:GTB}}/><div style={{fontSize:9,color:B.textMuted,marginBottom:3,letterSpacing:1}}>MONTH P&L</div><div style={{fontSize:20,fontWeight:800,fontFamily:"monospace",color:pnlColor(totalPnl)}}>{fmt(totalPnl)}</div></div>
         <div style={{marginTop:10,fontSize:10,color:B.textMuted,textAlign:"center"}}>{trades.filter(t=>!t.id?.startsWith("s")).length} trades logged</div>
         {lastImport&&<div style={{fontSize:9,color:B.textDim,textAlign:"center",marginTop:3}}>Last import: {lastImport}</div>}
-        <button onClick={()=>supabase.auth.signOut()} style={{marginTop:10,width:"100%",padding:"7px",borderRadius:8,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:11,fontWeight:600}}>Sign Out</button>
+        <button onClick={()=>setChatOpen(c=>!c)} style={{marginTop:8,width:"100%",padding:"9px",borderRadius:8,border:`1px solid ${chatOpen?"#8B5CF6":"rgba(139,92,246,0.3)"}`,background:chatOpen?"rgba(139,92,246,0.12)":"rgba(139,92,246,0.05)",color:"#8B5CF6",cursor:"pointer",fontSize:11,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>🧠 {chatOpen?"Close Coach":"TCA Coach"}</button>
+        <button onClick={()=>supabase.auth.signOut()} style={{marginTop:6,width:"100%",padding:"7px",borderRadius:8,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:11,fontWeight:600}}>Sign Out</button>
       </div>
     </div>
-    <div style={{marginLeft:216,padding:"28px 32px",minHeight:"100vh"}}>
+    <div style={{marginLeft:216,marginRight:chatOpen?380:0,padding:"28px 32px",minHeight:"100vh",transition:"margin-right 0.3s"}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
         <div><h1 style={{margin:0,fontSize:20,fontWeight:800,color:B.text,letterSpacing:-0.5}}>{NAV.find(n=>n.id===active)?.label}</h1></div>
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
@@ -6194,5 +6312,6 @@ export default function App(){
       {active==="economiccalendar"&&<EconomicCalendar isDark={isDark}/>}
       {active==="library"&&<PlaybookLibrary session={session}/>}
     </div>
+  <TCAChat trades={trades} strategies={strategies} isOpen={chatOpen} onClose={()=>setChatOpen(false)}/>
   </div>);
 }
