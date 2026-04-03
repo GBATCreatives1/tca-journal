@@ -3122,7 +3122,7 @@ function DayJournalModal({date, trades, onClose, onGradeUpdate}){
           {/* Trades Tab */}
           {tab==="trades"&&(
             <div>
-              {selectedTrade&&<TradeDetailModal trade={selectedTrade} onClose={()=>setSelectedTrade(null)} onEdit={(t)=>{setSelectedTrade(null);if(onEdit)onEdit(t);}} onGradeUpdate={onGradeUpdate}/>}
+              {selectedTrade&&<TradeDetailModal trade={selectedTrade} onClose={()=>setSelectedTrade(null)} onEdit={(t)=>{setSelectedTrade(null);onClose();if(onEdit)onEdit(t);}} onGradeUpdate={onGradeUpdate}/>}
               {dayTrades.length===0?(
                 <div style={{textAlign:"center",padding:"40px 0",color:B.textMuted,fontSize:13}}>No trades on this day.</div>
               ):(
