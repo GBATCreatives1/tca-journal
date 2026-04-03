@@ -5221,52 +5221,85 @@ function EconomicCalendar({isDark=true}){
     setLoading(true);setFetchError(false);
     try{
       const d=new Date(date+"T12:00:00");
-      // Get week range Mon-Fri
       const day=d.getDay();
       const mon=new Date(d);mon.setDate(d.getDate()-(day===0?6:day-1));
       const fri=new Date(mon);fri.setDate(mon.getDate()+4);
       const from=mon.toISOString().slice(0,10);
       const to=fri.toISOString().slice(0,10);
 
-      // Use Tradingeconomics free calendar (no API key needed for basic data)
-      const url=`https://api.tradingeconomics.com/calendar/country/united%20states/${from}/${to}?c=guest:guest&f=json`;
+      // Finnhub free economic calendar API - no key needed, proper date range
+      const url=`https://finnhub.io/api/v1/calendar/economic?from=${from}&to=${to}&token=sandbox_c9lj6aiad3i9vqp96r0g`;
       const res=await fetch(url);
-      if(!res.ok)throw new Error("API error");
+      if(!res.ok)throw new Error("Finnhub error");
       const data=await res.json();
-      if(!Array.isArray(data)||data.length===0)throw new Error("No data");
+      const items=data.economicCalendar||[];
+      if(!items.length)throw new Error("No events");
 
-      const mapped=data
-        .filter(e=>e.Importance>=1)
+      const impMap={3:"high",2:"medium",1:"low",high:"high",medium:"medium",low:"low"};
+      const mapped=items
+        .filter(e=>e.country==="US"||e.currency==="USD")
         .map(e=>({
-          date:e.Date?.slice(0,10)||"",
-          time:e.Date?.slice(11,16)||"",
-          name:e.Event||"",
-          impact:e.Importance===3?"high":e.Importance===2?"medium":"low",
-          currency:e.Currency||"USD",
-          actual:e.Actual||"",
-          forecast:e.Forecast||"",
-          previous:e.Previous||"",
-          id:e.CalendarId||Math.random(),
+          date:e.time?.slice(0,10)||e.date?.slice(0,10)||"",
+          time:e.time?.slice(11,16)||"",
+          name:e.event||e.description||"",
+          impact:impMap[e.importance]||"medium",
+          currency:"USD",
+          actual:e.actual!=null?String(e.actual):"",
+          forecast:e.estimate!=null?String(e.estimate):e.forecast!=null?String(e.forecast):"",
+          previous:e.prev!=null?String(e.prev):e.previous!=null?String(e.previous):"",
+          id:Math.random(),
         }))
+        .filter(e=>e.name&&e.date>=from&&e.date<=to)
         .sort((a,b)=>a.date.localeCompare(b.date)||a.time.localeCompare(b.time));
 
+      if(!mapped.length)throw new Error("No US events");
       setEvents(mapped);
     }catch(err){
-      // Fallback: build events from recurring list for the week
-      setFetchError(true);
-      const d=new Date(date+"T12:00:00");
-      const day=d.getDay();
-      const mon=new Date(d);mon.setDate(d.getDate()-(day===0?6:day-1));
-      const weekEvts=[];
-      for(let i=0;i<5;i++){
-        const dd=new Date(mon);dd.setDate(mon.getDate()+i);
-        const dayName=dd.toLocaleDateString("en-US",{weekday:"long"});
-        const dateStr=dd.toISOString().slice(0,10);
-        RECURRING_US_EVENTS.filter(e=>e.day===dayName||(e.day===""&&e.impact==="high")).forEach(e=>{
-          weekEvts.push({...e,date:dateStr,currency:"USD",actual:"",forecast:"",previous:"",id:Math.random()});
+      // Second attempt: use our coach proxy to get AI-generated events for the week
+      try{
+        const d=new Date(date+"T12:00:00");
+        const day=d.getDay();
+        const mon=new Date(d);mon.setDate(d.getDate()-(day===0?6:day-1));
+        const weekDatesArr=Array.from({length:5},(_,i)=>{
+          const dd=new Date(mon);dd.setDate(mon.getDate()+i);
+          return dd.toISOString().slice(0,10);
         });
+        const res=await fetch("/api/coach",{
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({
+            type:"economic",
+            dayStats:{
+              weekStart:weekDatesArr[0],
+              weekEnd:weekDatesArr[4],
+              weekDates:weekDatesArr,
+              today:new Date().toISOString().slice(0,10),
+            }
+          }),
+        });
+        const data=await res.json();
+        if(data.events?.length){
+          setEvents(data.events);
+          return;
+        }
+        throw new Error("No AI events");
+      }catch(e2){
+        // Final fallback: recurring events
+        setFetchError(true);
+        const d=new Date(date+"T12:00:00");
+        const day=d.getDay();
+        const mon=new Date(d);mon.setDate(d.getDate()-(day===0?6:day-1));
+        const weekEvts=[];
+        for(let i=0;i<5;i++){
+          const dd=new Date(mon);dd.setDate(mon.getDate()+i);
+          const dayName=dd.toLocaleDateString("en-US",{weekday:"long"});
+          const dateStr=dd.toISOString().slice(0,10);
+          RECURRING_US_EVENTS
+            .filter(e=>e.day===dayName||(e.day===""&&e.impact==="high"))
+            .forEach(e=>{weekEvts.push({...e,date:dateStr,currency:"USD",actual:"",forecast:"",previous:"",id:Math.random()});});
+        }
+        setEvents(weekEvts);
       }
-      setEvents(weekEvts);
     }
     setLoading(false);
   };

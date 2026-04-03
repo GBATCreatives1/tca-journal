@@ -57,6 +57,28 @@ JSON structure:
 
 Find 4-6 patterns covering: time-of-day edge, day-of-week patterns, win/loss streaks, after-loss behavior, setup performance, overtrading signals. Be specific with numbers.`,
 
+    economic: `You are a financial data assistant. Generate a realistic economic calendar for US markets for the week provided. Return ONLY valid JSON, no markdown.
+
+Week data: ${JSON.stringify(dayStats)}
+
+Return JSON with this structure:
+{
+  "events": [
+    {
+      "date": "YYYY-MM-DD",
+      "time": "HH:MM",
+      "name": "Event name",
+      "impact": "high|medium|low",
+      "currency": "USD",
+      "forecast": "value or empty string",
+      "previous": "value or empty string",
+      "actual": ""
+    }
+  ]
+}
+
+Include only real, scheduled USD economic events for that specific week. Focus on: NFP (first Friday), CPI (2nd Tuesday), FOMC meetings, Initial Jobless Claims (every Thursday), ISM PMIs, Retail Sales, GDP releases. Match actual scheduled dates. Return 5-15 events total.`,
+
         trade: `You are an expert MES futures trading coach. Analyze this single trade and give honest, specific feedback. Respond with ONLY valid JSON, no markdown.
 
 Trade data: ${JSON.stringify(dayStats)}
