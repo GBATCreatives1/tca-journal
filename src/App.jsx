@@ -2145,15 +2145,48 @@ function TradeDetailModal({trade, onClose, onEdit, onGradeUpdate}){
   const uploadScreenshot=async(file)=>{
     if(!file)return;
     setUploadLoading(true);setUploadError(null);
+    setScreenshotUrl(null); // Clear old image immediately before upload
+    setScreenshot(null);
     try{
-      const ext=file.name.split(".").pop();
+      // Delete old file first to ensure fresh upload
+      try{
+        const{data:existing}=await supabase.storage.from("trade-screenshots").list(`${trade.id}`);
+        if(existing?.length){
+          await supabase.storage.from("trade-screenshots").remove(existing.map(f=>`${trade.id}/${f.name}`));
+        }
+      }catch(e){}
+      // Try Supabase Storage
+      const ext=file.name.split(".").pop().toLowerCase();
       const path=`${trade.id}/chart.${ext}`;
       const{error}=await supabase.storage.from("trade-screenshots").upload(path,file,{upsert:true});
-      if(error)throw error;
+      if(error){
+        // Bucket may not exist — fall back to local base64 preview
+        console.warn("Supabase storage error:",error.message,"— using local preview");
+        const reader=new FileReader();
+        reader.onload=e=>{
+          setScreenshotUrl(e.target.result);
+          setScreenshot(file);
+          setUploadError(null);
+          if(fileInputRef.current)fileInputRef.current.value="";
+        };
+        reader.readAsDataURL(file);
+        setUploadLoading(false);
+        return;
+      }
       const{data:urlData}=supabase.storage.from("trade-screenshots").getPublicUrl(path);
-      setScreenshotUrl(urlData.publicUrl);
+      // Add cache-busting param so browser doesn't show old cached image
+      setScreenshotUrl(urlData.publicUrl + "?t=" + Date.now());
       setScreenshot(file);
-    }catch(e){setUploadError("Upload failed. Check bucket permissions.");}
+      setUploadError(null);
+      if(fileInputRef.current)fileInputRef.current.value="";
+    }catch(e){
+      // Final fallback — base64 local preview
+      try{
+        const reader=new FileReader();
+        reader.onload=ev=>{setScreenshotUrl(ev.target.result);setScreenshot(file);};
+        reader.readAsDataURL(file);
+      }catch(e2){setUploadError("Could not load image. Try a different file.");}
+    }
     setUploadLoading(false);
   };
 
@@ -2164,7 +2197,10 @@ function TradeDetailModal({trade, onClose, onEdit, onGradeUpdate}){
         await supabase.storage.from("trade-screenshots").remove(data.map(f=>`${trade.id}/${f.name}`));
       }
     }catch(e){}
-    setScreenshotUrl(null);setScreenshot(null);
+    setScreenshotUrl(null);
+    setScreenshot(null);
+    // Reset file input so same file can be re-selected
+    if(fileInputRef.current)fileInputRef.current.value="";
   };
 
   const runAI = async () => {
@@ -3353,18 +3389,27 @@ function PlaybookView({trades=[]}){
 
   // Compute live stats from real trades for each strategy
   const getStratStats=(strat)=>{
-    // Match on strategy field first, then fall back to setup field matching
     const matched=trades.filter(t=>
       (t.strategy&&t.strategy===strat.name)||
       (t.setup&&t.setup===strat.name)
     );
     const wins=matched.filter(t=>t.result==="Win");
+    const losses=matched.filter(t=>t.result==="Loss");
     const pnl=Math.round(matched.reduce((a,t)=>a+t.pnl,0)*100)/100;
     const wr=matched.length?Math.round((wins.length/matched.length)*100):0;
-    const avgWin=wins.length?Math.round(wins.reduce((a,t)=>a+t.pnl,0)/wins.length*100)/100:0;
-    const losses=matched.filter(t=>t.result==="Loss");
-    const avgLoss=losses.length?Math.round(Math.abs(losses.reduce((a,t)=>a+t.pnl,0)/losses.length)*100)/100:0;
-    return{trades:matched.length,wins:wins.length,pnl,wr,avgWin,avgLoss};
+    const grossWin=wins.reduce((a,t)=>a+t.pnl,0);
+    const grossLoss=Math.abs(losses.reduce((a,t)=>a+t.pnl,0));
+    const avgWin=wins.length?Math.round(grossWin/wins.length*100)/100:0;
+    const avgLoss=losses.length?Math.round(grossLoss/losses.length*100)/100:0;
+    const profitFactor=grossLoss>0?Math.round((grossWin/grossLoss)*100)/100:wins.length>0?"∞":0;
+    const expectancy=matched.length?Math.round(pnl/matched.length*100)/100:0;
+    // Max consecutive losses
+    let maxConsecLoss=0,curLoss=0;
+    [...matched].sort((a,b)=>a.date.localeCompare(b.date)).forEach(t=>{
+      if(t.result==="Loss"){curLoss++;maxConsecLoss=Math.max(maxConsecLoss,curLoss);}
+      else curLoss=0;
+    });
+    return{trades:matched.length,wins:wins.length,losses:losses.length,pnl,wr,avgWin,avgLoss,profitFactor,expectancy,maxConsecLoss};
   };
 
   return(
@@ -3465,8 +3510,9 @@ function PlaybookView({trades=[]}){
                     {label:"Trades",value:getStratStats(sel).trades||"--",color:B.blue},
                     {label:"Avg Winner",value:getStratStats(sel).avgWin?`+$${getStratStats(sel).avgWin}`:"--",color:B.profit},
                     {label:"Avg Loser",value:getStratStats(sel).avgLoss?`-$${getStratStats(sel).avgLoss}`:"--",color:B.loss},
-                    {label:"Profit Factor",value:sel.profitFactor||"--",color:B.purple},
-                    {label:"Expectancy",value:sel.expectancy?`$${sel.expectancy}`:"--",color:B.spark},
+                    {label:"Profit Factor",value:getStratStats(sel).profitFactor||"--",color:B.purple},
+                    {label:"Expectancy",value:getStratStats(sel).expectancy?`$${getStratStats(sel).expectancy}`:"--",color:B.spark},
+                    {label:"Max Consec. Loss",value:getStratStats(sel).maxConsecLoss||"0",color:B.loss},
                     {label:"Missed Trades",value:sel.missedTrades||"0",color:B.textMuted},
                   ].map(s=>(
                     <div key={s.label} style={{background:"rgba(0,0,0,0.3)",borderRadius:10,padding:"12px 14px",border:`1px solid ${B.border}`}}>
