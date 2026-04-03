@@ -574,15 +574,18 @@ function LoginScreen(){
 }
 
 function TradeFormModal({onClose,onSave,editTrade}){
-  const blank={date:new Date().toISOString().slice(0,10),account_id:"main",instrument:"MES",direction:"Long",contracts:1,entry:"",exit:"",stop_loss:"",take_profit:"",tp_category:"",pnl:"",rr:"",setup:SETUPS[0],grade:"A",session:"AM",notes:"",result:"Win"};
+  const blank={date:new Date().toISOString().slice(0,10),account_id:"main",instrument:"MES",direction:"Long",contracts:1,entry:"",exit:"",stop_loss:"",take_profit:"",tp_category:"",pnl:"",rr:"",setup:SETUPS[0],strategy:"",grade:"A",session:"AM",notes:"",result:"Win"};
   const [form,setForm]=useState(editTrade?{...editTrade}:blank);const [auto,setAuto]=useState(!editTrade);
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
   // accounts from parent - we'll read from localStorage
   const [formAccounts,setFormAccounts]=useState([{id:"main",label:"Live Account"},{id:"apex_eval",label:"Apex Eval"},{id:"apex_demo",label:"Apex Demo"}]);
   const [formStrategies,setFormStrategies]=useState([]);
-  const DEFAULT_SETUPS=["AM Session CISD","10AM Triple TF","FVG Fill + OTE","PDH Rejection","PDL Bounce","0930 Rejection","Auto-synced","Other"];
   const [customSetups,setCustomSetups]=useState(()=>{
-    try{return JSON.parse(localStorage.getItem("tca_custom_setups_v1")||"null")||DEFAULT_SETUPS;}catch(e){return DEFAULT_SETUPS;}
+    try{
+      const saved=localStorage.getItem("tca_custom_setups_v1");
+      if(saved){const p=JSON.parse(saved);if(p?.length)return p;}
+    }catch(e){}
+    return [...SETUPS]; // default to built-in setups
   });
   const [showSetupMgr,setShowSetupMgr]=useState(false);
   const [newSetupName,setNewSetupName]=useState("");
@@ -646,10 +649,34 @@ function TradeFormModal({onClose,onSave,editTrade}){
                     </div>
                   </div>
                 )}
-              </div><div><label style={lS}>P&L ($) <span onClick={()=>setAuto(a=>!a)} style={{marginLeft:8,cursor:"pointer",color:auto?B.teal:B.textMuted,fontSize:9}}>{auto?"AUTO":"MANUAL"}</span></label><input type="number" step="0.01" value={form.pnl} onChange={e=>{set("pnl",e.target.value);setAuto(false);}} style={{...iS,color:parseFloat(form.pnl)>=0?B.profit:B.loss,fontWeight:700}} placeholder="0.00"/></div><div><label style={lS}>R:R Ratio</label><input value={form.rr} onChange={e=>set("rr",e.target.value)} style={iS} placeholder="e.g. 2.1R"/></div><div><label style={lS}>Setup</label><select value={form.setup} onChange={e=>set("setup",e.target.value)} style={iS}>{SETUPS.map(s=><option key={s}>{s}</option>)}</select></div><div><label style={lS}>Session</label><select value={form.session} onChange={e=>set("session",e.target.value)} style={iS}>{SESSIONS.map(s=><option key={s}>{s}</option>)}</select></div>
+              </div><div><label style={lS}>P&L ($) <span onClick={()=>setAuto(a=>!a)} style={{marginLeft:8,cursor:"pointer",color:auto?B.teal:B.textMuted,fontSize:9}}>{auto?"AUTO":"MANUAL"}</span></label><input type="number" step="0.01" value={form.pnl} onChange={e=>{set("pnl",e.target.value);setAuto(false);}} style={{...iS,color:parseFloat(form.pnl)>=0?B.profit:B.loss,fontWeight:700}} placeholder="0.00"/></div><div><label style={lS}>R:R Ratio</label><input value={form.rr} onChange={e=>set("rr",e.target.value)} style={iS} placeholder="e.g. 2.1R"/></div><div><label style={lS}>Setup / Entry Type <button type="button" onClick={()=>setShowSetupMgr(p=>!p)} style={{background:"none",border:"none",color:B.textMuted,cursor:"pointer",fontSize:10,marginLeft:4,textDecoration:"underline"}}>edit list</button></label>
+                <select value={form.setup||""} onChange={e=>set("setup",e.target.value)} style={iS}>
+                  <option value="">— Select Setup —</option>
+                  {customSetups.map(s=><option key={s} value={s}>{s}</option>)}
+                </select>
+                {showSetupMgr&&(
+                  <div style={{marginTop:8,padding:"10px 12px",borderRadius:8,background:"rgba(0,0,0,0.3)",border:`1px solid ${B.border}`}}>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:8}}>
+                      {customSetups.map(s=>(
+                        <div key={s} style={{display:"flex",alignItems:"center",gap:3,padding:"2px 8px",borderRadius:6,background:`${B.purple}10`,border:`1px solid ${B.borderPurp}`}}>
+                          <span style={{fontSize:11,color:B.purple}}>{s}</span>
+                          <button type="button" onClick={()=>saveCustomSetups(customSetups.filter(x=>x!==s))} style={{background:"none",border:"none",color:B.loss,cursor:"pointer",fontSize:12,padding:"0 2px",lineHeight:1}}>×</button>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{display:"flex",gap:6}}>
+                      <input value={newSetupName} onChange={e=>setNewSetupName(e.target.value)}
+                        onKeyDown={e=>e.key==="Enter"&&newSetupName.trim()&&(saveCustomSetups([...customSetups,newSetupName.trim()]),setNewSetupName(""))}
+                        placeholder="Add setup..." style={{...iS,flex:1,padding:"5px 10px",fontSize:11}}/>
+                      <button type="button" onClick={()=>{if(newSetupName.trim()){saveCustomSetups([...customSetups,newSetupName.trim()]);setNewSetupName("");}}}
+                        style={{padding:"5px 12px",borderRadius:7,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:11,fontWeight:800}}>+</button>
+                    </div>
+                  </div>
+                )}
+              </div><div><label style={lS}>Session</label><select value={form.session} onChange={e=>set("session",e.target.value)} style={iS}>{SESSIONS.map(s=><option key={s}>{s}</option>)}</select></div>
               <div style={{gridColumn:"1/-1"}}>
                 <label style={lS}>Strategy <span style={{fontSize:9,color:B.textMuted}}>(from your Strategies page)</span></label>
-                <select value={form.setup} onChange={e=>set("setup",e.target.value)} style={iS}>
+                <select value={form.strategy||""} onChange={e=>set("strategy",e.target.value)} style={iS}>
                   <option value="">— Select Strategy —</option>
                   {formStrategies.length===0&&<option disabled style={{color:B.textMuted}}>No strategies yet — create them in the Strategies page</option>}
                   {formStrategies.map(st=>(
@@ -657,9 +684,7 @@ function TradeFormModal({onClose,onSave,editTrade}){
                   ))}
                 </select>
               </div>
-              <div><label style={lS}>Setup / Entry Type</label>
-                <input value={form.setup||""} onChange={e=>set("setup",e.target.value)} style={iS} placeholder="e.g. ERL to IRL, FVG Fill, 10AM Reversal..."/>
-              </div>
+              
               <div><label style={lS}>Account</label><select value={form.account_id||"main"} onChange={e=>set("account_id",e.target.value)} style={{...iS,cursor:"pointer"}}>{formAccounts.map(a=>(<option key={a.id} value={a.id}>{a.label}</option>))}</select></div><div style={{gridColumn:"1/-1"}}><label style={lS}>Grade</label><div style={{display:"flex",gap:6}}>{GRADES.map(g=>(<button key={g} onClick={()=>set("grade",g)} style={{flex:1,padding:"7px 0",borderRadius:8,border:"1px solid",cursor:"pointer",fontWeight:800,fontSize:12,borderColor:form.grade===g?GRADE_COLOR[g]:B.border,background:form.grade===g?`${GRADE_COLOR[g]}18`:"transparent",color:form.grade===g?GRADE_COLOR[g]:B.textMuted}}>{g}</button>))}</div></div><div style={{gridColumn:"1/-1"}}><label style={lS}>Notes</label><textarea value={form.notes} onChange={e=>set("notes",e.target.value)} rows={3} style={{...iS,resize:"vertical"}} placeholder="What happened?"/></div></div><div style={{display:"flex",gap:10,marginTop:24,justifyContent:"flex-end"}}><button onClick={onClose} style={{padding:"10px 22px",borderRadius:10,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:13,fontWeight:600}}>Cancel</button><button onClick={handleSave} style={{padding:"10px 28px",borderRadius:10,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:13,fontWeight:800}}>{editTrade?"Save Changes":"Log Trade"}</button></div></div></div>);
 }
 
