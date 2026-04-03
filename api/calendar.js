@@ -27,16 +27,28 @@ export default async function handler(req, res) {
         const events = data
           .filter(e => (e.country === "USD" || e.currency === "USD" || e.country === "US"))
           .map(e => {
-            // FF dates are like "04-03-2026T08:30:00-0400"
+            // FF dates are like "04-03-2026T08:30:00-0400" (already in local time)
             let dateStr = "", timeStr = "";
             try {
-              const dt = new Date(e.date);
-              if (!isNaN(dt)) {
-                // Convert to EST
-                const estOffset = -5 * 60;
-                const local = new Date(dt.getTime() + estOffset * 60000);
-                dateStr = local.toISOString().slice(0, 10);
-                timeStr = local.toISOString().slice(11, 16);
+              const raw = String(e.date || "");
+              // Extract date and time directly from the string to avoid timezone issues
+              // Format: MM-DD-YYYYTHH:MM:SS or YYYY-MM-DDTHH:MM:SS
+              const isoMatch = raw.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/);
+              const usMatch = raw.match(/^(\d{2})-(\d{2})-(\d{4})T(\d{2}:\d{2})/);
+              if (isoMatch) {
+                dateStr = isoMatch[1];
+                timeStr = isoMatch[2];
+              } else if (usMatch) {
+                dateStr = `${usMatch[3]}-${usMatch[1]}-${usMatch[2]}`;
+                timeStr = usMatch[4];
+              } else {
+                // Fallback to Date parsing but keep local time
+                const dt = new Date(raw);
+                if (!isNaN(dt)) {
+                  // Use the time as-is from the string (already in ET)
+                  dateStr = raw.slice(6, 10) + "-" + raw.slice(0, 2) + "-" + raw.slice(3, 5);
+                  timeStr = raw.slice(11, 16);
+                }
               }
             } catch(ex) {}
 
@@ -57,7 +69,9 @@ export default async function handler(req, res) {
           .sort((a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time));
 
         if (events.length > 0) {
-          console.log(`ForexFactory JSON (${url.includes("next") ? "next" : "this"} week): ${events.length} events`);
+          const withActuals = events.filter(e => e.actual !== "");
+          console.log(`ForexFactory JSON: ${events.length} events, ${withActuals.length} with actuals`);
+          if (withActuals.length > 0) console.log("Sample actual:", withActuals[0].name, withActuals[0].actual);
           return res.status(200).json({ events, source: "forexfactory" });
         }
       } catch(innerErr) {
@@ -191,9 +205,12 @@ export default async function handler(req, res) {
               name: e.title || e.name || "",
               impact: e.impact === "High" ? "high" : e.impact === "Medium" ? "medium" : "low",
               currency: "USD",
-              actual: (e.actual != null && e.actual !== "") ? String(e.actual) : "",
-              forecast: (e.forecast != null && e.forecast !== "") ? String(e.forecast) : "",
-              previous: (e.previous != null && e.previous !== "" ? String(e.previous) : (e.prev != null ? String(e.prev) : "")),
+              actual: (e.actual !== null && e.actual !== undefined && String(e.actual).trim() !== "" && String(e.actual) !== "null") ? String(e.actual).trim() : "",
+              forecast: (e.forecast !== null && e.forecast !== undefined && String(e.forecast).trim() !== "" && String(e.forecast) !== "null") ? String(e.forecast).trim() : "",
+              previous: (() => {
+                const p = e.previous ?? e.prev;
+                return (p !== null && p !== undefined && String(p).trim() !== "" && String(p) !== "null") ? String(p).trim() : "";
+              })(),
               id: Math.random(),
               source: "forexfactory",
             };
