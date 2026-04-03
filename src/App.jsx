@@ -580,12 +580,19 @@ function TradeFormModal({onClose,onSave,editTrade}){
   // accounts from parent - we'll read from localStorage
   const [formAccounts,setFormAccounts]=useState([{id:"main",label:"Live Account"},{id:"apex_eval",label:"Apex Eval"},{id:"apex_demo",label:"Apex Demo"}]);
   const [formStrategies,setFormStrategies]=useState([]);
+  const DEFAULT_SETUPS=["AM Session CISD","10AM Triple TF","FVG Fill + OTE","PDH Rejection","PDL Bounce","0930 Rejection","Auto-synced","Other"];
+  const [customSetups,setCustomSetups]=useState(()=>{
+    try{return JSON.parse(localStorage.getItem("tca_custom_setups_v1")||"null")||DEFAULT_SETUPS;}catch(e){return DEFAULT_SETUPS;}
+  });
+  const [showSetupMgr,setShowSetupMgr]=useState(false);
+  const [newSetupName,setNewSetupName]=useState("");
+  const saveCustomSetups=(s)=>{setCustomSetups(s);try{localStorage.setItem("tca_custom_setups_v1",JSON.stringify(s));}catch(e){}};
+
   useEffect(()=>{
     try{
       const s=JSON.parse(localStorage.getItem("tca_strategies_v1")||"[]");
       setFormStrategies(s);
     }catch(e){}
-    // Also listen for storage changes (in case strategies are updated in another tab)
     const handler=()=>{
       try{const s=JSON.parse(localStorage.getItem("tca_strategies_v1")||"[]");setFormStrategies(s);}catch(e){}
     };
@@ -634,16 +641,49 @@ function TradeFormModal({onClose,onSave,editTrade}){
                   </div>
                 )}
               </div><div><label style={lS}>P&L ($) <span onClick={()=>setAuto(a=>!a)} style={{marginLeft:8,cursor:"pointer",color:auto?B.teal:B.textMuted,fontSize:9}}>{auto?"AUTO":"MANUAL"}</span></label><input type="number" step="0.01" value={form.pnl} onChange={e=>{set("pnl",e.target.value);setAuto(false);}} style={{...iS,color:parseFloat(form.pnl)>=0?B.profit:B.loss,fontWeight:700}} placeholder="0.00"/></div><div><label style={lS}>R:R Ratio</label><input value={form.rr} onChange={e=>set("rr",e.target.value)} style={iS} placeholder="e.g. 2.1R"/></div><div><label style={lS}>Setup</label><select value={form.setup} onChange={e=>set("setup",e.target.value)} style={iS}>{SETUPS.map(s=><option key={s}>{s}</option>)}</select></div><div><label style={lS}>Session</label><select value={form.session} onChange={e=>set("session",e.target.value)} style={iS}>{SESSIONS.map(s=><option key={s}>{s}</option>)}</select></div>
-              <div><label style={lS}>Strategy</label>
+              <div style={{gridColumn:"1/-1"}}>
+                <label style={lS}>Strategy <span style={{fontSize:9,color:B.textMuted}}>(from your Strategies page)</span></label>
                 <select value={form.setup} onChange={e=>set("setup",e.target.value)} style={iS}>
                   <option value="">— Select Strategy —</option>
-                  {formStrategies.length>0&&<optgroup label="My Strategies">
-                    {formStrategies.map(st=><option key={st.id} value={st.name}>{st.name}</option>)}
-                  </optgroup>}
-                  <optgroup label="Default Setups">
-                  {SETUPS.map(s=><option key={s} value={s}>{s}</option>)}
-                  </optgroup>
+                  {formStrategies.length===0&&<option disabled style={{color:B.textMuted}}>No strategies yet — create them in the Strategies page</option>}
+                  {formStrategies.map(st=>(
+                    <option key={st.id} value={st.name}>{st.name}</option>
+                  ))}
                 </select>
+              </div>
+              <div style={{gridColumn:"1/-1"}}>
+                <label style={lS}>Setup / Entry Type <button type="button" onClick={()=>setShowSetupMgr(p=>!p)} style={{background:"none",border:"none",color:B.textMuted,cursor:"pointer",fontSize:10,marginLeft:4}}>⚙ edit</button></label>
+                <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                  {customSetups.map(s=>(
+                    <button key={s} type="button" onClick={()=>set("setup",form.setup===s?"":s)}
+                      style={{padding:"4px 12px",borderRadius:20,cursor:"pointer",fontSize:11,fontWeight:600,
+                        border:`1px solid ${form.setup===s?B.purple:B.border}`,
+                        background:form.setup===s?`${B.purple}18`:"transparent",
+                        color:form.setup===s?B.purple:B.textMuted,transition:"all 0.12s"}}>
+                      {s}
+                    </button>
+                  ))}
+                </div>
+                {showSetupMgr&&(
+                  <div style={{marginTop:10,padding:"12px 14px",borderRadius:10,background:"rgba(0,0,0,0.3)",border:`1px solid ${B.border}`}}>
+                    <div style={{fontSize:10,color:B.textMuted,letterSpacing:1,marginBottom:8}}>MANAGE SETUPS</div>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:10}}>
+                      {customSetups.map(s=>(
+                        <div key={s} style={{display:"flex",alignItems:"center",gap:4,padding:"3px 8px",borderRadius:6,background:`${B.purple}10`,border:`1px solid ${B.borderPurp}`}}>
+                          <span style={{fontSize:11,color:B.purple}}>{s}</span>
+                          <button type="button" onClick={()=>saveCustomSetups(customSetups.filter(x=>x!==s))} style={{background:"none",border:"none",color:B.loss,cursor:"pointer",fontSize:12,padding:"0 2px",lineHeight:1}}>×</button>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{display:"flex",gap:6}}>
+                      <input value={newSetupName} onChange={e=>setNewSetupName(e.target.value)}
+                        onKeyDown={e=>e.key==="Enter"&&newSetupName.trim()&&(saveCustomSetups([...customSetups,newSetupName.trim()]),setNewSetupName(""))}
+                        placeholder="Add new setup..." style={{...iS,flex:1,padding:"5px 10px",fontSize:11}}/>
+                      <button type="button" onClick={()=>{if(newSetupName.trim()){saveCustomSetups([...customSetups,newSetupName.trim()]);setNewSetupName("");}}}
+                        style={{padding:"5px 12px",borderRadius:7,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:11,fontWeight:800}}>Add</button>
+                    </div>
+                  </div>
+                )}
               </div>
               <div><label style={lS}>Account</label><select value={form.account_id||"main"} onChange={e=>set("account_id",e.target.value)} style={{...iS,cursor:"pointer"}}>{formAccounts.map(a=>(<option key={a.id} value={a.id}>{a.label}</option>))}</select></div><div style={{gridColumn:"1/-1"}}><label style={lS}>Grade</label><div style={{display:"flex",gap:6}}>{GRADES.map(g=>(<button key={g} onClick={()=>set("grade",g)} style={{flex:1,padding:"7px 0",borderRadius:8,border:"1px solid",cursor:"pointer",fontWeight:800,fontSize:12,borderColor:form.grade===g?GRADE_COLOR[g]:B.border,background:form.grade===g?`${GRADE_COLOR[g]}18`:"transparent",color:form.grade===g?GRADE_COLOR[g]:B.textMuted}}>{g}</button>))}</div></div><div style={{gridColumn:"1/-1"}}><label style={lS}>Notes</label><textarea value={form.notes} onChange={e=>set("notes",e.target.value)} rows={3} style={{...iS,resize:"vertical"}} placeholder="What happened?"/></div></div><div style={{display:"flex",gap:10,marginTop:24,justifyContent:"flex-end"}}><button onClick={onClose} style={{padding:"10px 22px",borderRadius:10,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:13,fontWeight:600}}>Cancel</button><button onClick={handleSave} style={{padding:"10px 28px",borderRadius:10,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:13,fontWeight:800}}>{editTrade?"Save Changes":"Log Trade"}</button></div></div></div>);
 }
@@ -1193,7 +1233,7 @@ function StreakBadge({trades}){
   );
 }
 
-function Overview({trades, onGradeUpdate, session}){
+function Overview({trades, onGradeUpdate, session, onEdit}){
   const wins=trades.filter(t=>t.result==="Win"),losses=trades.filter(t=>t.result==="Loss");
   const totalPnl=trades.reduce((a,t)=>a+t.pnl,0);
   const winRate=trades.length?Math.round((wins.length/trades.length)*100):0;
@@ -1461,7 +1501,7 @@ function Overview({trades, onGradeUpdate, session}){
 
   return(
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
-      {selectedDay&&<DayJournalModal date={selectedDay} trades={trades} onClose={()=>setSelectedDay(null)} onGradeUpdate={onGradeUpdate}/>}
+      {selectedDay&&<DayJournalModal date={selectedDay} trades={trades} onClose={()=>setSelectedDay(null)} onGradeUpdate={onGradeUpdate} onEdit={onEdit}/>}
 
       {/* ── WIDGET POPOUT MODAL ── */}
       {expandedWidget&&(
@@ -3134,7 +3174,7 @@ function DayJournalModal({date, trades, onClose, onGradeUpdate}){
   );
 }
 
-function CalendarView({trades, onGradeUpdate}){
+function CalendarView({trades, onGradeUpdate, onEdit}){
   const calMap=buildCalendar(trades);
   const allDates=trades.map(t=>t.date).sort();
   const latestDate=allDates[allDates.length-1]||new Date().toISOString().slice(0,10);
@@ -3183,7 +3223,7 @@ function CalendarView({trades, onGradeUpdate}){
 
   return(
     <div style={{display:"flex",flexDirection:"column",gap:20}}>
-      {selectedDay&&<DayJournalModal date={selectedDay} trades={trades} onClose={()=>setSelectedDay(null)} onGradeUpdate={onGradeUpdate}/>}
+      {selectedDay&&<DayJournalModal date={selectedDay} trades={trades} onClose={()=>setSelectedDay(null)} onGradeUpdate={onGradeUpdate} onEdit={onEdit}/>}
 
       {/* Stats */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14}}>
@@ -5628,53 +5668,12 @@ function EconomicCalendar({isDark=true}){
             High-impact US events · Track news that moves MES/ES futures
           </div>
         </div>
-        <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
-          {["high","medium","all"].map(f=>(
-            <button key={f} onClick={()=>setFilter(f)} style={{
-              padding:"6px 12px",borderRadius:8,cursor:"pointer",fontSize:11,fontWeight:700,
-              border:`1px solid ${filter===f?(f==="high"?IMPACT_COLORS.high:f==="medium"?IMPACT_COLORS.medium:B.teal):B.border}`,
-              background:filter===f?`${f==="high"?IMPACT_COLORS.high:f==="medium"?IMPACT_COLORS.medium:B.teal}15`:"transparent",
-              color:filter===f?(f==="high"?IMPACT_COLORS.high:f==="medium"?IMPACT_COLORS.medium:B.teal):B.textMuted,
-            }}>
-              {f==="high"?"🔴 High":f==="medium"?"🟡 High+Med":"All"}
-            </button>
-          ))}
-          <button onClick={()=>setView(v=>v==="live"?"manual":"live")} style={{
-            padding:"6px 14px",borderRadius:8,cursor:"pointer",fontSize:11,fontWeight:700,
-            border:`1px solid ${view==="manual"?B.teal:B.border}`,
-            background:view==="manual"?`${B.teal}15`:"transparent",
-            color:view==="manual"?B.teal:B.textMuted,
-          }}>📋 My Events{manualEvents.length>0?` (${manualEvents.length})`:""}</button>
-        </div>
-      </div>
-
-      {/* Week navigation */}
-      <div style={{display:"flex",alignItems:"center",gap:10}}>
-        <button onClick={prevWeek} style={{width:32,height:32,borderRadius:8,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center"}}>‹</button>
-        <div style={{display:"flex",gap:6,flex:1}}>
-          {weekDates.map(d=>{
-            const isToday=d===today;
-            const isSelected=d===selectedDate;
-            const hasEvents=filtered.some(e=>e.date===d);
-            const dayName=new Date(d+"T12:00:00").toLocaleDateString("en-US",{weekday:"short"});
-            const dayNum=new Date(d+"T12:00:00").getDate();
-            return(
-              <button key={d} onClick={()=>setSelectedDate(d)} style={{
-                flex:1,padding:"8px 4px",borderRadius:10,cursor:"pointer",textAlign:"center",
-                border:`1px solid ${isSelected?B.teal:isToday?`${B.blue}50`:B.border}`,
-                background:isSelected?`${B.teal}15`:isToday?`${B.blue}06`:"transparent",
-                transition:"all 0.15s",
-              }}>
-                <div style={{fontSize:10,color:isSelected?B.teal:B.textMuted}}>{dayName}</div>
-                <div style={{fontSize:16,fontWeight:800,color:isSelected?B.teal:B.text,marginTop:1}}>{dayNum}</div>
-                {hasEvents&&<div style={{width:4,height:4,borderRadius:"50%",background:isSelected?B.teal:IMPACT_COLORS.high,margin:"3px auto 0"}}/>}
-                {isToday&&!hasEvents&&<div style={{width:4,height:4,borderRadius:"50%",background:B.blue,margin:"3px auto 0"}}/>}
-              </button>
-            );
-          })}
-        </div>
-        <button onClick={()=>setSelectedDate(today)} style={{padding:"6px 12px",borderRadius:8,border:`1px solid ${B.teal}40`,background:`${B.teal}10`,color:B.teal,cursor:"pointer",fontSize:11,fontWeight:700}}>Today</button>
-        <button onClick={nextWeek} style={{width:32,height:32,borderRadius:8,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center"}}>›</button>
+        <button onClick={()=>setView(v=>v==="live"?"manual":"live")} style={{
+          padding:"7px 16px",borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:700,
+          border:`1px solid ${view==="manual"?B.teal:B.border}`,
+          background:view==="manual"?`${B.teal}15`:"transparent",
+          color:view==="manual"?B.teal:B.textMuted,
+        }}>📋 My Events{manualEvents.length>0?` (${manualEvents.length})`:""}</button>
       </div>
 
       {/* LIVE CALENDAR - Investing.com iframe (best data, with actuals) */}
@@ -6132,7 +6131,7 @@ export default function App(){
       {active==="overview"&&<Overview trades={activeAccount==="all"?trades:trades.filter(t=>t.account_id===activeAccount)} onGradeUpdate={handleGradeUpdate} session={session}/>}
       {active==="journal"&&<Journal trades={activeAccount==="all"?trades:trades.filter(t=>t.account_id===activeAccount)} onEdit={handleEdit} onDelete={setDelTrade} onGradeUpdate={handleGradeUpdate}/>}
       {active==="analytics"&&<Analytics trades={activeAccount==="all"?trades:trades.filter(t=>t.account_id===activeAccount)}/>}
-      {active==="calendar"&&<CalendarView trades={activeAccount==="all"?trades:trades.filter(t=>t.account_id===activeAccount)} onGradeUpdate={handleGradeUpdate}/>}
+      {active==="calendar"&&<CalendarView trades={activeAccount==="all"?trades:trades.filter(t=>t.account_id===activeAccount)} onGradeUpdate={handleGradeUpdate} onEdit={handleEdit}/>}
       {active==="playbooks"&&<PlaybookView/>}
       {active==="resources"&&<ResourcesPage session={session}/>}
       {active==="economiccalendar"&&<EconomicCalendar isDark={isDark}/>}
