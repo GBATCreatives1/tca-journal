@@ -5258,8 +5258,9 @@ function EconomicCalendar({isDark=true}){
                   style={{
                     display:"block",
                     border:"none",
-                    filter:isDark?"invert(0) hue-rotate(0deg)":"none",
-                    colorScheme:"dark",
+                    filter:isDark
+                      ?"invert(1) hue-rotate(180deg) brightness(0.9) contrast(0.95) saturate(1.2)"
+                      :"none",
                   }}
                   title="Economic Calendar"
                 />
