@@ -579,6 +579,20 @@ function TradeFormModal({onClose,onSave,editTrade}){
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
   // accounts from parent - we'll read from localStorage
   const [formAccounts,setFormAccounts]=useState([{id:"main",label:"Live Account"},{id:"apex_eval",label:"Apex Eval"},{id:"apex_demo",label:"Apex Demo"}]);
+  const [formStrategies,setFormStrategies]=useState([]);
+  useEffect(()=>{
+    try{
+      const s=JSON.parse(localStorage.getItem("tca_strategies_v1")||"[]");
+      setFormStrategies(s);
+    }catch(e){}
+    // Also listen for storage changes (in case strategies are updated in another tab)
+    const handler=()=>{
+      try{const s=JSON.parse(localStorage.getItem("tca_strategies_v1")||"[]");setFormStrategies(s);}catch(e){}
+    };
+    window.addEventListener("storage",handler);
+    return()=>window.removeEventListener("storage",handler);
+  },[]);
+
   const DEFAULT_TP_CATS=["PDH/PDL","FVG Fill","Order Block","VWAP","Round Number","Session High/Low","Fib Level","Swing High/Low","Custom"];
   const [tpCats,setTpCats]=useState(()=>{try{return JSON.parse(localStorage.getItem("tca_tp_categories")||"null")||DEFAULT_TP_CATS;}catch(e){return DEFAULT_TP_CATS;}});
   const [showTpMgr,setShowTpMgr]=useState(false);
@@ -623,8 +637,12 @@ function TradeFormModal({onClose,onSave,editTrade}){
               <div><label style={lS}>Strategy</label>
                 <select value={form.setup} onChange={e=>set("setup",e.target.value)} style={iS}>
                   <option value="">— Select Strategy —</option>
-                  {formAccounts&&(()=>{try{const s=JSON.parse(localStorage.getItem("tca_strategies_v1")||"[]");return s.map(st=><option key={st.id} value={st.name}>{st.name}</option>);}catch(e){return null;}})()}
+                  {formStrategies.length>0&&<optgroup label="My Strategies">
+                    {formStrategies.map(st=><option key={st.id} value={st.name}>{st.name}</option>)}
+                  </optgroup>}
+                  <optgroup label="Default Setups">
                   {SETUPS.map(s=><option key={s} value={s}>{s}</option>)}
+                  </optgroup>
                 </select>
               </div>
               <div><label style={lS}>Account</label><select value={form.account_id||"main"} onChange={e=>set("account_id",e.target.value)} style={{...iS,cursor:"pointer"}}>{formAccounts.map(a=>(<option key={a.id} value={a.id}>{a.label}</option>))}</select></div><div style={{gridColumn:"1/-1"}}><label style={lS}>Grade</label><div style={{display:"flex",gap:6}}>{GRADES.map(g=>(<button key={g} onClick={()=>set("grade",g)} style={{flex:1,padding:"7px 0",borderRadius:8,border:"1px solid",cursor:"pointer",fontWeight:800,fontSize:12,borderColor:form.grade===g?GRADE_COLOR[g]:B.border,background:form.grade===g?`${GRADE_COLOR[g]}18`:"transparent",color:form.grade===g?GRADE_COLOR[g]:B.textMuted}}>{g}</button>))}</div></div><div style={{gridColumn:"1/-1"}}><label style={lS}>Notes</label><textarea value={form.notes} onChange={e=>set("notes",e.target.value)} rows={3} style={{...iS,resize:"vertical"}} placeholder="What happened?"/></div></div><div style={{display:"flex",gap:10,marginTop:24,justifyContent:"flex-end"}}><button onClick={onClose} style={{padding:"10px 22px",borderRadius:10,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:13,fontWeight:600}}>Cancel</button><button onClick={handleSave} style={{padding:"10px 28px",borderRadius:10,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:13,fontWeight:800}}>{editTrade?"Save Changes":"Log Trade"}</button></div></div></div>);
@@ -5659,87 +5677,49 @@ function EconomicCalendar({isDark=true}){
         <button onClick={nextWeek} style={{width:32,height:32,borderRadius:8,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center"}}>›</button>
       </div>
 
-      {/* LIVE CALENDAR TABLE */}
+      {/* LIVE CALENDAR - Investing.com iframe (best data, with actuals) */}
       {view==="live"&&(
-        <div style={{background:bg,border:`1px solid ${border}`,borderRadius:14,overflow:"hidden"}}>
-          {/* Table header */}
-          <div style={{display:"grid",gridTemplateColumns:"70px 40px 1fr 60px 90px 90px 90px",gap:0,padding:"10px 16px",background:headerBg,borderBottom:`1px solid ${border}`}}>
-            {["TIME","IMP.","EVENT","CUR.","ACTUAL","FORECAST","PREVIOUS"].map(h=>(
-              <div key={h} style={{fontSize:10,color:textMuted,letterSpacing:1.5,fontWeight:700}}>{h}</div>
-            ))}
-          </div>
-
-          {loading&&(
-            <div style={{padding:"48px",textAlign:"center"}}>
-              <div style={{width:32,height:32,border:`3px solid ${B.border}`,borderTop:`3px solid ${B.teal}`,borderRadius:"50%",margin:"0 auto 12px",animation:"spin 0.8s linear infinite"}}/>
-              <div style={{fontSize:13,color:textMuted}}>Loading events...</div>
-            </div>
-          )}
-
-          {!loading&&filtered.length===0&&(
-            <div style={{padding:"48px",textAlign:"center"}}>
-              <div style={{fontSize:32,marginBottom:10}}>📅</div>
-              <div style={{fontSize:14,fontWeight:700,color:textPrimary,marginBottom:4}}>No events this week</div>
-              <div style={{fontSize:12,color:textMuted}}>Try switching to "All" impact level or navigate to another week</div>
-            </div>
-          )}
-
-          {!loading&&groupedDays.map(([date,dayEvts])=>(
-            <div key={date}>
-              {/* Day header */}
-              <div style={{padding:"8px 16px",background:dayHeaderBg,borderBottom:`1px solid ${border}`,borderTop:`1px solid ${border}`}}>
-                <span style={{fontSize:11,fontWeight:700,color:date===today?B.teal:textMuted,letterSpacing:0.5}}>
-                  {date===today?"Today — ":""}{new Date(date+"T12:00:00").toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric",year:"numeric"})}
-                </span>
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,overflow:"hidden"}}>
+            <div style={{padding:"12px 18px",borderBottom:`1px solid ${B.border}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <div style={{width:8,height:8,borderRadius:"50%",background:B.teal}}/>
+                <span style={{fontSize:12,color:B.text,fontWeight:600}}>Live Economic Calendar — Powered by Investing.com</span>
               </div>
-              {dayEvts.map((evt,i)=>(
-                <div key={evt.id||i}
-                  style={{
-                    display:"grid",gridTemplateColumns:"70px 40px 1fr 60px 90px 90px 90px",
-                    gap:0,padding:"13px 16px",
-                    borderBottom:`1px solid ${border}`,
-                    background:evt.impact==="high"?`rgba(229,62,62,0.025)`:bg,
-                    borderLeft:`3px solid ${IMPACT_COLORS[evt.impact]||"transparent"}`,
-                    alignItems:"center",transition:"background 0.12s",
-                  }}
-                  onMouseEnter={e=>e.currentTarget.style.background=rowHover}
-                  onMouseLeave={e=>e.currentTarget.style.background=evt.impact==="high"?`rgba(229,62,62,0.025)`:bg}
-                >
-                  <div style={{fontSize:12,fontFamily:"monospace",color:textPrimary,fontWeight:600}}>{evt.time||"All Day"}</div>
-                  <div style={{display:"flex",alignItems:"center"}}>
-                    <div style={{width:9,height:9,borderRadius:"50%",background:IMPACT_COLORS[evt.impact]||"#6B7280"}}/>
-                  </div>
-                  <div>
-                    <div style={{fontSize:13,fontWeight:700,color:textPrimary,lineHeight:1.3}}>{evt.name}</div>
-                    {evt.note&&<div style={{fontSize:10,color:textMuted,marginTop:1}}>{evt.note}</div>}
-                  </div>
-                  <div style={{fontSize:11,fontWeight:700,color:"#4F8EF7"}}>{evt.currency||"USD"}</div>
-                  <div style={{fontSize:12}}>{formatActual(evt)}</div>
-                  <div style={{fontSize:12}}>{formatVal(evt.forecast)}</div>
-                  <div style={{fontSize:12}}>{formatVal(evt.previous)}</div>
-                </div>
-              ))}
+              <div style={{display:"flex",gap:8}}>
+                <a href="https://www.forexfactory.com/calendar" target="_blank" rel="noopener noreferrer"
+                  style={{padding:"4px 10px",borderRadius:6,border:`1px solid ${B.border}`,color:B.textMuted,textDecoration:"none",fontSize:11}}>ForexFactory ↗</a>
+                <a href="https://www.investing.com/economic-calendar/" target="_blank" rel="noopener noreferrer"
+                  style={{padding:"4px 10px",borderRadius:6,border:`1px solid ${B.border}`,color:B.textMuted,textDecoration:"none",fontSize:11}}>Investing.com ↗</a>
+              </div>
             </div>
-          ))}
-
-          {/* Footer */}
-          <div style={{padding:"8px 16px",borderTop:`1px solid ${border}`,display:"flex",justifyContent:"space-between",background:headerBg}}>
-            <div style={{fontSize:10,color:textDim,display:"flex",gap:16,alignItems:"center"}}>
-              {fetchError?<span style={{color:IMPACT_COLORS.medium}}>⚠ Live data unavailable — showing estimated events</span>:<span style={{color:B.textDim}}>Live data · {events[0]?.source||"proxy"}</span>}
-              {!fetchError&&<span>Live data · Updates on page load</span>}
+            <div style={{background:isDark?"#0E0E10":"#f7f8fc"}}>
+              <iframe
+                src="https://sslecal2.investing.com?columns=exc_flags,exc_currency,exc_importance,exc_actual,exc_forecast,exc_previous&features=datepicker,timezone,filters&countries=5&importance=3&calType=week&timeZone=8&lang=1&theme=darkTheme&customWidth=100%25"
+                width="100%"
+                height="680"
+                frameBorder="0"
+                allowTransparency
+                style={{
+                  display:"block",
+                  border:"none",
+                  filter:isDark?"invert(1) hue-rotate(180deg) brightness(0.85) contrast(0.9) saturate(1.3)":"none",
+                }}
+                title="Economic Calendar"
+              />
             </div>
-            <div style={{display:"flex",gap:10}}>
-              {[{l:"ForexFactory",u:"https://www.forexfactory.com/calendar"},{l:"Investing.com",u:"https://www.investing.com/economic-calendar/"},{l:"CME FedWatch",u:"https://www.cmegroup.com/markets/interest-rates/cme-fedwatch-tool.html"}].map(l=>(
-                <a key={l.l} href={l.u} target="_blank" rel="noopener noreferrer"
-                  style={{fontSize:10,color:textMuted,textDecoration:"none",padding:"3px 8px",borderRadius:5,border:`1px solid ${border}`}}>
-                  {l.l} ↗
-                </a>
-              ))}
+            <div style={{padding:"8px 18px",borderTop:`1px solid ${B.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <span style={{fontSize:10,color:B.textDim}}>Showing high-impact USD events · Updates in real time</span>
+              <div style={{display:"flex",gap:8}}>
+                <a href="https://www.cmegroup.com/markets/interest-rates/cme-fedwatch-tool.html" target="_blank" rel="noopener noreferrer"
+                  style={{fontSize:10,padding:"3px 8px",borderRadius:5,border:`1px solid ${B.border}`,color:B.textMuted,textDecoration:"none"}}>CME FedWatch ↗</a>
+                <a href="https://www.bls.gov/schedule/news_release/current.htm" target="_blank" rel="noopener noreferrer"
+                  style={{fontSize:10,padding:"3px 8px",borderRadius:5,border:`1px solid ${B.border}`,color:B.textMuted,textDecoration:"none"}}>BLS.gov ↗</a>
+              </div>
             </div>
           </div>
         </div>
       )}
-
       {/* MANUAL EVENTS */}
       {view==="manual"&&(
         <div style={{display:"flex",flexDirection:"column",gap:12}}>
