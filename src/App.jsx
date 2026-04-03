@@ -1634,20 +1634,336 @@ function Journal({trades,onEdit,onDelete,onGradeUpdate}){
 }
 
 function Analytics({trades}){
-  const wins=trades.filter(t=>t.result==="Win"),losses=trades.filter(t=>t.result==="Loss");
+  const wins=trades.filter(t=>t.result==="Win");
+  const losses=trades.filter(t=>t.result==="Loss");
   if(trades.length<2)return(<div style={{display:"flex",alignItems:"center",justifyContent:"center",height:300,color:B.textMuted,fontSize:14}}>Add more trades to see analytics.</div>);
+
+  // Core calculations
   const groupBy=k=>trades.reduce((m,t)=>{if(!m[t[k]])m[t[k]]={wins:0,total:0,pnl:0};m[t[k]].total++;m[t[k]].pnl+=t.pnl;if(t.result==="Win")m[t[k]].wins++;return m;},{});
-  const byInst=groupBy("instrument"),bySess=groupBy("session"),byDay=groupBy("day");
+  const byInst=groupBy("instrument"),bySess=groupBy("session"),byDay=groupBy("day"),byGrade=groupBy("grade"),byContracts=groupBy("contracts");
   const dOrder=["Mon","Tue","Wed","Thu","Fri"],dayData=dOrder.filter(d=>byDay[d]).map(d=>({day:d,...byDay[d]}));
-  const pf=losses.length?Math.abs(wins.reduce((a,t)=>a+t.pnl,0)/(losses.reduce((a,t)=>a+t.pnl,0)||1)).toFixed(2):"N/A";
+  const gOrder=["A+","A","B","C","D"],gradeData=gOrder.filter(g=>byGrade[g]).map(g=>({grade:g,...byGrade[g]}));
+  const grossWin=wins.reduce((a,t)=>a+t.pnl,0);
+  const grossLoss=Math.abs(losses.reduce((a,t)=>a+t.pnl,0));
+  const pf=grossLoss?Math.abs(grossWin/grossLoss).toFixed(2):"N/A";
   const equity=buildEquity(trades);
   const maxDD=(()=>{let pk=0,dd=0,r=0;equity.forEach(e=>{r=e.equity;if(r>pk)pk=r;const d=pk-r;if(d>dd)dd=d;});return Math.round(dd);})();
   const exp=Math.round(trades.reduce((a,t)=>a+t.pnl,0)/trades.length);
-  const PBar=({label,data,grads})=>(<div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:22}}><div style={{fontSize:10,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",marginBottom:18}}>{label}</div>{Object.entries(data).map(([k,d],i)=>{const g=grads[i%grads.length];return(<div key={k} style={{marginBottom:16}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:7}}><span style={{fontSize:13,color:B.text,fontWeight:600}}>{k}</span><span style={{fontSize:12,fontFamily:"monospace",color:pnlColor(d.pnl),fontWeight:700}}>{fmt(d.pnl)}</span></div><div style={{height:6,background:"rgba(255,255,255,0.05)",borderRadius:4,overflow:"hidden"}}><div style={{height:"100%",width:`${(d.wins/d.total)*100}%`,background:g,borderRadius:4,transition:"width 0.8s"}}/></div><div style={{fontSize:10,color:B.textMuted,marginTop:4}}>{Math.round((d.wins/d.total)*100)}% WR - {d.total} trades</div></div>);})}</div>);
-  return(<div style={{display:"flex",flexDirection:"column",gap:20}}><div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14}}><StatCard label="Profit Factor" value={pf} sub="Gross win / Gross loss" grad={GTB} accent={B.teal}/><StatCard label="Expectancy" value={`+$${exp}`} sub="Per trade avg" grad={GBP} accent={B.blue}/><StatCard label="Max Drawdown" value={`$${maxDD}`} sub="Peak to trough" accent={B.loss}/><StatCard label="Total Trades" value={trades.length} sub={`${wins.length}W - ${losses.length}L`} accent={B.spark}/></div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}><PBar label="P&L by Instrument" data={byInst} grads={[GL,GTB,GBP]}/><PBar label="P&L by Session" data={bySess} grads={[GTB,GBP,GL]}/></div><div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:22}}><div style={{fontSize:10,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",marginBottom:16}}>P&L by Day of Week</div><ResponsiveContainer width="100%" height={160}><BarChart data={dayData} barSize={44}><CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false}/><XAxis dataKey="day" tick={{fill:"#6B6880",fontSize:12}} axisLine={false} tickLine={false}/><YAxis tick={{fill:B.textDim,fontSize:10}} axisLine={false} tickLine={false} tickFormatter={v=>`$${v}`}/><Tooltip content={<CTip/>}/><ReferenceLine y={0} stroke="rgba(255,255,255,0.08)"/><Bar dataKey="pnl" name="P&L" radius={[5,5,0,0]} fill={B.teal} isAnimationActive/></BarChart></ResponsiveContainer></div></div>);
+  const avgWin=wins.length?Math.round(grossWin/wins.length):0;
+  const avgLoss=losses.length?Math.round(grossLoss/losses.length):0;
+  const winRate=Math.round((wins.length/trades.length)*100);
+  const breakEvenWR=avgWin+avgLoss>0?Math.round((avgLoss/(avgWin+avgLoss))*100):50;
+
+  // Monthly P&L
+  const monthMap={};
+  trades.forEach(t=>{
+    const m=t.date.slice(0,7);
+    if(!monthMap[m])monthMap[m]={pnl:0,wins:0,total:0};
+    monthMap[m].pnl+=t.pnl;monthMap[m].total++;
+    if(t.result==="Win")monthMap[m].wins++;
+  });
+  const monthData=Object.entries(monthMap).sort((a,b)=>a[0].localeCompare(b[0])).map(([m,d])=>({
+    month:new Date(m+"-01").toLocaleString("default",{month:"short",year:"2-digit"}),
+    pnl:Math.round(d.pnl*100)/100,
+    wr:Math.round((d.wins/d.total)*100),
+    total:d.total,
+  }));
+
+  // Rolling 10-trade win rate
+  const sorted=[...trades].sort((a,b)=>a.date.localeCompare(b.date));
+  const rollingWR=sorted.slice(9).map((_,i)=>{
+    const window=sorted.slice(i,i+10);
+    const w=window.filter(t=>t.result==="Win").length;
+    return{trade:i+10,wr:Math.round((w/10)*100),date:sorted[i+9].date.slice(5)};
+  });
+
+  // P&L distribution buckets
+  const bucketSize=25;
+  const distMap={};
+  trades.forEach(t=>{
+    const b=Math.round(t.pnl/bucketSize)*bucketSize;
+    const key=`${b}`;
+    if(!distMap[key])distMap[key]={bucket:b,count:0,wins:0};
+    distMap[key].count++;
+    if(t.result==="Win")distMap[key].wins++;
+  });
+  const distData=Object.values(distMap).sort((a,b)=>a.bucket-b.bucket);
+
+  // Streak analysis
+  let curStreak=0,maxWinStreak=0,maxLossStreak=0,curWin=0,curLoss=0;
+  let afterLossWins=0,afterLossTotal=0;
+  sorted.forEach((t,i)=>{
+    if(t.result==="Win"){curWin++;curLoss=0;maxWinStreak=Math.max(maxWinStreak,curWin);}
+    else{curLoss++;curWin=0;maxLossStreak=Math.max(maxLossStreak,curLoss);}
+    if(i>0&&sorted[i-1].result==="Loss"){afterLossTotal++;if(t.result==="Win")afterLossWins++;}
+  });
+  const afterLossWR=afterLossTotal?Math.round((afterLossWins/afterLossTotal)*100):null;
+  // Current streak
+  let streak=0,streakType="";
+  for(let i=sorted.length-1;i>=0;i--){
+    if(!streakType){streakType=sorted[i].result;streak=1;}
+    else if(sorted[i].result===streakType)streak++;
+    else break;
+  }
+
+  // Contracts analysis
+  const contractData=Object.entries(byContracts)
+    .sort((a,b)=>parseInt(a[0])-parseInt(b[0]))
+    .map(([k,d])=>({contracts:parseInt(k),pnl:Math.round(d.pnl*100)/100,wr:Math.round((d.wins/d.total)*100),total:d.total}));
+
+  const GRADE_COLORS={"A+":B.teal,"A":B.blue,"B":B.spark,"C":"#F59E0B","D":B.loss};
+
+  const PBar=({label,data,grads,keyField="name"})=>(<div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:22}}><div style={{fontSize:10,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",marginBottom:18}}>{label}</div>{Object.entries(data).map(([k,d],i)=>{const g=grads[i%grads.length];const maxPnl=Math.max(...Object.values(data).map(x=>Math.abs(x.pnl)),1);return(<div key={k} style={{marginBottom:16}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:7}}><span style={{fontSize:13,color:B.text,fontWeight:600}}>{k}</span><div style={{display:"flex",gap:12}}><span style={{fontSize:11,color:B.textMuted}}>{Math.round((d.wins/d.total)*100)}% WR · {d.total}t</span><span style={{fontSize:12,fontFamily:"monospace",color:pnlColor(d.pnl),fontWeight:700}}>{fmt(d.pnl)}</span></div></div><div style={{height:6,background:"rgba(255,255,255,0.05)",borderRadius:4,overflow:"hidden"}}><div style={{height:"100%",width:`${(Math.abs(d.pnl)/maxPnl)*100}%`,background:d.pnl>=0?g:GBP,borderRadius:4,transition:"width 0.8s"}}/></div></div>);})}</div>);
+
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:20}}>
+
+      {/* ── ROW 1: Core stats ── */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:12}}>
+        {[
+          {label:"Profit Factor",  value:pf,              sub:"Gross win / loss",       grad:GTB, accent:B.teal},
+          {label:"Expectancy",     value:`$${exp}`,        sub:"Per trade average",      grad:GBP, accent:B.blue},
+          {label:"Avg Win",        value:`$${avgWin}`,     sub:`${wins.length} winners`, grad:GTB, accent:B.profit},
+          {label:"Avg Loss",       value:`-$${avgLoss}`,   sub:`${losses.length} losers`,grad:GBP, accent:B.loss},
+          {label:"Max Drawdown",   value:`$${maxDD}`,      sub:"Peak to trough",         grad:null,accent:B.loss},
+          {label:"Break-even WR",  value:`${breakEvenWR}%`,sub:`You're at ${winRate}%`,  grad:null,accent:winRate>=breakEvenWR?B.teal:B.loss},
+        ].map(s=><StatCard key={s.label} label={s.label} value={s.value} sub={s.sub} grad={s.grad} accent={s.accent}/>)}
+      </div>
+
+      {/* ── ROW 2: Monthly P&L ── */}
+      <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:22}}>
+        <div style={{fontSize:10,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",marginBottom:16}}>Monthly P&L Trend</div>
+        <ResponsiveContainer width="100%" height={180}>
+          <ComposedChart data={monthData}>
+            <defs>
+              <linearGradient id="monthG" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={B.teal} stopOpacity={0.3}/>
+                <stop offset="100%" stopColor={B.teal} stopOpacity={0}/>
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false}/>
+            <XAxis dataKey="month" tick={{fill:B.textDim,fontSize:10}} axisLine={false} tickLine={false}/>
+            <YAxis yAxisId="l" tick={{fill:B.textDim,fontSize:9}} axisLine={false} tickLine={false} tickFormatter={v=>`$${v}`}/>
+            <YAxis yAxisId="r" orientation="right" tick={{fill:B.textDim,fontSize:9}} axisLine={false} tickLine={false} tickFormatter={v=>v+"%"} domain={[0,100]}/>
+            <Tooltip content={({active,payload,label})=>{
+              if(!active||!payload?.length)return null;
+              return(<div style={{background:"#16151C",border:`1px solid ${B.border}`,borderRadius:8,padding:"10px 14px",fontSize:12}}>
+                <div style={{color:B.textMuted,marginBottom:5}}>{label}</div>
+                {payload.map((p,i)=><div key={i} style={{color:p.color,fontFamily:"monospace"}}>{p.name}: {p.value}{p.name==="Win %"?"%":""}</div>)}
+              </div>);
+            }}/>
+            <ReferenceLine yAxisId="l" y={0} stroke="rgba(255,255,255,0.1)"/>
+            <Bar yAxisId="l" dataKey="pnl" name="P&L" maxBarSize={36} radius={[4,4,0,0]}>
+              {monthData.map((d,i)=><Cell key={i} fill={d.pnl>=0?B.teal:B.loss} fillOpacity={0.85}/>)}
+            </Bar>
+            <Line yAxisId="r" type="monotone" dataKey="wr" stroke={B.blue} strokeWidth={2} dot={false} name="Win %"/>
+          </ComposedChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* ── ROW 3: Risk/Reward + Rolling WR ── */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+        {/* Risk/Reward Analysis */}
+        <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:22}}>
+          <div style={{fontSize:10,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",marginBottom:18}}>Risk / Reward Analysis</div>
+          {/* Avg win vs avg loss bar comparison */}
+          <div style={{marginBottom:20}}>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
+              <span style={{fontSize:13,color:B.profit,fontWeight:700}}>Avg Win: ${avgWin}</span>
+              <span style={{fontSize:13,color:B.loss,fontWeight:700}}>Avg Loss: -${avgLoss}</span>
+            </div>
+            <div style={{position:"relative",height:28,borderRadius:6,overflow:"hidden",background:"rgba(255,255,255,0.04)"}}>
+              <div style={{position:"absolute",left:0,top:0,bottom:0,width:`${Math.min((avgWin/(avgWin+avgLoss))*100,100)}%`,background:GTB,borderRadius:6,transition:"width 0.8s"}}/>
+              <div style={{position:"absolute",right:0,top:0,bottom:0,width:`${Math.min((avgLoss/(avgWin+avgLoss))*100,100)}%`,background:GBP,borderRadius:6}}/>
+              <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:"#fff"}}>
+                R:R {avgLoss?Math.round((avgWin/avgLoss)*10)/10:"∞"}:1
+              </div>
+            </div>
+          </div>
+          {/* Break-even analysis */}
+          <div style={{padding:"12px 14px",borderRadius:10,background:`${winRate>=breakEvenWR?B.teal:B.loss}08`,border:`1px solid ${winRate>=breakEvenWR?B.borderTeal:`${B.loss}30`}`}}>
+            <div style={{fontSize:11,color:B.textMuted,marginBottom:4}}>Break-even win rate at your R:R</div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div>
+                <span style={{fontSize:22,fontWeight:800,fontFamily:"monospace",color:winRate>=breakEvenWR?B.teal:B.loss}}>{breakEvenWR}%</span>
+                <span style={{fontSize:11,color:B.textMuted,marginLeft:8}}>needed</span>
+              </div>
+              <div style={{textAlign:"right"}}>
+                <div style={{fontSize:13,fontWeight:700,color:winRate>=breakEvenWR?B.profit:B.loss}}>You: {winRate}%</div>
+                <div style={{fontSize:10,color:B.textMuted}}>{winRate>=breakEvenWR?`+${winRate-breakEvenWR}% buffer`:`${breakEvenWR-winRate}% below`}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Rolling Win Rate */}
+        <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:22}}>
+          <div style={{fontSize:10,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",marginBottom:4}}>Rolling Win Rate (10-trade window)</div>
+          <div style={{fontSize:11,color:B.textMuted,marginBottom:14}}>Shows if you're improving over time</div>
+          {rollingWR.length<2?(
+            <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:140,color:B.textMuted,fontSize:12}}>Need 10+ trades</div>
+          ):(
+            <ResponsiveContainer width="100%" height={160}>
+              <AreaChart data={rollingWR}>
+                <defs>
+                  <linearGradient id="rwG" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={B.blue} stopOpacity={0.3}/>
+                    <stop offset="100%" stopColor={B.blue} stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)"/>
+                <XAxis dataKey="date" tick={{fill:B.textDim,fontSize:8}} axisLine={false} tickLine={false} interval={Math.ceil(rollingWR.length/6)}/>
+                <YAxis tick={{fill:B.textDim,fontSize:9}} axisLine={false} tickLine={false} tickFormatter={v=>v+"%"} domain={[0,100]}/>
+                <Tooltip content={({active,payload,label})=>{
+                  if(!active||!payload?.length)return null;
+                  return(<div style={{background:"#16151C",border:`1px solid ${B.border}`,borderRadius:8,padding:"8px 12px",fontSize:12}}>
+                    <div style={{color:B.textMuted}}>{label}</div>
+                    <div style={{color:B.blue,fontFamily:"monospace",fontWeight:700}}>{payload[0]?.value}% WR</div>
+                  </div>);
+                }}/>
+                <ReferenceLine y={50} stroke="rgba(255,255,255,0.15)" strokeDasharray="4 4"/>
+                <ReferenceLine y={breakEvenWR} stroke={B.teal} strokeDasharray="4 4" label={{value:`BE:${breakEvenWR}%`,fill:B.teal,fontSize:9}}/>
+                <Area type="monotone" dataKey="wr" stroke={B.blue} fill="url(#rwG)" strokeWidth={2} dot={false} name="Win Rate"/>
+              </AreaChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+      </div>
+
+      {/* ── ROW 4: P&L Distribution + Streak Analysis ── */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+        {/* P&L Distribution */}
+        <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:22}}>
+          <div style={{fontSize:10,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",marginBottom:4}}>P&L Distribution</div>
+          <div style={{fontSize:11,color:B.textMuted,marginBottom:14}}>Frequency of trade outcomes by P&L range</div>
+          <ResponsiveContainer width="100%" height={160}>
+            <BarChart data={distData} barSize={16}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false}/>
+              <XAxis dataKey="bucket" tick={{fill:B.textDim,fontSize:8}} axisLine={false} tickLine={false} tickFormatter={v=>`$${v}`}/>
+              <YAxis tick={{fill:B.textDim,fontSize:9}} axisLine={false} tickLine={false}/>
+              <Tooltip content={({active,payload})=>{
+                if(!active||!payload?.length)return null;
+                const d=payload[0]?.payload;
+                return(<div style={{background:"#16151C",border:`1px solid ${B.border}`,borderRadius:8,padding:"8px 12px",fontSize:12}}>
+                  <div style={{color:B.textMuted}}>Range: ~${d.bucket}</div>
+                  <div style={{color:B.text,fontWeight:700}}>{d.count} trade{d.count!==1?"s":""}</div>
+                </div>);
+              }}/>
+              <ReferenceLine x={0} stroke="rgba(255,255,255,0.15)"/>
+              <Bar dataKey="count" name="Trades" radius={[3,3,0,0]}>
+                {distData.map((d,i)=><Cell key={i} fill={d.bucket>=0?B.teal:B.loss} fillOpacity={0.85}/>)}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* Streak Analysis */}
+        <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:22}}>
+          <div style={{fontSize:10,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",marginBottom:18}}>Streak & Consecutive Analysis</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
+            {[
+              {label:"Max Win Streak",  value:maxWinStreak,  color:B.profit, icon:"🔥"},
+              {label:"Max Loss Streak", value:maxLossStreak, color:B.loss,   icon:"📉"},
+              {label:"Current Streak",  value:`${streak} ${streakType==="Win"?"W":"L"}`, color:streakType==="Win"?B.profit:B.loss, icon:streakType==="Win"?"✅":"⚠️"},
+              {label:"After-Loss WR",   value:afterLossWR!==null?`${afterLossWR}%`:"—", color:afterLossWR>=50?B.profit:B.loss, icon:"🔄"},
+            ].map(s=>(
+              <div key={s.label} style={{padding:"12px 14px",borderRadius:10,background:"rgba(0,0,0,0.3)",border:`1px solid ${s.color}20`}}>
+                <div style={{fontSize:18,marginBottom:4}}>{s.icon}</div>
+                <div style={{fontSize:11,color:B.textMuted,marginBottom:4}}>{s.label}</div>
+                <div style={{fontSize:20,fontWeight:800,color:s.color,fontFamily:"monospace"}}>{s.value}</div>
+              </div>
+            ))}
+          </div>
+          {afterLossWR!==null&&(
+            <div style={{padding:"10px 14px",borderRadius:8,background:`${afterLossWR>=50?B.teal:B.loss}08`,border:`1px solid ${afterLossWR>=50?B.borderTeal:`${B.loss}30`}`}}>
+              <div style={{fontSize:11,color:afterLossWR>=50?B.teal:B.loss}}>
+                {afterLossWR>=50
+                  ?`✅ You bounce back well — ${afterLossWR}% win rate after a loss`
+                  :`⚠️ Caution: only ${afterLossWR}% win rate after a loss — consider taking a break`}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── ROW 5: P&L by Instrument + Session ── */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+        <PBar label="P&L by Instrument" data={byInst} grads={[GL,GTB,GBP]}/>
+        <PBar label="P&L by Session" data={bySess} grads={[GTB,GBP,GL]}/>
+      </div>
+
+      {/* ── ROW 6: Day of Week + Grade Performance ── */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+        {/* Day of week */}
+        <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:22}}>
+          <div style={{fontSize:10,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",marginBottom:16}}>P&L by Day of Week</div>
+          <ResponsiveContainer width="100%" height={160}>
+            <BarChart data={dayData} barSize={44}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false}/>
+              <XAxis dataKey="day" tick={{fill:B.textDim,fontSize:12}} axisLine={false} tickLine={false}/>
+              <YAxis tick={{fill:B.textDim,fontSize:10}} axisLine={false} tickLine={false} tickFormatter={v=>`$${v}`}/>
+              <Tooltip content={<CTip/>}/><ReferenceLine y={0} stroke="rgba(255,255,255,0.08)"/>
+              <Bar dataKey="pnl" name="P&L" radius={[5,5,0,0]} isAnimationActive>
+                {dayData.map((d,i)=><Cell key={i} fill={d.pnl>=0?B.teal:B.loss}/>)}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* Grade performance */}
+        <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:22}}>
+          <div style={{fontSize:10,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",marginBottom:16}}>Grade Performance</div>
+          {gradeData.length===0?(
+            <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:140,color:B.textMuted,fontSize:12}}>No graded trades yet</div>
+          ):(
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              {gradeData.map(g=>{
+                const color=GRADE_COLORS[g.grade]||B.textMuted;
+                const maxAbs=Math.max(...gradeData.map(x=>Math.abs(x.pnl)),1);
+                return(
+                  <div key={g.grade}>
+                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:5,alignItems:"center"}}>
+                      <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                        <span style={{width:28,height:28,borderRadius:6,background:`${color}20`,border:`1px solid ${color}40`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:800,color,flexShrink:0}}>{g.grade}</span>
+                        <span style={{fontSize:12,color:B.textMuted}}>{g.total} trades · {g.wr}% WR</span>
+                      </div>
+                      <span style={{fontSize:13,fontWeight:800,fontFamily:"monospace",color:pnlColor(g.pnl)}}>{fmt(g.pnl)}</span>
+                    </div>
+                    <div style={{height:5,background:"rgba(255,255,255,0.05)",borderRadius:3}}>
+                      <div style={{height:"100%",width:`${(Math.abs(g.pnl)/maxAbs)*100}%`,background:g.pnl>=0?`linear-gradient(90deg,${color},${color}90)`:GBP,borderRadius:3,transition:"width 0.8s"}}/>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── ROW 7: Contracts Size Analysis ── */}
+      {contractData.length>1&&(
+        <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:22}}>
+          <div style={{fontSize:10,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",marginBottom:4}}>Contracts Size Analysis</div>
+          <div style={{fontSize:11,color:B.textMuted,marginBottom:16}}>How your performance changes as you scale</div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))",gap:10}}>
+            {contractData.map(c=>(
+              <div key={c.contracts} style={{padding:"14px 16px",borderRadius:12,background:"rgba(0,0,0,0.3)",border:`1px solid ${c.pnl>=0?`${B.teal}25`:B.border}`,position:"relative",overflow:"hidden"}}>
+                <div style={{position:"absolute",top:0,left:0,right:0,height:2,background:c.pnl>=0?GTB:GBP}}/>
+                <div style={{fontSize:22,fontWeight:800,color:B.textMuted,marginBottom:4}}>{c.contracts}<span style={{fontSize:12}}> ct</span></div>
+                <div style={{fontSize:14,fontWeight:800,fontFamily:"monospace",color:pnlColor(c.pnl),marginBottom:2}}>{fmt(c.pnl)}</div>
+                <div style={{fontSize:10,color:B.textMuted}}>{c.wr}% WR</div>
+                <div style={{fontSize:9,color:B.textDim}}>{c.total} trade{c.total!==1?"s":""}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
 }
 
-// ── Trade Detail Modal ────────────────────────────────────────────────────────
+
 function TradeDetailModal({trade, onClose, onEdit, onGradeUpdate}){
   const isWin = trade.result === "Win";
   const [aiAnalysis, setAiAnalysis] = useState(null);
