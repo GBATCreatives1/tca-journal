@@ -124,7 +124,7 @@ JSON structure:
       },
       body: JSON.stringify({
         model: "claude-sonnet-4-20250514",
-        max_tokens: type === "full" ? 1000 : type === "patterns" ? 1200 : type === "economic" ? 1500 : 600,
+        max_tokens: type === "full" ? 1000 : type === "patterns" ? 1200 : type === "economic" ? 1500 : (type === "trade" && req.body.chartImage) ? 800 : 600,
         messages,
       }),
     });

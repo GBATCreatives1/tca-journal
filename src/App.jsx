@@ -2121,6 +2121,7 @@ function TradeDetailModal({trade, onClose, onEdit, onGradeUpdate}){
   const [uploadLoading, setUploadLoading] = useState(false);
   const [uploadError, setUploadError] = useState(null);
   const fileInputRef = useRef(null);
+  const SCREENSHOT_KEY = `tca_screenshot_${trade.id}`;
   const [tradeTags, setTradeTags] = useState({});
 
   // Load ICT tags
@@ -2129,15 +2130,15 @@ function TradeDetailModal({trade, onClose, onEdit, onGradeUpdate}){
     (async()=>{try{const{data}=await supabase.from("user_preferences").select("value").eq("key","tca_ict_tags_v1").single();if(data?.value){setTradeTags(JSON.parse(data.value));localStorage.setItem("pref_tca_ict_tags_v1",data.value);}}catch(e){}})();
   },[]);
 
-  // Load existing screenshot on mount
+  // Load existing screenshot from user_preferences (base64)
   useEffect(()=>{
+    // Try localStorage first (fast)
+    try{const cached=localStorage.getItem(SCREENSHOT_KEY);if(cached){setScreenshotUrl(cached);return;}}catch(e){}
+    // Then Supabase
     (async()=>{
       try{
-        const{data}=await supabase.storage.from("trade-screenshots").list(`${trade.id}`);
-        if(data?.length){
-          const{data:urlData}=supabase.storage.from("trade-screenshots").getPublicUrl(`${trade.id}/${data[0].name}`);
-          setScreenshotUrl(urlData.publicUrl);
-        }
+        const{data}=await supabase.from("user_preferences").select("value").eq("key",SCREENSHOT_KEY).single();
+        if(data?.value){setScreenshotUrl(data.value);localStorage.setItem(SCREENSHOT_KEY,data.value);}
       }catch(e){}
     })();
   },[trade.id]);
@@ -2145,61 +2146,42 @@ function TradeDetailModal({trade, onClose, onEdit, onGradeUpdate}){
   const uploadScreenshot=async(file)=>{
     if(!file)return;
     setUploadLoading(true);setUploadError(null);
-    setScreenshotUrl(null); // Clear old image immediately before upload
-    setScreenshot(null);
+    setScreenshotUrl(null);setScreenshot(null);
     try{
-      // Delete old file first to ensure fresh upload
-      try{
-        const{data:existing}=await supabase.storage.from("trade-screenshots").list(`${trade.id}`);
-        if(existing?.length){
-          await supabase.storage.from("trade-screenshots").remove(existing.map(f=>`${trade.id}/${f.name}`));
-        }
-      }catch(e){}
-      // Try Supabase Storage
-      const ext=file.name.split(".").pop().toLowerCase();
-      const path=`${trade.id}/chart.${ext}`;
-      const{error}=await supabase.storage.from("trade-screenshots").upload(path,file,{upsert:true});
-      if(error){
-        // Bucket may not exist — fall back to local base64 preview
-        console.warn("Supabase storage error:",error.message,"— using local preview");
-        const reader=new FileReader();
-        reader.onload=e=>{
-          setScreenshotUrl(e.target.result);
-          setScreenshot(file);
-          setUploadError(null);
-          if(fileInputRef.current)fileInputRef.current.value="";
-        };
-        reader.readAsDataURL(file);
+      // Convert to base64 and store in user_preferences - no bucket needed
+      const reader=new FileReader();
+      reader.onload=async(e)=>{
+        const base64=e.target.result;
+        setScreenshotUrl(base64);
+        setScreenshot(file);
+        // Save to localStorage immediately
+        try{localStorage.setItem(SCREENSHOT_KEY,base64);}catch(ex){}
+        // Save to Supabase
+        try{
+          const{data:{user}}=await supabase.auth.getUser();
+          if(user?.id){
+            await supabase.from("user_preferences").upsert(
+              {user_id:user.id,key:SCREENSHOT_KEY,value:base64,updated_at:new Date().toISOString()},
+              {onConflict:"user_id,key"}
+            );
+          }
+        }catch(ex){console.warn("Could not save screenshot to Supabase:",ex.message);}
+        if(fileInputRef.current)fileInputRef.current.value="";
         setUploadLoading(false);
-        return;
-      }
-      const{data:urlData}=supabase.storage.from("trade-screenshots").getPublicUrl(path);
-      // Add cache-busting param so browser doesn't show old cached image
-      setScreenshotUrl(urlData.publicUrl + "?t=" + Date.now());
-      setScreenshot(file);
-      setUploadError(null);
-      if(fileInputRef.current)fileInputRef.current.value="";
-    }catch(e){
-      // Final fallback — base64 local preview
-      try{
-        const reader=new FileReader();
-        reader.onload=ev=>{setScreenshotUrl(ev.target.result);setScreenshot(file);};
-        reader.readAsDataURL(file);
-      }catch(e2){setUploadError("Could not load image. Try a different file.");}
-    }
-    setUploadLoading(false);
+      };
+      reader.onerror=()=>{setUploadError("Could not read image file.");setUploadLoading(false);};
+      reader.readAsDataURL(file);
+    }catch(e){setUploadError("Upload failed: "+e.message);setUploadLoading(false);}
   };
 
+
   const removeScreenshot=async()=>{
+    setScreenshotUrl(null);setScreenshot(null);
+    try{localStorage.removeItem(SCREENSHOT_KEY);}catch(e){}
     try{
-      const{data}=await supabase.storage.from("trade-screenshots").list(`${trade.id}`);
-      if(data?.length){
-        await supabase.storage.from("trade-screenshots").remove(data.map(f=>`${trade.id}/${f.name}`));
-      }
+      const{data:{user}}=await supabase.auth.getUser();
+      if(user?.id){await supabase.from("user_preferences").delete().eq("key",SCREENSHOT_KEY).eq("user_id",user.id);}
     }catch(e){}
-    setScreenshotUrl(null);
-    setScreenshot(null);
-    // Reset file input so same file can be re-selected
     if(fileInputRef.current)fileInputRef.current.value="";
   };
 
@@ -2225,9 +2207,28 @@ function TradeDetailModal({trade, onClose, onEdit, onGradeUpdate}){
         notes: trade.notes || "none",
       };
 
-      // If screenshot exists, convert to base64 and include
+      // If screenshot exists, compress and include
       let imageData = null;
-      if(screenshot){
+      if(screenshotUrl && screenshotUrl.startsWith("data:")){
+        // Compress the image to reduce payload size and avoid timeout
+        imageData = await new Promise((res)=>{
+          const img=new Image();
+          img.onload=()=>{
+            const canvas=document.createElement("canvas");
+            const MAX=800;
+            let w=img.width,h=img.height;
+            if(w>MAX){h=Math.round(h*MAX/w);w=MAX;}
+            if(h>MAX){w=Math.round(w*MAX/h);h=MAX;}
+            canvas.width=w;canvas.height=h;
+            canvas.getContext("2d").drawImage(img,0,0,w,h);
+            // Get compressed jpeg base64 (strip data:image/jpeg;base64, prefix)
+            const b64=canvas.toDataURL("image/jpeg",0.7).split(",")[1];
+            res(b64);
+          };
+          img.onerror=()=>res(null);
+          img.src=screenshotUrl;
+        });
+      } else if(screenshot){
         imageData = await new Promise((res)=>{
           const reader=new FileReader();
           reader.onload=e=>res(e.target.result.split(",")[1]);
