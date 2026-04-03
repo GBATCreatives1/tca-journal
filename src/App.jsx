@@ -5172,177 +5172,217 @@ function RecurringPatternsWidget({trades}){
 
 // ── Economic Calendar ─────────────────────────────────────────────────────────
 function EconomicCalendar(){
-  const [events,setEvents]=useState([]);
-  const [loading,setLoading]=useState(false);
-  const [error,setError]=useState(null);
-  const [selectedDate,setSelectedDate]=useState(new Date().toISOString().slice(0,10));
-  const [filter,setFilter]=useState("high"); // high | medium | all
+  const [view,setView]=useState("embed"); // "embed" | "manual"
+  const [manualEvents,setManualEvents]=useState([]);
+  const [showAdd,setShowAdd]=useState(false);
+  const [newEvent,setNewEvent]=useState({date:"",time:"",name:"",impact:"high",forecast:"",previous:"",currency:"USD"});
 
-  const fetchEvents=async(date)=>{
-    setLoading(true);setError(null);
-    try{
-      // Use ForexFactory RSS feed via a public CORS proxy
-      const dateObj=new Date(date+"T12:00:00");
-      const month=dateObj.toLocaleString("en-US",{month:"short"}).toLowerCase();
-      const year=dateObj.getFullYear();
+  // Load manually added events
+  useEffect(()=>{
+    try{const l=localStorage.getItem("tca_eco_events_v1");if(l)setManualEvents(JSON.parse(l));}catch(e){}
+  },[]);
 
-      // Build events by calling our coach API to get AI-generated economic calendar
-      const res=await fetch("/api/coach",{
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({
-          type:"economic",
-          dayStats:{date, month, year}
-        }),
-      });
-      const data=await res.json();
-      if(data.error)throw new Error(data.error);
-      if(data.events)setEvents(data.events);
-      else setEvents([]);
-    }catch(e){
-      setError(e.message);
-      // Fallback: show known recurring events
-      setEvents(KNOWN_EVENTS.filter(e=>e.day===new Date(date+"T12:00:00").toLocaleDateString("en-US",{weekday:"long"})));
-    }
-    setLoading(false);
+  const saveEvents=(evts)=>{
+    setManualEvents(evts);
+    try{localStorage.setItem("tca_eco_events_v1",JSON.stringify(evts));}catch(e){}
   };
 
-  useEffect(()=>{fetchEvents(selectedDate);},[selectedDate]);
+  const addEvent=()=>{
+    if(!newEvent.name.trim()||!newEvent.date)return;
+    saveEvents([...manualEvents,{...newEvent,id:Date.now()}]);
+    setNewEvent({date:"",time:"",name:"",impact:"high",forecast:"",previous:"",currency:"USD"});
+    setShowAdd(false);
+  };
 
-  // Known recurring high-impact US events
-  const KNOWN_EVENTS=[
-    {time:"08:30",name:"Initial Jobless Claims",impact:"high",day:"Thursday",currency:"USD",forecast:"",previous:""},
-    {time:"08:30",name:"Non-Farm Payrolls",impact:"high",day:"Friday",currency:"USD",forecast:"",previous:""},
-    {time:"08:30",name:"CPI m/m",impact:"high",day:"",currency:"USD",forecast:"",previous:""},
-    {time:"14:00",name:"FOMC Statement",impact:"high",day:"",currency:"USD",forecast:"",previous:""},
-    {time:"08:30",name:"GDP q/q",impact:"high",day:"",currency:"USD",forecast:"",previous:""},
-    {time:"10:00",name:"ISM Manufacturing PMI",impact:"medium",day:"",currency:"USD",forecast:"",previous:""},
-    {time:"10:00",name:"CB Consumer Confidence",impact:"medium",day:"",currency:"USD",forecast:"",previous:""},
-  ];
+  const deleteEvent=(id)=>saveEvents(manualEvents.filter(e=>e.id!==id));
+
+  const today=new Date().toISOString().slice(0,10);
+  const upcoming=manualEvents.filter(e=>e.date>=today).sort((a,b)=>a.date.localeCompare(b.date)||a.time.localeCompare(b.time));
+  const past=manualEvents.filter(e=>e.date<today).sort((a,b)=>b.date.localeCompare(a.date));
 
   const IMPACT_COLORS={high:"#E53E3E",medium:"#D97706",low:"#6B7280"};
-  const IMPACT_LABELS={high:"🔴 High",medium:"🟡 Medium",low:"⚪ Low"};
-
-  const filtered=filter==="all"?events:events.filter(e=>
-    filter==="high"?e.impact==="high":e.impact==="high"||e.impact==="medium"
-  );
-
-  // Week navigation
-  const getWeekDates=(date)=>{
-    const d=new Date(date+"T12:00:00");
-    const day=d.getDay();
-    const monday=new Date(d);monday.setDate(d.getDate()-day+1);
-    return Array.from({length:5},(_,i)=>{
-      const dd=new Date(monday);dd.setDate(monday.getDate()+i);
-      return dd.toISOString().slice(0,10);
-    });
-  };
-  const weekDates=getWeekDates(selectedDate);
-  const prevWeek=()=>{const d=new Date(selectedDate+"T12:00:00");d.setDate(d.getDate()-7);setSelectedDate(d.toISOString().slice(0,10));};
-  const nextWeek=()=>{const d=new Date(selectedDate+"T12:00:00");d.setDate(d.getDate()+7);setSelectedDate(d.toISOString().slice(0,10));};
-  const today=new Date().toISOString().slice(0,10);
 
   return(
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
+
       {/* Header */}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
         <div>
           <div style={{fontSize:18,fontWeight:800,color:B.text}}>Economic Calendar</div>
-          <div style={{fontSize:12,color:B.textMuted,marginTop:2}}>High-impact US events · 🔴 Red folder events from ForexFactory</div>
-        </div>
-        <div style={{display:"flex",gap:8,alignItems:"center"}}>
-          <button onClick={()=>setSelectedDate(today)} style={{padding:"6px 14px",borderRadius:8,border:`1px solid ${B.teal}40`,background:`${B.teal}12`,color:B.teal,cursor:"pointer",fontSize:12,fontWeight:700}}>This Week</button>
-          {["high","medium","all"].map(f=>(
-            <button key={f} onClick={()=>setFilter(f)} style={{padding:"6px 12px",borderRadius:8,border:`1px solid ${filter===f?(f==="high"?B.loss:f==="medium"?B.spark:B.border):B.border}`,background:filter===f?`${f==="high"?B.loss:f==="medium"?B.spark:B.teal}12`:"transparent",color:filter===f?(f==="high"?B.loss:f==="medium"?B.spark:B.teal):B.textMuted,cursor:"pointer",fontSize:11,fontWeight:700}}>
-              {f==="high"?"🔴 High Only":f==="medium"?"🔴🟡 High+Med":"All Events"}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Week nav */}
-      <div style={{display:"flex",alignItems:"center",gap:12}}>
-        <button onClick={prevWeek} style={{background:"none",border:`1px solid ${B.border}`,borderRadius:8,color:B.textMuted,cursor:"pointer",fontSize:16,width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center"}}>‹</button>
-        <div style={{display:"flex",gap:6,flex:1}}>
-          {weekDates.map(d=>{
-            const isSelected=d===selectedDate;
-            const isToday=d===today;
-            const dayName=new Date(d+"T12:00:00").toLocaleDateString("en-US",{weekday:"short"});
-            const dayNum=new Date(d+"T12:00:00").getDate();
-            return(
-              <button key={d} onClick={()=>setSelectedDate(d)} style={{flex:1,padding:"10px 8px",borderRadius:10,border:`1px solid ${isSelected?B.teal:isToday?`${B.blue}50`:B.border}`,background:isSelected?`${B.teal}15`:isToday?`${B.blue}08`:"transparent",color:isSelected?B.teal:B.text,cursor:"pointer",textAlign:"center",transition:"all 0.15s"}}>
-                <div style={{fontSize:10,color:isSelected?B.teal:B.textMuted}}>{dayName}</div>
-                <div style={{fontSize:16,fontWeight:800,marginTop:2}}>{dayNum}</div>
-                {isToday&&<div style={{width:4,height:4,borderRadius:"50%",background:B.blue,margin:"3px auto 0"}}/>}
-              </button>
-            );
-          })}
-        </div>
-        <button onClick={nextWeek} style={{background:"none",border:`1px solid ${B.border}`,borderRadius:8,color:B.textMuted,cursor:"pointer",fontSize:16,width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center"}}>›</button>
-      </div>
-
-      {/* Events list */}
-      <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,overflow:"hidden"}}>
-        {/* Table header */}
-        <div style={{display:"grid",gridTemplateColumns:"80px 60px 1fr 80px 100px 100px",gap:0,padding:"10px 20px",background:"rgba(0,0,0,0.2)",borderBottom:`1px solid ${B.border}`}}>
-          {["Time","Impact","Event","Currency","Forecast","Previous"].map(h=>(
-            <div key={h} style={{fontSize:10,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",fontWeight:700}}>{h}</div>
-          ))}
-        </div>
-
-        {loading&&(
-          <div style={{padding:"40px",textAlign:"center",color:B.textMuted,fontSize:13}}>
-            <div style={{marginBottom:8}}>Loading events...</div>
-            <div style={{height:3,background:B.border,borderRadius:2,overflow:"hidden",maxWidth:200,margin:"0 auto"}}>
-              <div style={{height:"100%",width:"60%",background:GL,borderRadius:2}}/>
-            </div>
+          <div style={{fontSize:12,color:B.textMuted,marginTop:2}}>
+            🔴 High-impact US events · Track news that moves MES/ES futures
           </div>
-        )}
+        </div>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={()=>setView("embed")} style={{padding:"7px 16px",borderRadius:8,border:`1px solid ${view==="embed"?B.teal:B.border}`,background:view==="embed"?`${B.teal}15`:"transparent",color:view==="embed"?B.teal:B.textMuted,cursor:"pointer",fontSize:12,fontWeight:600}}>
+            📡 Live Feed
+          </button>
+          <button onClick={()=>setView("manual")} style={{padding:"7px 16px",borderRadius:8,border:`1px solid ${view==="manual"?B.teal:B.border}`,background:view==="manual"?`${B.teal}15`:"transparent",color:view==="manual"?B.teal:B.textMuted,cursor:"pointer",fontSize:12,fontWeight:600}}>
+            📋 My Events {manualEvents.length>0&&`(${manualEvents.length})`}
+          </button>
+        </div>
+      </div>
 
-        {!loading&&filtered.length===0&&(
-          <div style={{padding:"40px",textAlign:"center"}}>
-            <div style={{fontSize:24,marginBottom:8}}>📅</div>
-            <div style={{fontSize:14,fontWeight:700,color:B.text,marginBottom:4}}>No {filter==="high"?"high-impact":filter==="medium"?"high/medium-impact":""} events</div>
-            <div style={{fontSize:12,color:B.textMuted}}>
-              {new Date(selectedDate+"T12:00:00").toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric"})}
-            </div>
-            <div style={{marginTop:12,padding:"10px 16px",borderRadius:10,background:`${B.blue}10`,border:`1px solid ${B.blue}30`,display:"inline-block"}}>
-              <div style={{fontSize:11,color:B.blue}}>
-                💡 For live data visit <a href="https://www.forexfactory.com/calendar" target="_blank" rel="noopener noreferrer" style={{color:B.teal,fontWeight:700}}>ForexFactory.com</a>
+      {/* ── LIVE FEED TAB ── */}
+      {view==="embed"&&(
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          {/* Investing.com widget - real live data */}
+          <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,overflow:"hidden"}}>
+            <div style={{padding:"14px 18px",borderBottom:`1px solid ${B.border}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <div style={{width:8,height:8,borderRadius:"50%",background:B.teal,boxShadow:`0 0 6px ${B.teal}`}}/>
+                <span style={{fontSize:12,color:B.text,fontWeight:600}}>Live Economic Calendar — Powered by Investing.com</span>
+              </div>
+              <div style={{display:"flex",gap:8}}>
+                <a href="https://www.forexfactory.com/calendar" target="_blank" rel="noopener noreferrer"
+                  style={{padding:"5px 12px",borderRadius:7,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,textDecoration:"none",fontSize:11,fontWeight:600}}>
+                  ForexFactory ↗
+                </a>
+                <a href="https://www.investing.com/economic-calendar/" target="_blank" rel="noopener noreferrer"
+                  style={{padding:"5px 12px",borderRadius:7,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,textDecoration:"none",fontSize:11,fontWeight:600}}>
+                  Investing.com ↗
+                </a>
               </div>
             </div>
-          </div>
-        )}
-
-        {!loading&&filtered.map((evt,i)=>(
-          <div key={i} style={{display:"grid",gridTemplateColumns:"80px 60px 1fr 80px 100px 100px",gap:0,padding:"14px 20px",borderBottom:`1px solid ${B.border}`,background:evt.impact==="high"?`rgba(229,62,62,0.03)`:"transparent",transition:"background 0.15s"}}
-            onMouseEnter={e=>e.currentTarget.style.background=`rgba(255,255,255,0.03)`}
-            onMouseLeave={e=>e.currentTarget.style.background=evt.impact==="high"?"rgba(229,62,62,0.03)":"transparent"}>
-            <div style={{fontSize:13,fontWeight:600,color:B.text,fontFamily:"monospace"}}>{evt.time||"All Day"}</div>
-            <div style={{display:"flex",alignItems:"center",gap:4}}>
-              <div style={{width:10,height:10,borderRadius:"50%",background:IMPACT_COLORS[evt.impact]||"#6B7280",flexShrink:0}}/>
+            {/* Embed the Investing.com economic calendar widget */}
+            <div style={{padding:0,background:"#1a1a2e"}}>
+              <iframe
+                src="https://sslecal2.investing.com?ecoDayBackground=%230E0E10&innerBorderColor=%23333&borderColor=%23333&columns=exc_flags,exc_currency,exc_importance,exc_actual,exc_forecast,exc_previous&countries=5&importance=3&features=datepicker,timezone,filters&dateRange=lastWeek&timeZone=8&lang=1&theme=darkTheme&fontSize=13&filterCountries=5&customWidth=100%25"
+                width="100%"
+                height="600"
+                frameBorder="0"
+                allowTransparency
+                marginWidth="0"
+                marginHeight="0"
+                style={{display:"block",border:"none"}}
+                title="Economic Calendar"
+              />
             </div>
-            <div>
-              <div style={{fontSize:13,fontWeight:700,color:evt.impact==="high"?B.text:B.textMuted}}>{evt.name}</div>
-              {evt.notes&&<div style={{fontSize:11,color:B.textMuted,marginTop:2}}>{evt.notes}</div>}
+            <div style={{padding:"10px 18px",borderTop:`1px solid ${B.border}`,fontSize:10,color:B.textDim,display:"flex",justifyContent:"space-between"}}>
+              <span>Showing high-impact USD events · Updates in real time</span>
+              <span>Powered by <a href="https://www.investing.com" target="_blank" rel="noopener noreferrer" style={{color:B.textMuted}}>Investing.com</a></span>
             </div>
-            <div style={{fontSize:12,fontWeight:700,color:B.blue}}>{evt.currency||"USD"}</div>
-            <div style={{fontSize:12,fontFamily:"monospace",color:B.textMuted}}>{evt.forecast||"—"}</div>
-            <div style={{fontSize:12,fontFamily:"monospace",color:B.textMuted}}>{evt.previous||"—"}</div>
           </div>
-        ))}
-      </div>
 
-      {/* ForexFactory link */}
-      <div style={{padding:"12px 16px",borderRadius:10,background:`${B.teal}08`,border:`1px solid ${B.borderTeal}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-        <div style={{fontSize:12,color:B.teal}}>
-          🔴 Red folder events have the highest market impact on MES/ES futures trading
+          {/* Quick links */}
+          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10}}>
+            {[
+              {name:"ForexFactory",url:"https://www.forexfactory.com/calendar",desc:"Red folder events",icon:"🏭"},
+              {name:"Investing.com",url:"https://www.investing.com/economic-calendar/",desc:"Full calendar",icon:"📊"},
+              {name:"CME FedWatch",url:"https://www.cmegroup.com/markets/interest-rates/cme-fedwatch-tool.html",desc:"Fed rate probabilities",icon:"🏦"},
+              {name:"BLS.gov",url:"https://www.bls.gov/schedule/news_release/current.htm",desc:"Official release schedule",icon:"🇺🇸"},
+            ].map(l=>(
+              <a key={l.name} href={l.url} target="_blank" rel="noopener noreferrer"
+                style={{padding:"14px 16px",borderRadius:12,border:`1px solid ${B.border}`,background:B.surface,textDecoration:"none",transition:"all 0.15s",display:"flex",flexDirection:"column",gap:4}}
+                onMouseEnter={e=>{e.currentTarget.style.borderColor=B.teal+"60";e.currentTarget.style.background=`${B.teal}05`;}}
+                onMouseLeave={e=>{e.currentTarget.style.borderColor=B.border;e.currentTarget.style.background=B.surface;}}>
+                <div style={{fontSize:20}}>{l.icon}</div>
+                <div style={{fontSize:12,fontWeight:700,color:B.text}}>{l.name}</div>
+                <div style={{fontSize:11,color:B.textMuted}}>{l.desc}</div>
+              </a>
+            ))}
+          </div>
         </div>
-        <a href="https://www.forexfactory.com/calendar" target="_blank" rel="noopener noreferrer"
-          style={{padding:"6px 14px",borderRadius:8,border:`1px solid ${B.teal}40`,background:`${B.teal}12`,color:B.teal,textDecoration:"none",fontSize:12,fontWeight:700}}>
-          Open ForexFactory ↗
-        </a>
-      </div>
+      )}
+
+      {/* ── MANUAL EVENTS TAB ── */}
+      {view==="manual"&&(
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            <div style={{fontSize:12,color:B.textMuted}}>Add events you want to track around your trades</div>
+            <button onClick={()=>setShowAdd(p=>!p)} style={{padding:"7px 16px",borderRadius:8,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:12,fontWeight:800}}>
+              {showAdd?"✕ Cancel":"+ Add Event"}
+            </button>
+          </div>
+
+          {/* Add event form */}
+          {showAdd&&(
+            <div style={{padding:18,borderRadius:14,background:B.surface,border:`1px solid ${B.borderTeal}`}}>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:12}}>
+                <div><label style={lS}>Date *</label><input type="date" value={newEvent.date} onChange={e=>setNewEvent(v=>({...v,date:e.target.value}))} style={iS}/></div>
+                <div><label style={lS}>Time</label><input type="time" value={newEvent.time} onChange={e=>setNewEvent(v=>({...v,time:e.target.value}))} style={iS}/></div>
+                <div><label style={lS}>Impact</label>
+                  <select value={newEvent.impact} onChange={e=>setNewEvent(v=>({...v,impact:e.target.value}))} style={iS}>
+                    <option value="high">🔴 High</option>
+                    <option value="medium">🟡 Medium</option>
+                    <option value="low">⚪ Low</option>
+                  </select>
+                </div>
+                <div style={{gridColumn:"1/-1"}}><label style={lS}>Event Name *</label><input value={newEvent.name} onChange={e=>setNewEvent(v=>({...v,name:e.target.value}))} style={iS} placeholder="e.g. CPI m/m, FOMC Statement, NFP"/></div>
+                <div><label style={lS}>Forecast</label><input value={newEvent.forecast} onChange={e=>setNewEvent(v=>({...v,forecast:e.target.value}))} style={iS} placeholder="0.3%"/></div>
+                <div><label style={lS}>Previous</label><input value={newEvent.previous} onChange={e=>setNewEvent(v=>({...v,previous:e.target.value}))} style={iS} placeholder="0.2%"/></div>
+                <div><label style={lS}>Currency</label>
+                  <select value={newEvent.currency} onChange={e=>setNewEvent(v=>({...v,currency:e.target.value}))} style={iS}>
+                    <option>USD</option><option>EUR</option><option>GBP</option>
+                  </select>
+                </div>
+              </div>
+              <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+                <button onClick={()=>setShowAdd(false)} style={{padding:"8px 16px",borderRadius:8,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:12}}>Cancel</button>
+                <button onClick={addEvent} style={{padding:"8px 24px",borderRadius:8,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:12,fontWeight:800}}>Save Event</button>
+              </div>
+            </div>
+          )}
+
+          {/* Upcoming events */}
+          {upcoming.length>0&&(
+            <div>
+              <div style={{fontSize:10,color:B.teal,letterSpacing:1.5,textTransform:"uppercase",marginBottom:8,fontWeight:700}}>Upcoming</div>
+              <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                {upcoming.map(evt=>(
+                  <div key={evt.id} style={{display:"grid",gridTemplateColumns:"90px 60px 1fr 70px 90px 90px 40px",gap:0,padding:"12px 16px",borderRadius:10,background:B.surface,border:`1px solid ${evt.impact==="high"?`${B.loss}30`:B.border}`,borderLeft:`3px solid ${IMPACT_COLORS[evt.impact]||B.border}`,alignItems:"center"}}>
+                    <div style={{fontSize:12,fontWeight:600,color:B.text}}>{new Date(evt.date+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric"})}</div>
+                    <div style={{fontSize:12,color:B.textMuted,fontFamily:"monospace"}}>{evt.time||"—"}</div>
+                    <div>
+                      <div style={{fontSize:13,fontWeight:700,color:B.text}}>{evt.name}</div>
+                      <div style={{fontSize:10,color:B.textMuted}}>{evt.currency}</div>
+                    </div>
+                    <div style={{display:"flex",alignItems:"center",gap:4}}>
+                      <div style={{width:8,height:8,borderRadius:"50%",background:IMPACT_COLORS[evt.impact]||B.border}}/>
+                      <span style={{fontSize:10,color:IMPACT_COLORS[evt.impact]||B.textMuted,fontWeight:700,textTransform:"capitalize"}}>{evt.impact}</span>
+                    </div>
+                    <div style={{fontSize:11,fontFamily:"monospace",color:B.textMuted}}>{evt.forecast||"—"}</div>
+                    <div style={{fontSize:11,fontFamily:"monospace",color:B.textMuted}}>{evt.previous||"—"}</div>
+                    <button onClick={()=>deleteEvent(evt.id)} style={{background:"none",border:"none",color:B.textMuted,cursor:"pointer",fontSize:14,padding:"2px"}}>×</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Past events */}
+          {past.length>0&&(
+            <div>
+              <div style={{fontSize:10,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:8}}>Past Events</div>
+              <div style={{display:"flex",flexDirection:"column",gap:4,opacity:0.6}}>
+                {past.slice(0,5).map(evt=>(
+                  <div key={evt.id} style={{display:"grid",gridTemplateColumns:"90px 60px 1fr 70px 40px",gap:0,padding:"10px 16px",borderRadius:8,background:"rgba(0,0,0,0.2)",border:`1px solid ${B.border}`,alignItems:"center"}}>
+                    <div style={{fontSize:11,color:B.textMuted}}>{new Date(evt.date+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric"})}</div>
+                    <div style={{fontSize:11,color:B.textDim,fontFamily:"monospace"}}>{evt.time||"—"}</div>
+                    <div style={{fontSize:12,color:B.textMuted}}>{evt.name}</div>
+                    <div style={{display:"flex",alignItems:"center",gap:4}}>
+                      <div style={{width:6,height:6,borderRadius:"50%",background:IMPACT_COLORS[evt.impact]||B.border}}/>
+                    </div>
+                    <button onClick={()=>deleteEvent(evt.id)} style={{background:"none",border:"none",color:B.textDim,cursor:"pointer",fontSize:13}}>×</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {manualEvents.length===0&&!showAdd&&(
+            <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"60px 20px",borderRadius:14,border:`2px dashed ${B.border}`,gap:12}}>
+              <div style={{fontSize:36}}>📅</div>
+              <div style={{fontSize:14,fontWeight:700,color:B.text}}>No events saved yet</div>
+              <div style={{fontSize:12,color:B.textMuted,textAlign:"center",lineHeight:1.6}}>
+                Add high-impact events from ForexFactory or Investing.com<br/>
+                to track them alongside your trades
+              </div>
+              <button onClick={()=>setShowAdd(true)} style={{padding:"9px 20px",borderRadius:9,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:12,fontWeight:800}}>+ Add Your First Event</button>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
