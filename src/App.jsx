@@ -5219,88 +5219,103 @@ function EconomicCalendar({isDark=true}){
   // Fetch from Tradingeconomics calendar API (free tier)
   const fetchEvents=async(date)=>{
     setLoading(true);setFetchError(false);
+
+    // Build week Mon-Fri
+    const d=new Date(date+"T12:00:00");
+    const dow=d.getDay();
+    const mon=new Date(d);mon.setDate(d.getDate()-(dow===0?6:dow-1));
+    const weekDatesArr=Array.from({length:5},(_,i)=>{
+      const dd=new Date(mon);dd.setDate(mon.getDate()+i);
+      return dd.toISOString().slice(0,10);
+    });
+    const from=weekDatesArr[0];
+    const to=weekDatesArr[4];
+
+    // Cache key so we don't re-fetch same week
+    const cacheKey=`tca_eco_${from}`;
     try{
-      const d=new Date(date+"T12:00:00");
-      const day=d.getDay();
-      const mon=new Date(d);mon.setDate(d.getDate()-(day===0?6:day-1));
-      const fri=new Date(mon);fri.setDate(mon.getDate()+4);
-      const from=mon.toISOString().slice(0,10);
-      const to=fri.toISOString().slice(0,10);
+      const cached=sessionStorage.getItem(cacheKey);
+      if(cached){setEvents(JSON.parse(cached));setLoading(false);return;}
+    }catch(e){}
 
-      // Finnhub free economic calendar API - no key needed, proper date range
-      const url=`https://finnhub.io/api/v1/calendar/economic?from=${from}&to=${to}&token=sandbox_c9lj6aiad3i9vqp96r0g`;
-      const res=await fetch(url);
-      if(!res.ok)throw new Error("Finnhub error");
+    // Use AI coach to get accurate date-specific events for this exact week
+    try{
+      const res=await fetch("/api/coach",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({
+          type:"economic",
+          dayStats:{
+            weekStart:from,
+            weekEnd:to,
+            weekDates:weekDatesArr,
+            today:new Date().toISOString().slice(0,10),
+          }
+        }),
+      });
       const data=await res.json();
-      const items=data.economicCalendar||[];
-      if(!items.length)throw new Error("No events");
-
-      const impMap={3:"high",2:"medium",1:"low",high:"high",medium:"medium",low:"low"};
-      const mapped=items
-        .filter(e=>e.country==="US"||e.currency==="USD")
-        .map(e=>({
-          date:e.time?.slice(0,10)||e.date?.slice(0,10)||"",
-          time:e.time?.slice(11,16)||"",
-          name:e.event||e.description||"",
-          impact:impMap[e.importance]||"medium",
-          currency:"USD",
-          actual:e.actual!=null?String(e.actual):"",
-          forecast:e.estimate!=null?String(e.estimate):e.forecast!=null?String(e.forecast):"",
-          previous:e.prev!=null?String(e.prev):e.previous!=null?String(e.previous):"",
-          id:Math.random(),
-        }))
-        .filter(e=>e.name&&e.date>=from&&e.date<=to)
-        .sort((a,b)=>a.date.localeCompare(b.date)||a.time.localeCompare(b.time));
-
-      if(!mapped.length)throw new Error("No US events");
-      setEvents(mapped);
-    }catch(err){
-      // Second attempt: use our coach proxy to get AI-generated events for the week
-      try{
-        const d=new Date(date+"T12:00:00");
-        const day=d.getDay();
-        const mon=new Date(d);mon.setDate(d.getDate()-(day===0?6:day-1));
-        const weekDatesArr=Array.from({length:5},(_,i)=>{
-          const dd=new Date(mon);dd.setDate(mon.getDate()+i);
-          return dd.toISOString().slice(0,10);
-        });
-        const res=await fetch("/api/coach",{
-          method:"POST",
-          headers:{"Content-Type":"application/json"},
-          body:JSON.stringify({
-            type:"economic",
-            dayStats:{
-              weekStart:weekDatesArr[0],
-              weekEnd:weekDatesArr[4],
-              weekDates:weekDatesArr,
-              today:new Date().toISOString().slice(0,10),
-            }
-          }),
-        });
-        const data=await res.json();
-        if(data.events?.length){
-          setEvents(data.events);
+      if(data.events?.length){
+        // Validate events are within the week range
+        const valid=data.events.filter(e=>e.date>=from&&e.date<=to);
+        if(valid.length){
+          setEvents(valid);
+          try{sessionStorage.setItem(cacheKey,JSON.stringify(valid));}catch(e){}
+          setLoading(false);
           return;
         }
-        throw new Error("No AI events");
-      }catch(e2){
-        // Final fallback: recurring events
-        setFetchError(true);
-        const d=new Date(date+"T12:00:00");
-        const day=d.getDay();
-        const mon=new Date(d);mon.setDate(d.getDate()-(day===0?6:day-1));
-        const weekEvts=[];
-        for(let i=0;i<5;i++){
-          const dd=new Date(mon);dd.setDate(mon.getDate()+i);
-          const dayName=dd.toLocaleDateString("en-US",{weekday:"long"});
-          const dateStr=dd.toISOString().slice(0,10);
-          RECURRING_US_EVENTS
-            .filter(e=>e.day===dayName||(e.day===""&&e.impact==="high"))
-            .forEach(e=>{weekEvts.push({...e,date:dateStr,currency:"USD",actual:"",forecast:"",previous:"",id:Math.random()});});
-        }
-        setEvents(weekEvts);
       }
+      throw new Error("No valid events from AI");
+    }catch(aiErr){
+      console.warn("AI calendar failed:",aiErr.message);
     }
+
+    // Final fallback: only show events on days they actually occur
+    // Initial Jobless Claims = every Thursday
+    // NFP/Unemployment/Avg Hourly = first Friday of month
+    // CPI = 2nd Tuesday, ISM Mfg = 1st Monday, etc.
+    setFetchError(true);
+    const fallback=[];
+    weekDatesArr.forEach(ds=>{
+      const dd=new Date(ds+"T12:00:00");
+      const dayName=dd.toLocaleDateString("en-US",{weekday:"long"});
+      const dayOfMonth=dd.getDate();
+      const weekOfMonth=Math.ceil(dayOfMonth/7);
+
+      // Thursday: always Jobless Claims
+      if(dayName==="Thursday"){
+        fallback.push({date:ds,time:"08:30",name:"Initial Jobless Claims",impact:"high",currency:"USD",actual:"",forecast:"",previous:"",note:"Every Thursday",id:Math.random()});
+        fallback.push({date:ds,time:"08:30",name:"Continuing Jobless Claims",impact:"medium",currency:"USD",actual:"",forecast:"",previous:"",id:Math.random()});
+      }
+      // First Friday: NFP week
+      if(dayName==="Friday"&&weekOfMonth===1){
+        fallback.push({date:ds,time:"08:30",name:"Non-Farm Payrolls",impact:"high",currency:"USD",actual:"",forecast:"",previous:"",note:"First Friday",id:Math.random()});
+        fallback.push({date:ds,time:"08:30",name:"Unemployment Rate",impact:"high",currency:"USD",actual:"",forecast:"",previous:"",id:Math.random()});
+        fallback.push({date:ds,time:"08:30",name:"Avg Hourly Earnings m/m",impact:"high",currency:"USD",actual:"",forecast:"",previous:"",id:Math.random()});
+      }
+      // Second Tuesday: CPI
+      if(dayName==="Tuesday"&&weekOfMonth===2){
+        fallback.push({date:ds,time:"08:30",name:"CPI m/m",impact:"high",currency:"USD",actual:"",forecast:"",previous:"",note:"~2nd Tuesday",id:Math.random()});
+        fallback.push({date:ds,time:"08:30",name:"Core CPI m/m",impact:"high",currency:"USD",actual:"",forecast:"",previous:"",id:Math.random()});
+      }
+      // Second Wednesday: PPI
+      if(dayName==="Wednesday"&&weekOfMonth===2){
+        fallback.push({date:ds,time:"08:30",name:"PPI m/m",impact:"high",currency:"USD",actual:"",forecast:"",previous:"",note:"~2nd Wednesday",id:Math.random()});
+      }
+      // First Monday: ISM Manufacturing
+      if(dayName==="Monday"&&weekOfMonth===1){
+        fallback.push({date:ds,time:"10:00",name:"ISM Manufacturing PMI",impact:"high",currency:"USD",actual:"",forecast:"",previous:"",note:"First Monday",id:Math.random()});
+      }
+      // Every Wednesday: Crude Oil
+      if(dayName==="Wednesday"){
+        fallback.push({date:ds,time:"10:30",name:"Crude Oil Inventories",impact:"medium",currency:"USD",actual:"",forecast:"",previous:"",id:Math.random()});
+      }
+      // Last Tuesday: CB Consumer Confidence
+      if(dayName==="Tuesday"&&weekOfMonth>=4){
+        fallback.push({date:ds,time:"10:00",name:"CB Consumer Confidence",impact:"medium",currency:"USD",actual:"",forecast:"",previous:"",note:"Last Tuesday",id:Math.random()});
+      }
+    });
+
+    setEvents(fallback.sort((a,b)=>a.date.localeCompare(b.date)||a.time.localeCompare(b.time)));
     setLoading(false);
   };
 
