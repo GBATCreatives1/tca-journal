@@ -5171,7 +5171,7 @@ function RecurringPatternsWidget({trades}){
 
 
 // ── Economic Calendar ─────────────────────────────────────────────────────────
-function EconomicCalendar(){
+function EconomicCalendar({isDark=true}){
   const [view,setView]=useState("embed"); // "embed" | "manual"
   const [manualEvents,setManualEvents]=useState([]);
   const [showAdd,setShowAdd]=useState(false);
@@ -5245,18 +5245,34 @@ function EconomicCalendar(){
               </div>
             </div>
             {/* Embed the Investing.com economic calendar widget */}
-            <div style={{padding:0,background:"#1a1a2e"}}>
-              <iframe
-                src="https://sslecal2.investing.com?ecoDayBackground=%230E0E10&innerBorderColor=%23333&borderColor=%23333&columns=exc_flags,exc_currency,exc_importance,exc_actual,exc_forecast,exc_previous&countries=5&importance=3&features=datepicker,timezone,filters&dateRange=lastWeek&timeZone=8&lang=1&theme=darkTheme&fontSize=13&filterCountries=5&customWidth=100%25"
-                width="100%"
-                height="600"
-                frameBorder="0"
-                allowTransparency
-                marginWidth="0"
-                marginHeight="0"
-                style={{display:"block",border:"none"}}
-                title="Economic Calendar"
-              />
+            <div style={{padding:0,background:isDark?"#0E0E10":"#f7f8fc"}}>
+              <div style={{position:"relative"}}>
+                <iframe
+                  src="https://sslecal2.investing.com?ecoDayBackground=%230E0E10&innerBorderColor=%23222230&borderColor=%23222230&columns=exc_flags,exc_currency,exc_importance,exc_actual,exc_forecast,exc_previous&countries=5&importance=3&features=datepicker,timezone,filters&dateRange=nextWeek&timeZone=8&lang=1&theme=darkTheme&fontSize=13&filterCountries=5&customWidth=100%25&background=%230E0E10&calendarBg=%230E0E10&headerBg=%2313121A&rowEvenBg=%2313121A&rowOddBg=%230E0E10&tableheaderBg=%2313121A&titleColor=%23F0EEF8&textColor=%23C8C4D8&linkColor=%2300D4A8&positiveColor=%2300D4A8&negativeColor=%23F05A7E"
+                  width="100%"
+                  height="620"
+                  frameBorder="0"
+                  allowTransparency
+                  marginWidth="0"
+                  marginHeight="0"
+                  style={{
+                    display:"block",
+                    border:"none",
+                    filter:isDark?"invert(0) hue-rotate(0deg)":"none",
+                    colorScheme:"dark",
+                  }}
+                  title="Economic Calendar"
+                />
+                {/* Dark overlay to tint the white Investing.com header */}
+                {isDark&&<div style={{
+                  position:"absolute",
+                  top:0,left:0,right:0,
+                  height:50,
+                  background:"linear-gradient(to bottom, #13121A 0%, #13121A 60%, transparent 100%)",
+                  pointerEvents:"none",
+                  zIndex:2,
+                }}/>}
+              </div>
             </div>
             <div style={{padding:"10px 18px",borderTop:`1px solid ${B.border}`,fontSize:10,color:B.textDim,display:"flex",justifyContent:"space-between"}}>
               <span>Showing high-impact USD events · Updates in real time</span>
@@ -5747,7 +5763,7 @@ export default function App(){
       {active==="calendar"&&<CalendarView trades={activeAccount==="all"?trades:trades.filter(t=>t.account_id===activeAccount)} onGradeUpdate={handleGradeUpdate}/>}
       {active==="playbooks"&&<PlaybookView/>}
       {active==="resources"&&<ResourcesPage session={session}/>}
-      {active==="economiccalendar"&&<EconomicCalendar/>}
+      {active==="economiccalendar"&&<EconomicCalendar isDark={isDark}/>}
       {active==="library"&&<PlaybookLibrary session={session}/>}
     </div>
   </div>);
