@@ -5859,23 +5859,18 @@ function TCAChat({trades, strategies, isOpen, onClose}){
     trades.forEach(t=>{const d=new Date(t.date+"T12:00:00").toLocaleDateString("en-US",{weekday:"short"});if(!byDay[d])byDay[d]={wins:0,total:0,pnl:0};byDay[d].total++;byDay[d].pnl+=t.pnl;if(t.result==="Win")byDay[d].wins++;});
     const bySetup={};
     trades.forEach(t=>{const s=t.strategy||t.setup||"Unknown";if(!bySetup[s])bySetup[s]={wins:0,total:0,pnl:0};bySetup[s].total++;bySetup[s].pnl+=t.pnl;if(t.result==="Win")bySetup[s].wins++;});
-    const recent=[...trades].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,20).map(t=>({date:t.date,instrument:t.instrument,direction:t.direction,pnl:Math.round(t.pnl*100)/100,result:t.result,setup:t.strategy||t.setup,grade:t.grade,session:t.session,rr:t.rr}));
+    const recent=[...trades].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,15).map(t=>`${t.date}|${t.instrument}|${t.direction==="Long"?"L":"S"}|${t.result==="Win"?"W":"L"}|$${Math.round(t.pnl*100)/100}|${(t.strategy||t.setup||"?").slice(0,20)}|${t.session}|${t.grade}`);
     const avgWin=wins.length?Math.round(wins.reduce((a,t)=>a+t.pnl,0)/wins.length*100)/100:0;
     const avgLoss=losses.length?Math.round(Math.abs(losses.reduce((a,t)=>a+t.pnl,0))/losses.length*100)/100:0;
-    return `You are TCA Coach, an expert MES futures and ICT methodology trading coach for The Candlestick Academy. You have FULL access to this trader's performance data. Be specific, honest, and actionable. Use their real numbers. Keep responses concise (3-5 sentences) unless they ask for a full review.
+    const pf=wins.reduce((a,t)=>a+t.pnl,0)/(Math.abs(losses.reduce((a,t)=>a+t.pnl,0))||1);
+    return `You are TCA Coach for The Candlestick Academy. Expert in MES futures + ICT methodology. You have this trader's data. Be direct, specific, use their numbers. Max 4 sentences unless asked for full review.
 
-PERFORMANCE: ${trades.length} trades | $${Math.round(totalPnl*100)/100} P&L | ${winRate}% WR | Avg Win $${avgWin} | Avg Loss $${avgLoss}
-
-SESSION: ${Object.entries(bySession).map(([s,d])=>`${s}: ${d.total}t ${Math.round(d.wins/d.total*100)}%WR $${Math.round(d.pnl*100)/100}`).join(" | ")}
-
-DAY: ${Object.entries(byDay).map(([d,v])=>`${d}: ${v.total}t ${Math.round(v.wins/v.total*100)}%WR $${Math.round(v.pnl*100)/100}`).join(" | ")}
-
-SETUPS: ${Object.entries(bySetup).slice(0,8).map(([s,d])=>`${s}: ${d.total}t ${Math.round(d.wins/d.total*100)}%WR $${Math.round(d.pnl*100)/100}`).join(" | ")}
-
-STRATEGIES: ${strategies.map(s=>s.name).join(", ")||"None yet"}
-
-LAST 20 TRADES:
-${recent.map(t=>`${t.date}|${t.instrument}|${t.direction}|${t.result}|$${t.pnl}|${t.setup||"?"}|${t.session}|${t.grade}`).join("\n")}`;
+STATS: ${trades.length} trades | $${Math.round(totalPnl*100)/100} PnL | ${winRate}%WR | AvgW:$${avgWin} | AvgL:$${avgLoss} | PF:${Math.round(pf*100)/100}
+SESSIONS: ${Object.entries(bySession).map(([s,d])=>`${s}=${d.total}t,${Math.round(d.wins/d.total*100)}%WR,$${Math.round(d.pnl*100)/100}`).join("|")}
+DAYS: ${Object.entries(byDay).map(([d,v])=>`${d}=${v.total}t,${Math.round(v.wins/v.total*100)}%WR,$${Math.round(v.pnl*100)/100}`).join("|")}
+SETUPS: ${Object.entries(bySetup).slice(0,6).map(([s,d])=>`${s.slice(0,15)}=${d.total}t,${Math.round(d.wins/d.total*100)}%WR,$${Math.round(d.pnl*100)/100}`).join("|")}
+STRATEGIES: ${strategies.map(s=>s.name).join(",")||"none"}
+RECENT 15: ${recent.join(" / ")}`;
   };
 
   const send=async()=>{
@@ -5892,7 +5887,10 @@ ${recent.map(t=>`${t.date}|${t.instrument}|${t.direction}|${t.result}|$${t.pnl}|
       const data=await res.json();
       const text=data.content?.[0]?.text||data.response||"I couldn't process that. Try again.";
       setMessages(m=>[...m,{role:"assistant",content:text,id:Date.now()}]);
-    }catch(e){setMessages(m=>[...m,{role:"assistant",content:"Connection error. Try again.",id:Date.now()}]);}
+    }catch(e){
+      console.error("Chat error:",e);
+      setMessages(m=>[...m,{role:"assistant",content:`Error: ${e.message}. Please try again.`,id:Date.now()}]);
+    }
     setLoading(false);
   };
 
