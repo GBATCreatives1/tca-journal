@@ -3383,10 +3383,10 @@ function PlaybookView({trades=[]}){
       {strategies.length>0&&(
         <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:20}}>
           {[
-            {label:"Best Performing",value:strategies.length?strategies.map(s=>({...s,...getStratStats(s)})).sort((a,b)=>b.pnl-a.pnl)[0]?.name||"--":"--",sub:strategies.length?fmt(Math.max(...strategies.map(s=>getStratStats(s).pnl))):"-",color:B.teal},
-            {label:"Least Performing",value:strategies.map(s=>({...s,...getStratStats(s)})).sort((a,b)=>a.pnl-b.pnl)[0]?.name||"--",sub:strategies.length?fmt(Math.min(...strategies.map(s=>getStratStats(s).pnl))):"-",color:B.loss},
-            {label:"Most Active",value:strategies.map(s=>({...s,...getStratStats(s)})).sort((a,b)=>b.trades-a.trades)[0]?.name||"--",sub:`${Math.max(...strategies.map(s=>getStratStats(s).trades)} trades`,color:B.blue},
-            {label:"Best Win Rate",value:strategies.map(s=>({...s,...getStratStats(s)})).sort((a,b)=>b.wr-a.wr)[0]?.name||"--",sub:`${Math.max(...strategies.map(s=>getStratStats(s).wr)}% WR`,color:B.purple},
+            {label:"Best Performing",value:strategies.length?strategies.map(s=>({...s,...getStratStats(s)})).sort((a,b)=>b.pnl-a.pnl)[0]?.name||"--":"--",sub:(()=>{const mx=strategies.length?Math.max(...strategies.map(s=>getStratStats(s).pnl)):0;return strategies.length?fmt(mx):"-";})(),color:B.teal},
+            {label:"Least Performing",value:strategies.map(s=>({...s,...getStratStats(s)})).sort((a,b)=>a.pnl-b.pnl)[0]?.name||"--",sub:(()=>{const mn=strategies.length?Math.min(...strategies.map(s=>getStratStats(s).pnl)):0;return strategies.length?fmt(mn):"-";})(),color:B.loss},
+            {label:"Most Active",value:strategies.map(s=>({...s,...getStratStats(s)})).sort((a,b)=>b.trades-a.trades)[0]?.name||"--",sub:(()=>{const mx=strategies.length?Math.max(...strategies.map(s=>getStratStats(s).trades)):0;return `${mx} trades`;})(),color:B.blue},
+            {label:"Best Win Rate",value:strategies.map(s=>({...s,...getStratStats(s)})).sort((a,b)=>b.wr-a.wr)[0]?.name||"--",sub:(()=>{const mx=strategies.length?Math.max(...strategies.map(s=>getStratStats(s).wr)):0;return `${mx}% WR`;})(),color:B.purple},
           ].map(s=>(
             <div key={s.label} style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:12,padding:"14px 18px",position:"relative",overflow:"hidden"}}>
               <div style={{position:"absolute",top:0,left:0,right:0,height:2,background:`linear-gradient(90deg,${s.color},transparent)`}}/>
