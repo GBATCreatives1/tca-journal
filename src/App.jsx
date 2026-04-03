@@ -5439,7 +5439,6 @@ function EconomicCalendar({isDark=true}){
   const fetchEvents=async(date)=>{
     setLoading(true);setFetchError(false);
 
-    // Build week Mon-Fri
     const d=new Date(date+"T12:00:00");
     const dow=d.getDay();
     const mon=new Date(d);mon.setDate(d.getDate()-(dow===0?6:dow-1));
@@ -5450,48 +5449,72 @@ function EconomicCalendar({isDark=true}){
     const from=weekDatesArr[0];
     const to=weekDatesArr[4];
 
-    // Cache key so we don't re-fetch same week
+    // Cache per week
     const cacheKey=`tca_eco_${from}`;
     try{
       const cached=sessionStorage.getItem(cacheKey);
       if(cached){setEvents(JSON.parse(cached));setLoading(false);return;}
     }catch(e){}
 
-    // Use AI coach to get accurate date-specific events for this exact week
+    // Try marketaux free economic calendar API (no key needed for basic)
+    let fetched=false;
     try{
-      const res=await fetch("/api/coach",{
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({
-          type:"economic",
-          dayStats:{
-            weekStart:from,
-            weekEnd:to,
-            weekDates:weekDatesArr,
-            today:new Date().toISOString().slice(0,10),
+      const url=`https://economic-calendar.tradingview.com/events?from=${from}T00%3A00%3A00.000Z&to=${to}T23%3A59%3A59.000Z&countries=US`;
+      const res=await fetch(url,{headers:{"Content-Type":"application/json"}});
+      if(res.ok){
+        const data=await res.json();
+        const items=data.result||[];
+        if(items.length){
+          const mapped=items
+            .filter(e=>e.importance>=1)
+            .map(e=>({
+              date:e.date?.slice(0,10)||"",
+              time:e.date?.slice(11,16)||"",
+              name:e.title||"",
+              impact:e.importance===3?"high":e.importance===2?"medium":"low",
+              currency:"USD",
+              actual:e.actual!=null?String(e.actual):"",
+              forecast:e.estimate!=null?String(e.estimate):"",
+              previous:e.prev!=null?String(e.prev):"",
+              id:Math.random(),
+            }))
+            .filter(e=>e.date>=from&&e.date<=to)
+            .sort((a,b)=>a.date.localeCompare(b.date)||a.time.localeCompare(b.time));
+          if(mapped.length){
+            setEvents(mapped);
+            try{sessionStorage.setItem(cacheKey,JSON.stringify(mapped));}catch(e){}
+            setLoading(false);fetched=true;
+            return;
           }
-        }),
-      });
-      const data=await res.json();
-      if(data.events?.length){
-        // Validate events are within the week range
-        const valid=data.events.filter(e=>e.date>=from&&e.date<=to);
-        if(valid.length){
-          setEvents(valid);
-          try{sessionStorage.setItem(cacheKey,JSON.stringify(valid));}catch(e){}
-          setLoading(false);
-          return;
         }
       }
-      throw new Error("No valid events from AI");
-    }catch(aiErr){
-      console.warn("AI calendar failed:",aiErr.message);
+    }catch(e){console.warn("TradingView calendar failed:",e.message);}
+
+    // Fallback: AI coach generates accurate events for the week
+    if(!fetched){
+      try{
+        const res=await fetch("/api/coach",{
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({
+            type:"economic",
+            dayStats:{weekStart:from,weekEnd:to,weekDates:weekDatesArr,today:new Date().toISOString().slice(0,10)}
+          }),
+        });
+        const data=await res.json();
+        if(data.events?.length){
+          const valid=data.events.filter(e=>e.date>=from&&e.date<=to);
+          if(valid.length){
+            setEvents(valid);
+            try{sessionStorage.setItem(cacheKey,JSON.stringify(valid));}catch(e){}
+            setLoading(false);fetched=true;
+            return;
+          }
+        }
+      }catch(e){console.warn("AI calendar failed:",e.message);}
     }
 
-    // Final fallback: only show events on days they actually occur
-    // Initial Jobless Claims = every Thursday
-    // NFP/Unemployment/Avg Hourly = first Friday of month
-    // CPI = 2nd Tuesday, ISM Mfg = 1st Monday, etc.
+    // Smart day-aware fallback
     setFetchError(true);
     const fallback=[];
     weekDatesArr.forEach(ds=>{
@@ -5499,45 +5522,46 @@ function EconomicCalendar({isDark=true}){
       const dayName=dd.toLocaleDateString("en-US",{weekday:"long"});
       const dayOfMonth=dd.getDate();
       const weekOfMonth=Math.ceil(dayOfMonth/7);
-
-      // Thursday: always Jobless Claims
+      if(dayName==="Monday"){
+        fallback.push({date:ds,time:"10:30",name:"Fed Member Speaks",impact:"medium",currency:"USD",actual:"",forecast:"",previous:"",id:Math.random()});
+      }
+      if(dayName==="Tuesday"){
+        fallback.push({date:ds,time:"10:00",name:"JOLTS Job Openings",impact:"high",currency:"USD",actual:"",forecast:"",previous:"",id:Math.random()});
+        fallback.push({date:ds,time:"10:00",name:"CB Consumer Confidence",impact:"medium",currency:"USD",actual:"",forecast:"",previous:"",id:Math.random()});
+        if(weekOfMonth===2){
+          fallback.push({date:ds,time:"08:30",name:"CPI m/m",impact:"high",currency:"USD",actual:"",forecast:"",previous:"",id:Math.random()});
+          fallback.push({date:ds,time:"08:30",name:"Core CPI m/m",impact:"high",currency:"USD",actual:"",forecast:"",previous:"",id:Math.random()});
+        }
+      }
+      if(dayName==="Wednesday"){
+        fallback.push({date:ds,time:"08:15",name:"ADP Non-Farm Employment",impact:"high",currency:"USD",actual:"",forecast:"",previous:"",id:Math.random()});
+        fallback.push({date:ds,time:"08:30",name:"Core Retail Sales m/m",impact:"high",currency:"USD",actual:"",forecast:"",previous:"",id:Math.random()});
+        fallback.push({date:ds,time:"08:30",name:"Retail Sales m/m",impact:"high",currency:"USD",actual:"",forecast:"",previous:"",id:Math.random()});
+        fallback.push({date:ds,time:"10:00",name:"ISM Manufacturing PMI",impact:"high",currency:"USD",actual:"",forecast:"",previous:"",id:Math.random()});
+        fallback.push({date:ds,time:"10:30",name:"Crude Oil Inventories",impact:"medium",currency:"USD",actual:"",forecast:"",previous:"",id:Math.random()});
+        if(weekOfMonth===2){
+          fallback.push({date:ds,time:"08:30",name:"PPI m/m",impact:"high",currency:"USD",actual:"",forecast:"",previous:"",id:Math.random()});
+        }
+        if(weekOfMonth===3||weekOfMonth===4){
+          fallback.push({date:ds,time:"14:00",name:"FOMC Statement",impact:"high",currency:"USD",actual:"",forecast:"",previous:"",note:"Check FOMC schedule",id:Math.random()});
+        }
+      }
       if(dayName==="Thursday"){
-        fallback.push({date:ds,time:"08:30",name:"Initial Jobless Claims",impact:"high",currency:"USD",actual:"",forecast:"",previous:"",note:"Every Thursday",id:Math.random()});
+        fallback.push({date:ds,time:"08:30",name:"Initial Jobless Claims",impact:"high",currency:"USD",actual:"",forecast:"",previous:"",id:Math.random()});
         fallback.push({date:ds,time:"08:30",name:"Continuing Jobless Claims",impact:"medium",currency:"USD",actual:"",forecast:"",previous:"",id:Math.random()});
       }
-      // First Friday: NFP week
       if(dayName==="Friday"&&weekOfMonth===1){
-        fallback.push({date:ds,time:"08:30",name:"Non-Farm Payrolls",impact:"high",currency:"USD",actual:"",forecast:"",previous:"",note:"First Friday",id:Math.random()});
+        fallback.push({date:ds,time:"08:30",name:"Non-Farm Payrolls",impact:"high",currency:"USD",actual:"",forecast:"",previous:"",id:Math.random()});
         fallback.push({date:ds,time:"08:30",name:"Unemployment Rate",impact:"high",currency:"USD",actual:"",forecast:"",previous:"",id:Math.random()});
-        fallback.push({date:ds,time:"08:30",name:"Avg Hourly Earnings m/m",impact:"high",currency:"USD",actual:"",forecast:"",previous:"",id:Math.random()});
+        fallback.push({date:ds,time:"08:30",name:"Average Hourly Earnings m/m",impact:"high",currency:"USD",actual:"",forecast:"",previous:"",id:Math.random()});
       }
-      // Second Tuesday: CPI
-      if(dayName==="Tuesday"&&weekOfMonth===2){
-        fallback.push({date:ds,time:"08:30",name:"CPI m/m",impact:"high",currency:"USD",actual:"",forecast:"",previous:"",note:"~2nd Tuesday",id:Math.random()});
-        fallback.push({date:ds,time:"08:30",name:"Core CPI m/m",impact:"high",currency:"USD",actual:"",forecast:"",previous:"",id:Math.random()});
-      }
-      // Second Wednesday: PPI
-      if(dayName==="Wednesday"&&weekOfMonth===2){
-        fallback.push({date:ds,time:"08:30",name:"PPI m/m",impact:"high",currency:"USD",actual:"",forecast:"",previous:"",note:"~2nd Wednesday",id:Math.random()});
-      }
-      // First Monday: ISM Manufacturing
-      if(dayName==="Monday"&&weekOfMonth===1){
-        fallback.push({date:ds,time:"10:00",name:"ISM Manufacturing PMI",impact:"high",currency:"USD",actual:"",forecast:"",previous:"",note:"First Monday",id:Math.random()});
-      }
-      // Every Wednesday: Crude Oil
-      if(dayName==="Wednesday"){
-        fallback.push({date:ds,time:"10:30",name:"Crude Oil Inventories",impact:"medium",currency:"USD",actual:"",forecast:"",previous:"",id:Math.random()});
-      }
-      // Last Tuesday: CB Consumer Confidence
-      if(dayName==="Tuesday"&&weekOfMonth>=4){
-        fallback.push({date:ds,time:"10:00",name:"CB Consumer Confidence",impact:"medium",currency:"USD",actual:"",forecast:"",previous:"",note:"Last Tuesday",id:Math.random()});
+      if(dayName==="Friday"&&weekOfMonth!==1){
+        fallback.push({date:ds,time:"10:00",name:"Prelim UoM Consumer Sentiment",impact:"medium",currency:"USD",actual:"",forecast:"",previous:"",id:Math.random()});
       }
     });
-
     setEvents(fallback.sort((a,b)=>a.date.localeCompare(b.date)||a.time.localeCompare(b.time)));
     setLoading(false);
   };
-
   useEffect(()=>{fetchEvents(selectedDate);},[selectedDate]);
 
   // Week navigation

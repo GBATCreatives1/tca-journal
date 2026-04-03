@@ -57,25 +57,31 @@ JSON structure:
 
 Find 4-6 patterns covering: time-of-day edge, day-of-week patterns, win/loss streaks, after-loss behavior, setup performance, overtrading signals. Be specific with numbers.`,
 
-    economic: `You are a financial data assistant. Generate the US economic calendar for the exact week provided. Return ONLY a JSON object, no markdown, no explanation.
+    economic: `You are a financial data assistant with knowledge of the US economic calendar. Generate the complete, accurate economic calendar for the EXACT week provided. Return ONLY valid JSON, no markdown.
 
-Week: ${dayStats.weekStart} to ${dayStats.weekEnd}
-Dates: ${JSON.stringify(dayStats.weekDates)}
-Today: ${dayStats.today}
+Week: ${dayStats.weekStart} (Monday) to ${dayStats.weekEnd} (Friday)
+Dates in order: ${JSON.stringify(dayStats.weekDates)}
+Today's date: ${dayStats.today}
 
-Rules:
-- ONLY include events that actually fall on the exact dates provided
-- Every Thursday: Initial Jobless Claims at 08:30
-- First Friday of month: NFP, Unemployment Rate, Avg Hourly Earnings at 08:30
-- ~2nd Tuesday: CPI m/m, Core CPI m/m at 08:30
-- ~2nd Wednesday: PPI m/m at 08:30  
-- First Monday: ISM Manufacturing PMI at 10:00
-- ~3rd Wednesday: FOMC if applicable
-- Every Wednesday: Crude Oil Inventories at 10:30
-- Include forecast/previous values where known
+CRITICAL RULES:
+1. Only place events on the EXACT dates listed above
+2. Include ALL high-impact USD events that occur this specific week
+3. Include realistic forecast and previous values where known
+4. Every single Thursday MUST have: Initial Jobless Claims at 08:30
+5. JOLTS Job Openings occurs ~first Tuesday of month at 10:00
+6. CB Consumer Confidence occurs last Tuesday of month at 10:00
+7. ADP Non-Farm Employment occurs ~first Wednesday at 08:15
+8. Core Retail Sales + Retail Sales occur ~second Wednesday at 08:30
+9. ISM Manufacturing PMI occurs first Wednesday at 10:00
+10. ISM Services PMI occurs ~third Wednesday at 10:00
+11. Every Wednesday: Crude Oil Inventories at 10:30
+12. First Friday: NFP, Unemployment Rate, Avg Hourly Earnings all at 08:30
+13. Second Tuesday: CPI m/m and Core CPI m/m at 08:30
+14. Fed Chair/member speeches should be included when scheduled
+15. Aim for 8-15 events total, matching what ForexFactory would show
 
-Return this exact JSON structure:
-{"events":[{"date":"YYYY-MM-DD","time":"HH:MM","name":"Event Name","impact":"high","currency":"USD","forecast":"","previous":"","actual":""}]}`,
+Return ONLY this JSON (no other text):
+{"events":[{"date":"YYYY-MM-DD","time":"HH:MM","name":"Full Event Name","impact":"high|medium|low","currency":"USD","actual":"value or empty","forecast":"value or empty","previous":"value or empty"}]}`,
 
         trade: `You are an expert MES futures trading coach. Analyze this single trade and give honest, specific feedback. Respond with ONLY valid JSON, no markdown.
 
