@@ -568,10 +568,118 @@ function Tag({label}){const c=TAG_COLOR[label]||"#666";return <span style={{font
 const CTip=({active,payload,label})=>{if(!active||!payload?.length)return null;return(<div style={{background:"#16151C",border:`1px solid ${B.borderTeal}`,borderRadius:10,padding:"10px 16px",fontSize:12}}><div style={{color:B.textMuted,marginBottom:5}}>{label}</div>{payload.map((p,i)=>(<div key={i} style={{color:p.value>=0?B.profit:B.loss,fontFamily:"monospace",fontWeight:700}}>{p.name}: {p.value>=0?"+":""}${p.value}</div>))}</div>);};
 
 function LoginScreen(){
-  const [email,setEmail]=useState("");const [password,setPassword]=useState("");const [mode,setMode]=useState("login");const [error,setError]=useState("");const [loading,setLoading]=useState(false);
-  const handle=async()=>{setLoading(true);setError("");const{error:err}=mode==="login"?await supabase.auth.signInWithPassword({email,password}):await supabase.auth.signUp({email,password});if(err)setError(err.message);setLoading(false);};
-  return(<div style={{minHeight:"100vh",background:B.bg,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'DM Sans','Segoe UI',sans-serif"}}><style>{`@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&family=Space+Mono:wght@400;700&display=swap');*{box-sizing:border-box;}body{margin:0;}`}</style><div style={{width:400,padding:44,borderRadius:20,background:"#13121A",border:`1px solid ${B.border}`,position:"relative",overflow:"hidden"}}><div style={{position:"absolute",top:0,left:0,right:0,height:3,background:GL}}/><div style={{textAlign:"center",marginBottom:36}}><div style={{display:"flex",justifyContent:"center",marginBottom:16}}><TCAIcon size={52}/></div><div style={{fontSize:11,fontWeight:800,color:B.text,letterSpacing:2,textTransform:"uppercase"}}>The Candlestick Academy</div><div style={{marginTop:6,display:"inline-block",padding:"2px 12px",borderRadius:20,background:GL,fontSize:9,fontWeight:800,letterSpacing:2,color:"#0E0E10"}}>TRADE JOURNAL</div></div><div style={{marginBottom:12}}><label style={lS}>Email</label><input type="email" value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handle()} placeholder="you@email.com" style={iS}/></div><div style={{marginBottom:20}}><label style={lS}>Password</label><input type="password" value={password} onChange={e=>setPassword(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handle()} placeholder="password" style={iS}/></div>{error&&<div style={{marginBottom:14,padding:"10px 14px",borderRadius:8,background:"rgba(240,90,126,0.1)",border:"1px solid rgba(240,90,126,0.3)",color:B.loss,fontSize:12}}>{error}</div>}<button onClick={handle} disabled={loading} style={{width:"100%",padding:"12px",borderRadius:10,border:"none",background:GL,color:"#0E0E10",fontWeight:800,fontSize:14,cursor:"pointer",opacity:loading?0.7:1}}>{loading?"Loading...":(mode==="login"?"Sign In":"Create Account")}</button><div style={{textAlign:"center",marginTop:18,fontSize:12,color:B.textMuted}}>{mode==="login"?"Don't have an account? ":"Already have an account? "}<span onClick={()=>{setMode(m=>m==="login"?"signup":"login");setError("");}} style={{color:B.teal,cursor:"pointer",fontWeight:700}}>{mode==="login"?"Sign up free":"Sign in"}</span></div></div></div>);
+  const [email,setEmail]=useState("");
+  const [password,setPassword]=useState("");
+  const [name,setName]=useState("");
+  const [mode,setMode]=useState("login"); // login | signup | forgot
+  const [error,setError]=useState("");
+  const [success,setSuccess]=useState("");
+  const [loading,setLoading]=useState(false);
+
+  const iS={width:"100%",padding:"11px 14px",borderRadius:10,border:`1px solid rgba(255,255,255,0.1)`,background:"rgba(255,255,255,0.04)",color:"#F0EEF8",fontSize:13,outline:"none",fontFamily:"'DM Sans',sans-serif"};
+
+  const handle=async()=>{
+    if(!email.trim()||(!password.trim()&&mode!=="forgot")){setError("Please fill in all fields.");return;}
+    setLoading(true);setError("");setSuccess("");
+    try{
+      if(mode==="login"){
+        const{error:err}=await supabase.auth.signInWithPassword({email:email.trim(),password});
+        if(err)setError(err.message);
+      } else if(mode==="signup"){
+        if(password.length<8){setError("Password must be at least 8 characters.");setLoading(false);return;}
+        const{data,error:err}=await supabase.auth.signUp({
+          email:email.trim(),password,
+          options:{data:{full_name:name.trim()||email.split("@")[0],role:"student"}},
+        });
+        if(err)setError(err.message);
+        else if(data?.user?.identities?.length===0)setError("An account with this email already exists.");
+        else setSuccess("Account created! Check your email to confirm, then sign in.");
+      } else if(mode==="forgot"){
+        const{error:err}=await supabase.auth.resetPasswordForEmail(email.trim(),{redirectTo:window.location.origin});
+        if(err)setError(err.message);
+        else setSuccess("Password reset email sent! Check your inbox.");
+      }
+    }catch(e){setError(e.message);}
+    setLoading(false);
+  };
+
+  return(
+    <div style={{minHeight:"100vh",background:"#0E0D14",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'DM Sans','Segoe UI',sans-serif",padding:"20px"}}>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap');*{box-sizing:border-box;}body{margin:0;}`}</style>
+      <div style={{width:"100%",maxWidth:420}}>
+
+        {/* Logo */}
+        <div style={{textAlign:"center",marginBottom:36}}>
+          <div style={{width:64,height:64,borderRadius:18,background:"linear-gradient(135deg,#00D4A8,#8B5CF6)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,margin:"0 auto 16px"}}>📈</div>
+          <div style={{fontSize:26,fontWeight:800,color:"#F0EEF8",letterSpacing:-0.5}}>TCA Journal</div>
+          <div style={{fontSize:13,color:"#6B6880",marginTop:4}}>The Candlestick Academy · Trade Smarter</div>
+        </div>
+
+        {/* Card */}
+        <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:20,padding:"32px 28px"}}>
+          <div style={{height:3,background:"linear-gradient(90deg,#00D4A8,#4F8EF7,#8B5CF6)",borderRadius:3,margin:"-32px -28px 28px",borderRadius:"20px 20px 0 0"}}/>
+
+          <div style={{fontSize:18,fontWeight:800,color:"#F0EEF8",marginBottom:4}}>
+            {mode==="login"?"Welcome back":mode==="signup"?"Create your account":"Reset password"}
+          </div>
+          <div style={{fontSize:12,color:"#6B6880",marginBottom:24}}>
+            {mode==="login"?"Sign in to your TCA Journal":mode==="signup"?"Start tracking your trades today":"Enter your email to receive a reset link"}
+          </div>
+
+          {/* Fields */}
+          <div style={{display:"flex",flexDirection:"column",gap:12}}>
+            {mode==="signup"&&(
+              <input value={name} onChange={e=>setName(e.target.value)} placeholder="Your name (optional)" style={iS}/>
+            )}
+            <input value={email} onChange={e=>setEmail(e.target.value)} placeholder="Email address" type="email"
+              onKeyDown={e=>e.key==="Enter"&&handle()} style={iS}/>
+            {mode!=="forgot"&&(
+              <input value={password} onChange={e=>setPassword(e.target.value)} placeholder={mode==="signup"?"Password (min 8 chars)":"Password"} type="password"
+                onKeyDown={e=>e.key==="Enter"&&handle()} style={iS}/>
+            )}
+          </div>
+
+          {/* Forgot link */}
+          {mode==="login"&&(
+            <div style={{textAlign:"right",marginTop:8}}>
+              <span onClick={()=>{setMode("forgot");setError("");setSuccess("");}} style={{fontSize:11,color:"#6B6880",cursor:"pointer",textDecoration:"underline"}}>Forgot password?</span>
+            </div>
+          )}
+
+          {/* Error / Success */}
+          {error&&<div style={{marginTop:14,padding:"10px 14px",borderRadius:10,background:"rgba(240,90,126,0.1)",border:"1px solid rgba(240,90,126,0.2)",fontSize:12,color:"#F05A7E"}}>{error}</div>}
+          {success&&<div style={{marginTop:14,padding:"10px 14px",borderRadius:10,background:"rgba(0,212,168,0.1)",border:"1px solid rgba(0,212,168,0.2)",fontSize:12,color:"#00D4A8"}}>{success}</div>}
+
+          {/* Submit */}
+          <button onClick={handle} disabled={loading} style={{
+            width:"100%",marginTop:20,padding:"13px",borderRadius:11,border:"none",
+            background:loading?"rgba(255,255,255,0.06)":"linear-gradient(135deg,#00D4A8,#4F8EF7)",
+            color:loading?"#6B6880":"#0E0D14",cursor:loading?"not-allowed":"pointer",
+            fontSize:14,fontWeight:800,fontFamily:"'DM Sans',sans-serif",transition:"all 0.15s",
+          }}>
+            {loading?"Please wait...":(mode==="login"?"Sign In":mode==="signup"?"Create Account":"Send Reset Email")}
+          </button>
+
+          {/* Toggle */}
+          <div style={{textAlign:"center",marginTop:20,fontSize:12,color:"#6B6880"}}>
+            {mode==="forgot"?(
+              <span onClick={()=>{setMode("login");setError("");setSuccess("");}} style={{color:B.teal,cursor:"pointer",fontWeight:700}}>← Back to sign in</span>
+            ):mode==="login"?(
+              <>Don't have an account?{" "}<span onClick={()=>{setMode("signup");setError("");setSuccess("");}} style={{color:B.teal,cursor:"pointer",fontWeight:700}}>Sign up free</span></>
+            ):(
+              <>Already have an account?{" "}<span onClick={()=>{setMode("login");setError("");setSuccess("");}} style={{color:B.teal,cursor:"pointer",fontWeight:700}}>Sign in</span></>
+            )}
+          </div>
+        </div>
+
+        <div style={{textAlign:"center",marginTop:20,fontSize:11,color:"rgba(255,255,255,0.15)"}}>
+          By signing up you agree to use this journal for educational purposes.
+        </div>
+      </div>
+    </div>
+  );
 }
+
 
 function TradeFormModal({onClose,onSave,editTrade}){
   const blank={date:new Date().toISOString().slice(0,10),account_id:"main",instrument:"MES",direction:"Long",contracts:1,entry:"",exit:"",stop_loss:"",take_profit:"",tp_category:"",pnl:"",rr:"",setup:SETUPS[0],strategy:"",grade:"A",session:"AM",notes:"",result:"Win"};
@@ -5833,6 +5941,263 @@ function EconomicCalendar({isDark=true}){
 
 
 
+// ── User Profile Modal ────────────────────────────────────────────────────────
+function ProfileModal({session, onClose}){
+  const [name, setName] = useState(session?.user?.user_metadata?.full_name||"");
+  const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState("");
+  const [error, setError] = useState("");
+  const [pwMode, setPwMode] = useState(false);
+  const [newPw, setNewPw] = useState("");
+
+  const saveProfile = async()=>{
+    setLoading(true);setSuccess("");setError("");
+    try{
+      const{error:err}=await supabase.auth.updateUser({data:{full_name:name.trim()}});
+      if(err)throw err;
+      setSuccess("Profile updated!");
+    }catch(e){setError(e.message);}
+    setLoading(false);
+  };
+
+  const changePassword = async()=>{
+    if(newPw.length<8){setError("Password must be at least 8 characters.");return;}
+    setLoading(true);setSuccess("");setError("");
+    try{
+      const{error:err}=await supabase.auth.updateUser({password:newPw});
+      if(err)throw err;
+      setSuccess("Password changed!");setNewPw("");setPwMode(false);
+    }catch(e){setError(e.message);}
+    setLoading(false);
+  };
+
+  const joined = session?.user?.created_at ? new Date(session.user.created_at).toLocaleDateString("en-US",{month:"long",year:"numeric"}) : "—";
+  const iS={width:"100%",padding:"10px 12px",borderRadius:9,border:`1px solid ${B.border}`,background:"rgba(0,0,0,0.3)",color:B.text,fontSize:13,outline:"none",fontFamily:"'DM Sans',sans-serif"};
+
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:400,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={onClose}>
+      <div style={{background:"#13121A",border:`1px solid ${B.border}`,borderRadius:20,width:440,padding:28,maxHeight:"90vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
+        <div style={{height:3,background:"linear-gradient(90deg,#00D4A8,#8B5CF6)",borderRadius:"20px 20px 0 0",margin:"-28px -28px 24px"}}/>
+
+        {/* Avatar + header */}
+        <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:24}}>
+          <div style={{width:52,height:52,borderRadius:"50%",background:"linear-gradient(135deg,#00D4A8,#8B5CF6)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,fontWeight:800,color:"#0E0E10",flexShrink:0}}>
+            {(name||session?.user?.email||"?")[0].toUpperCase()}
+          </div>
+          <div>
+            <div style={{fontSize:16,fontWeight:800,color:B.text}}>{name||session?.user?.email?.split("@")[0]}</div>
+            <div style={{fontSize:11,color:B.textMuted}}>{session?.user?.email}</div>
+            <div style={{fontSize:10,color:B.textDim,marginTop:2}}>Member since {joined}</div>
+          </div>
+        </div>
+
+        {/* Name field */}
+        <div style={{marginBottom:14}}>
+          <label style={{fontSize:10,color:B.textMuted,letterSpacing:1.5,display:"block",marginBottom:6}}>DISPLAY NAME</label>
+          <input value={name} onChange={e=>setName(e.target.value)} placeholder="Your name" style={iS}/>
+        </div>
+
+        <button onClick={saveProfile} disabled={loading} style={{width:"100%",padding:"10px",borderRadius:9,border:"none",background:"linear-gradient(135deg,#00D4A8,#4F8EF7)",color:"#0E0E10",cursor:"pointer",fontSize:13,fontWeight:700,marginBottom:16}}>
+          {loading?"Saving...":"Save Changes"}
+        </button>
+
+        {/* Password change */}
+        <div style={{borderTop:`1px solid ${B.border}`,paddingTop:16,marginTop:4}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:pwMode?12:0}}>
+            <div style={{fontSize:12,color:B.textMuted}}>Password</div>
+            <button onClick={()=>{setPwMode(p=>!p);setError("");}} style={{background:"none",border:`1px solid ${B.border}`,borderRadius:7,color:B.textMuted,cursor:"pointer",fontSize:11,padding:"3px 10px"}}>{pwMode?"Cancel":"Change"}</button>
+          </div>
+          {pwMode&&(
+            <div style={{display:"flex",gap:8,marginTop:8}}>
+              <input value={newPw} onChange={e=>setNewPw(e.target.value)} placeholder="New password (8+ chars)" type="password" style={{...iS,flex:1}}/>
+              <button onClick={changePassword} style={{padding:"10px 14px",borderRadius:9,border:"none",background:B.teal,color:"#0E0E10",cursor:"pointer",fontSize:12,fontWeight:700,flexShrink:0}}>Save</button>
+            </div>
+          )}
+        </div>
+
+        {error&&<div style={{marginTop:12,padding:"8px 12px",borderRadius:8,background:"rgba(240,90,126,0.1)",border:"1px solid rgba(240,90,126,0.2)",fontSize:12,color:"#F05A7E"}}>{error}</div>}
+        {success&&<div style={{marginTop:12,padding:"8px 12px",borderRadius:8,background:"rgba(0,212,168,0.1)",border:"1px solid rgba(0,212,168,0.2)",fontSize:12,color:B.teal}}>{success}</div>}
+
+        <button onClick={onClose} style={{width:"100%",marginTop:16,padding:"9px",borderRadius:9,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:12}}>Close</button>
+      </div>
+    </div>
+  );
+}
+
+// ── Admin Panel ───────────────────────────────────────────────────────────────
+function AdminPanel({onClose}){
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [selected, setSelected] = useState(null);
+  const [userTrades, setUserTrades] = useState([]);
+  const [tradesLoading, setTradesLoading] = useState(false);
+  const [tab, setTab] = useState("users"); // users | stats
+
+  useEffect(()=>{loadUsers();},[]);
+
+  const loadUsers = async()=>{
+    setLoading(true);
+    try{
+      // Get all users via Supabase admin - uses service role if available
+      // Otherwise falls back to user_preferences to detect registered users
+      const{data,error}=await supabase.from("user_preferences")
+        .select("user_id,updated_at")
+        .eq("key","tca_grid_layout_v4")
+        .order("updated_at",{ascending:false});
+      if(error)throw error;
+      
+      // Get trade counts per user
+      const{data:tradeCounts}=await supabase.from("trades")
+        .select("user_id")
+        .in("user_id", data?.map(u=>u.user_id)||[]);
+      
+      const countMap={};
+      tradeCounts?.forEach(t=>{countMap[t.user_id]=(countMap[t.user_id]||0)+1;});
+      
+      setUsers((data||[]).map(u=>({
+        id:u.user_id,
+        lastSeen:u.updated_at,
+        tradeCount:countMap[u.user_id]||0,
+      })));
+    }catch(e){console.error("Load users error:",e);}
+    setLoading(false);
+  };
+
+  const loadUserTrades = async(userId)=>{
+    setTradesLoading(true);
+    try{
+      const{data}=await supabase.from("trades").select("*").eq("user_id",userId).order("date",{ascending:false}).limit(50);
+      setUserTrades(data||[]);
+    }catch(e){}
+    setTradesLoading(false);
+  };
+
+  const filtered = users.filter(u=>u.id.toLowerCase().includes(search.toLowerCase()));
+
+  const selStats = selected && userTrades.length ? {
+    total: userTrades.length,
+    pnl: Math.round(userTrades.reduce((a,t)=>a+t.pnl,0)*100)/100,
+    wr: Math.round(userTrades.filter(t=>t.result==="Win").length/userTrades.length*100),
+    bestTrade: Math.max(...userTrades.map(t=>t.pnl)),
+    worstTrade: Math.min(...userTrades.map(t=>t.pnl)),
+  } : null;
+
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.9)",zIndex:400,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={onClose}>
+      <div style={{background:"#13121A",border:`1px solid ${B.border}`,borderRadius:20,width:"90%",maxWidth:900,maxHeight:"88vh",display:"flex",flexDirection:"column",overflow:"hidden"}} onClick={e=>e.stopPropagation()}>
+        
+        {/* Header */}
+        <div style={{height:3,background:"linear-gradient(90deg,#FFB700,#FF6B35)",flexShrink:0}}/>
+        <div style={{padding:"20px 24px",borderBottom:`1px solid ${B.border}`,display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
+          <div>
+            <div style={{fontSize:16,fontWeight:800,color:B.text,display:"flex",alignItems:"center",gap:8}}>👑 Admin Panel</div>
+            <div style={{fontSize:11,color:B.textMuted,marginTop:2}}>The Candlestick Academy · Student Management</div>
+          </div>
+          <div style={{display:"flex",gap:8,alignItems:"center"}}>
+            <div style={{padding:"5px 12px",borderRadius:20,background:"rgba(255,183,0,0.1)",border:"1px solid rgba(255,183,0,0.2)",fontSize:11,color:"#FFB700",fontWeight:700}}>{users.length} students</div>
+            <button onClick={onClose} style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${B.border}`,borderRadius:8,color:B.textMuted,cursor:"pointer",width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>×</button>
+          </div>
+        </div>
+
+        <div style={{flex:1,overflow:"hidden",display:"flex"}}>
+          {/* User list */}
+          <div style={{width:280,borderRight:`1px solid ${B.border}`,display:"flex",flexDirection:"column",flexShrink:0}}>
+            <div style={{padding:"12px 16px",borderBottom:`1px solid ${B.border}`}}>
+              <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search users..." style={{width:"100%",padding:"7px 10px",borderRadius:8,border:`1px solid ${B.border}`,background:"rgba(0,0,0,0.3)",color:B.text,fontSize:12,outline:"none"}}/>
+            </div>
+            <div style={{flex:1,overflowY:"auto"}}>
+              {loading?(
+                <div style={{padding:20,textAlign:"center",color:B.textMuted,fontSize:12}}>Loading students...</div>
+              ):filtered.length===0?(
+                <div style={{padding:20,textAlign:"center",color:B.textMuted,fontSize:12}}>No students found</div>
+              ):filtered.map(u=>(
+                <div key={u.id} onClick={()=>{setSelected(u);loadUserTrades(u.id);}}
+                  style={{padding:"12px 16px",cursor:"pointer",borderBottom:`1px solid ${B.border}20`,
+                    background:selected?.id===u.id?`${B.teal}08`:"transparent",
+                    borderLeft:`3px solid ${selected?.id===u.id?B.teal:"transparent"}`}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <div style={{width:28,height:28,borderRadius:"50%",background:"linear-gradient(135deg,#4F8EF7,#8B5CF6)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:800,color:"#fff",flexShrink:0}}>
+                      {u.id.slice(0,2).toUpperCase()}
+                    </div>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:11,color:B.text,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.id.slice(0,18)}...</div>
+                      <div style={{fontSize:10,color:B.textMuted,marginTop:1}}>{u.tradeCount} trades · {new Date(u.lastSeen).toLocaleDateString()}</div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Detail panel */}
+          <div style={{flex:1,overflowY:"auto",padding:20}}>
+            {!selected?(
+              <div style={{height:"100%",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",color:B.textMuted}}>
+                <div style={{fontSize:32,marginBottom:12}}>👥</div>
+                <div style={{fontSize:14,fontWeight:700,color:B.text}}>Select a student</div>
+                <div style={{fontSize:12,marginTop:4}}>Click any student to view their performance</div>
+              </div>
+            ):(
+              <>
+                {/* Student header */}
+                <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20}}>
+                  <div style={{width:44,height:44,borderRadius:"50%",background:"linear-gradient(135deg,#4F8EF7,#8B5CF6)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,fontWeight:800,color:"#fff"}}>
+                    {selected.id.slice(0,2).toUpperCase()}
+                  </div>
+                  <div>
+                    <div style={{fontSize:14,fontWeight:800,color:B.text}}>Student {selected.id.slice(0,8)}...</div>
+                    <div style={{fontSize:11,color:B.textMuted}}>Last active: {new Date(selected.lastSeen).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</div>
+                  </div>
+                </div>
+
+                {/* Stats */}
+                {tradesLoading?(
+                  <div style={{textAlign:"center",padding:20,color:B.textMuted,fontSize:12}}>Loading trades...</div>
+                ):selStats?(
+                  <>
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:10,marginBottom:20}}>
+                      {[
+                        {label:"Trades",value:selStats.total,color:B.blue},
+                        {label:"P&L",value:`$${selStats.pnl}`,color:selStats.pnl>=0?B.teal:B.loss},
+                        {label:"Win Rate",value:`${selStats.wr}%`,color:B.teal},
+                        {label:"Best Trade",value:`$${Math.round(selStats.bestTrade*100)/100}`,color:B.teal},
+                        {label:"Worst Trade",value:`$${Math.round(selStats.worstTrade*100)/100}`,color:B.loss},
+                      ].map(s=>(
+                        <div key={s.label} style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:10,padding:"10px 12px",textAlign:"center"}}>
+                          <div style={{fontSize:9,color:B.textMuted,letterSpacing:1,marginBottom:4}}>{s.label}</div>
+                          <div style={{fontSize:14,fontWeight:800,color:s.color,fontFamily:"monospace"}}>{s.value}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Recent trades */}
+                    <div style={{fontSize:10,color:B.textMuted,letterSpacing:1.5,marginBottom:10}}>RECENT TRADES</div>
+                    <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                      {userTrades.slice(0,15).map(t=>(
+                        <div key={t.id} style={{display:"grid",gridTemplateColumns:"80px 50px 1fr 60px 70px",gap:8,padding:"8px 12px",borderRadius:8,background:B.surface,border:`1px solid ${B.border}`,alignItems:"center"}}>
+                          <div style={{fontSize:10,color:B.textMuted,fontFamily:"monospace"}}>{t.date}</div>
+                          <div style={{fontSize:10}}><span style={{padding:"2px 6px",borderRadius:4,background:`${B.teal}15`,color:B.teal,fontSize:9,fontWeight:700}}>{t.instrument}</span></div>
+                          <div style={{fontSize:11,color:B.text}}>{t.direction} · {t.setup||"—"}</div>
+                          <div style={{fontSize:10,color:B.textMuted}}>{t.session} · {t.grade}</div>
+                          <div style={{fontSize:12,fontWeight:700,fontFamily:"monospace",color:t.pnl>=0?B.teal:B.loss,textAlign:"right"}}>{t.pnl>=0?"+":""}{fmt(t.pnl)}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                ):(
+                  <div style={{textAlign:"center",padding:20,color:B.textMuted,fontSize:12}}>No trades logged yet</div>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 // ── TCA AI Chatbot ────────────────────────────────────────────────────────────
 function TCAChat({trades, strategies, isOpen, onClose}){
   const [messages, setMessages] = useState([{
@@ -6042,14 +6407,18 @@ function TradovateSyncModal({onClose, onSync, syncing, accounts=[]}){
 const NAV=[{id:"overview",label:"Overview",icon:"▦"},{id:"journal",label:"Journal",icon:"⊟"},{id:"analytics",label:"Analytics",icon:"◈"},{id:"calendar",label:"P&L Calendar",icon:"⊞"},{id:"playbooks",label:"Strategies",icon:"⊕"},{id:"economiccalendar",label:"Eco Calendar",icon:"📰"},{id:"library",label:"Playbook",icon:"📚"},{id:"resources",label:"Resources",icon:"◎"}];
 
 export default function App(){
+  const ADMIN_EMAIL = "admin@thecandlestickacademy.com";
   const [session,setSession]=useState(null);
   const [chatOpen,setChatOpen]=useState(false);
+  const [showAdmin,setShowAdmin]=useState(false);
+  const [showProfile,setShowProfile]=useState(false);
     const [isDark,setIsDark]=useState(()=>{
     try{return localStorage.getItem("tca_theme")!=="light";}catch(e){return true;}
   });
   // Update B whenever theme changes
   B = isDark ? DARK_THEME : LIGHT_THEME;
   const [active,setActive]=useState("overview");
+  const isAdmin=session?.user?.email===ADMIN_EMAIL;
   const [time,setTime]=useState(new Date());
   const [trades,setTrades]=useState([]);
   const [showForm,setShowForm]=useState(false);
@@ -6283,6 +6652,10 @@ export default function App(){
         <div style={{marginTop:10,fontSize:10,color:B.textMuted,textAlign:"center"}}>{trades.filter(t=>!t.id?.startsWith("s")).length} trades logged</div>
         {lastImport&&<div style={{fontSize:9,color:B.textDim,textAlign:"center",marginTop:3}}>Last import: {lastImport}</div>}
         <button onClick={()=>setChatOpen(c=>!c)} style={{marginTop:8,width:"100%",padding:"9px",borderRadius:8,border:`1px solid ${chatOpen?"#8B5CF6":"rgba(139,92,246,0.3)"}`,background:chatOpen?"rgba(139,92,246,0.12)":"rgba(139,92,246,0.05)",color:"#8B5CF6",cursor:"pointer",fontSize:11,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>🧠 {chatOpen?"Close Coach":"TCA Coach"}</button>
+        {isAdmin&&<button onClick={()=>setShowAdmin(true)} style={{marginTop:6,width:"100%",padding:"7px",borderRadius:8,border:`1px solid rgba(255,183,0,0.3)`,background:"rgba(255,183,0,0.05)",color:"#FFB700",cursor:"pointer",fontSize:11,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>👑 Admin Panel</button>}
+        <button onClick={()=>setShowProfile(true)} style={{marginTop:6,width:"100%",padding:"7px",borderRadius:8,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:11,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
+          👤 {session?.user?.user_metadata?.full_name||session?.user?.email?.split("@")[0]||"Profile"}
+        </button>
         <button onClick={()=>supabase.auth.signOut()} style={{marginTop:6,width:"100%",padding:"7px",borderRadius:8,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:11,fontWeight:600}}>Sign Out</button>
       </div>
     </div>
@@ -6318,5 +6691,7 @@ export default function App(){
       {active==="library"&&<PlaybookLibrary session={session}/>}
     </div>
   <TCAChat trades={trades} strategies={strategies} isOpen={chatOpen} onClose={()=>setChatOpen(false)}/>
+  {showProfile&&<ProfileModal session={session} onClose={()=>setShowProfile(false)}/>}
+  {showAdmin&&isAdmin&&<AdminPanel onClose={()=>setShowAdmin(false)}/>}
   </div>);
 }
