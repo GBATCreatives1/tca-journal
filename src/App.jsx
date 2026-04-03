@@ -3304,7 +3304,7 @@ function CalendarView({trades, onGradeUpdate, onEdit}){
   );
 }
 
-function PlaybookView(){
+function PlaybookView({trades=[]}){
   const STORAGE_KEY="tca_strategies_v1";
   const [strategies,setStrategies]=useState([]);
   const [accounts,setAccounts]=useState([
@@ -3351,6 +3351,22 @@ function PlaybookView(){
     if(sel?.id===id)setSel(null);
   };
 
+  // Compute live stats from real trades for each strategy
+  const getStratStats=(strat)=>{
+    // Match on strategy field first, then fall back to setup field matching
+    const matched=trades.filter(t=>
+      (t.strategy&&t.strategy===strat.name)||
+      (t.setup&&t.setup===strat.name)
+    );
+    const wins=matched.filter(t=>t.result==="Win");
+    const pnl=Math.round(matched.reduce((a,t)=>a+t.pnl,0)*100)/100;
+    const wr=matched.length?Math.round((wins.length/matched.length)*100):0;
+    const avgWin=wins.length?Math.round(wins.reduce((a,t)=>a+t.pnl,0)/wins.length*100)/100:0;
+    const losses=matched.filter(t=>t.result==="Loss");
+    const avgLoss=losses.length?Math.round(Math.abs(losses.reduce((a,t)=>a+t.pnl,0)/losses.length)*100)/100:0;
+    return{trades:matched.length,wins:wins.length,pnl,wr,avgWin,avgLoss};
+  };
+
   return(
     <div style={{display:"flex",flexDirection:"column",gap:0}}>
       {showForm&&<StrategyForm strat={editStrat} onSave={handleSave} onClose={()=>{setShowForm(false);setEditStrat(null);}}/>}
@@ -3367,10 +3383,10 @@ function PlaybookView(){
       {strategies.length>0&&(
         <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:20}}>
           {[
-            {label:"Best Performing",value:strategies.sort((a,b)=>b.pnl-a.pnl)[0]?.name||"--",sub:strategies.length?`+$${Math.max(...strategies.map(s=>s.pnl||0))}`:"-",color:B.teal},
-            {label:"Least Performing",value:strategies.sort((a,b)=>a.pnl-b.pnl)[0]?.name||"--",sub:strategies.length?`$${Math.min(...strategies.map(s=>s.pnl||0))}`:"-",color:B.loss},
-            {label:"Most Active",value:strategies.sort((a,b)=>(b.trades||0)-(a.trades||0))[0]?.name||"--",sub:`${Math.max(...strategies.map(s=>s.trades||0))} trades`,color:B.blue},
-            {label:"Best Win Rate",value:strategies.sort((a,b)=>(b.winRate||0)-(a.winRate||0))[0]?.name||"--",sub:`${Math.max(...strategies.map(s=>s.winRate||0))}% WR`,color:B.purple},
+            {label:"Best Performing",value:strategies.length?strategies.map(s=>({...s,...getStratStats(s)})).sort((a,b)=>b.pnl-a.pnl)[0]?.name||"--":"--",sub:strategies.length?fmt(Math.max(...strategies.map(s=>getStratStats(s).pnl))):"-",color:B.teal},
+            {label:"Least Performing",value:strategies.map(s=>({...s,...getStratStats(s)})).sort((a,b)=>a.pnl-b.pnl)[0]?.name||"--",sub:strategies.length?fmt(Math.min(...strategies.map(s=>getStratStats(s).pnl))):"-",color:B.loss},
+            {label:"Most Active",value:strategies.map(s=>({...s,...getStratStats(s)})).sort((a,b)=>b.trades-a.trades)[0]?.name||"--",sub:`${Math.max(...strategies.map(s=>getStratStats(s).trades)} trades`,color:B.blue},
+            {label:"Best Win Rate",value:strategies.map(s=>({...s,...getStratStats(s)})).sort((a,b)=>b.wr-a.wr)[0]?.name||"--",sub:`${Math.max(...strategies.map(s=>getStratStats(s).wr)}% WR`,color:B.purple},
           ].map(s=>(
             <div key={s.label} style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:12,padding:"14px 18px",position:"relative",overflow:"hidden"}}>
               <div style={{position:"absolute",top:0,left:0,right:0,height:2,background:`linear-gradient(90deg,${s.color},transparent)`}}/>
@@ -3395,6 +3411,7 @@ function PlaybookView(){
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
             {strategies.map((s,i)=>{
               const grads=[GL,GTB,GBP,GTB,GL];
+              const live=getStratStats(s);
               return(
                 <div key={s.id} onClick={()=>setSel(s)} style={{
                   padding:"14px 16px",borderRadius:12,cursor:"pointer",
@@ -3405,7 +3422,7 @@ function PlaybookView(){
                 }}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
                     <div style={{fontSize:13,fontWeight:700,color:B.text,flex:1,marginRight:8}}>{s.name}</div>
-                    <div style={{fontSize:13,fontWeight:800,fontFamily:"monospace",color:pnlColor(s.pnl||0),whiteSpace:"nowrap"}}>{s.pnl?fmt(s.pnl):"$0"}</div>
+                    <div style={{fontSize:13,fontWeight:800,fontFamily:"monospace",color:pnlColor(live.pnl),whiteSpace:"nowrap"}}>{fmt(live.pnl)}</div>
                   </div>
                   <div style={{display:"flex",gap:8,alignItems:"center"}}>
                     {s.instruments?.map(inst=>(<span key={inst} style={{fontSize:10,padding:"1px 7px",borderRadius:4,background:`${B.purple}20`,color:B.purple,fontWeight:700}}>{inst}</span>))}
@@ -3443,11 +3460,11 @@ function PlaybookView(){
                 {/* Stats */}
                 <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginBottom:20}}>
                   {[
-                    {label:"Total Net P&L",value:sel.pnl?fmt(sel.pnl):"--",color:pnlColor(sel.pnl||0)},
-                    {label:"Win Rate",value:sel.winRate!=null?`${sel.winRate}%`:"--",color:B.teal},
-                    {label:"Trades",value:sel.trades||"--",color:B.blue},
-                    {label:"Avg Winner",value:sel.avgWin?`+$${sel.avgWin}`:"--",color:B.profit},
-                    {label:"Avg Loser",value:sel.avgLoss?`-$${sel.avgLoss}`:"--",color:B.loss},
+                    {label:"Total Net P&L",value:fmt(getStratStats(sel).pnl),color:pnlColor(getStratStats(sel).pnl)},
+                    {label:"Win Rate",value:`${getStratStats(sel).wr}%`,color:B.teal},
+                    {label:"Trades",value:getStratStats(sel).trades||"--",color:B.blue},
+                    {label:"Avg Winner",value:getStratStats(sel).avgWin?`+$${getStratStats(sel).avgWin}`:"--",color:B.profit},
+                    {label:"Avg Loser",value:getStratStats(sel).avgLoss?`-$${getStratStats(sel).avgLoss}`:"--",color:B.loss},
                     {label:"Profit Factor",value:sel.profitFactor||"--",color:B.purple},
                     {label:"Expectancy",value:sel.expectancy?`$${sel.expectancy}`:"--",color:B.spark},
                     {label:"Missed Trades",value:sel.missedTrades||"0",color:B.textMuted},
@@ -6125,7 +6142,7 @@ export default function App(){
       {active==="journal"&&<Journal trades={activeAccount==="all"?trades:trades.filter(t=>t.account_id===activeAccount)} onEdit={handleEdit} onDelete={setDelTrade} onGradeUpdate={handleGradeUpdate}/>}
       {active==="analytics"&&<Analytics trades={activeAccount==="all"?trades:trades.filter(t=>t.account_id===activeAccount)}/>}
       {active==="calendar"&&<CalendarView trades={activeAccount==="all"?trades:trades.filter(t=>t.account_id===activeAccount)} onGradeUpdate={handleGradeUpdate} onEdit={handleEdit}/>}
-      {active==="playbooks"&&<PlaybookView/>}
+      {active==="playbooks"&&<PlaybookView trades={activeAccount==="all"?trades:trades.filter(t=>t.account_id===activeAccount)}/>}
       {active==="resources"&&<ResourcesPage session={session}/>}
       {active==="economiccalendar"&&<EconomicCalendar isDark={isDark}/>}
       {active==="library"&&<PlaybookLibrary session={session}/>}
