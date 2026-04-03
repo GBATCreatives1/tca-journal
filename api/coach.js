@@ -57,27 +57,25 @@ JSON structure:
 
 Find 4-6 patterns covering: time-of-day edge, day-of-week patterns, win/loss streaks, after-loss behavior, setup performance, overtrading signals. Be specific with numbers.`,
 
-    economic: `You are a financial data assistant. Generate a realistic economic calendar for US markets for the week provided. Return ONLY valid JSON, no markdown.
+    economic: `You are a financial data assistant. Generate the US economic calendar for the exact week provided. Return ONLY a JSON object, no markdown, no explanation.
 
-Week data: ${JSON.stringify(dayStats)}
+Week: ${dayStats.weekStart} to ${dayStats.weekEnd}
+Dates: ${JSON.stringify(dayStats.weekDates)}
+Today: ${dayStats.today}
 
-Return JSON with this structure:
-{
-  "events": [
-    {
-      "date": "YYYY-MM-DD",
-      "time": "HH:MM",
-      "name": "Event name",
-      "impact": "high|medium|low",
-      "currency": "USD",
-      "forecast": "value or empty string",
-      "previous": "value or empty string",
-      "actual": ""
-    }
-  ]
-}
+Rules:
+- ONLY include events that actually fall on the exact dates provided
+- Every Thursday: Initial Jobless Claims at 08:30
+- First Friday of month: NFP, Unemployment Rate, Avg Hourly Earnings at 08:30
+- ~2nd Tuesday: CPI m/m, Core CPI m/m at 08:30
+- ~2nd Wednesday: PPI m/m at 08:30  
+- First Monday: ISM Manufacturing PMI at 10:00
+- ~3rd Wednesday: FOMC if applicable
+- Every Wednesday: Crude Oil Inventories at 10:30
+- Include forecast/previous values where known
 
-Include only real, scheduled USD economic events for that specific week. Focus on: NFP (first Friday), CPI (2nd Tuesday), FOMC meetings, Initial Jobless Claims (every Thursday), ISM PMIs, Retail Sales, GDP releases. Match actual scheduled dates. Return 5-15 events total.`,
+Return this exact JSON structure:
+{"events":[{"date":"YYYY-MM-DD","time":"HH:MM","name":"Event Name","impact":"high","currency":"USD","forecast":"","previous":"","actual":""}]}`,
 
         trade: `You are an expert MES futures trading coach. Analyze this single trade and give honest, specific feedback. Respond with ONLY valid JSON, no markdown.
 
@@ -120,7 +118,7 @@ JSON structure:
       },
       body: JSON.stringify({
         model: "claude-sonnet-4-20250514",
-        max_tokens: type === "full" ? 1000 : type === "patterns" ? 1200 : 600,
+        max_tokens: type === "full" ? 1000 : type === "patterns" ? 1200 : type === "economic" ? 1500 : 600,
         messages,
       }),
     });
