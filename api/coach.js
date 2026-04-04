@@ -5,19 +5,48 @@ export default async function handler(req, res) {
   if (req.method === "OPTIONS") return res.status(200).end();
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
-  const cleanJSON = (text) => {
-    // Strip markdown fences
-    let s = text.split("```json").join("").split("```").join("").trim();
-    // Find outermost JSON object
+  // Robust JSON extractor - handles trailing commas, truncated responses, etc.
+  const parseAI = (text) => {
+    // Strip markdown
+    let s = text.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
+
+    // Find outermost { }
     const start = s.indexOf("{");
     const end = s.lastIndexOf("}");
-    if (start === -1 || end === -1) throw new Error("No JSON object found in response");
+    if (start === -1 || end === -1) throw new Error("No JSON found");
     s = s.slice(start, end + 1);
-    // Fix trailing commas before } or ]
-    s = s.replace(/,(\s*[}\]])/g, "$1");
-    // Fix unescaped newlines inside strings
-    s = s.replace(/("(?:[^"\\]|\\.)*")|(\n)/g, (m, str, nl) => str ? str : " ");
-    return JSON.parse(s);
+
+    // Try direct parse first
+    try { return JSON.parse(s); } catch(e) {}
+
+    // Fix trailing commas  before } or ]
+    s = s.replace(/,\s*([\]}])/g, "$1");
+    try { return JSON.parse(s); } catch(e) {}
+
+    // Fix unescaped quotes inside strings (basic)
+    // Replace literal newlines inside strings with \n
+    s = s.replace(/("(?:[^"\\]|\\.)*)(\n)((?:[^"\\]|\\.)*")/g, '$1\\n$3');
+    try { return JSON.parse(s); } catch(e) {}
+
+    // If still failing, try to truncate to last complete top-level value
+    // by finding the last , at depth 1 and closing the object
+    let depth = 0;
+    let lastGoodPos = start;
+    let inStr = false;
+    for (let i = 0; i < s.length; i++) {
+      const ch = s[i];
+      if (ch === '"' && s[i-1] !== '\\') inStr = !inStr;
+      if (inStr) continue;
+      if (ch === '{' || ch === '[') depth++;
+      if (ch === '}' || ch === ']') {
+        depth--;
+        if (depth === 0) lastGoodPos = i;
+      }
+    }
+    const truncated = s.slice(0, lastGoodPos + 1);
+    try { return JSON.parse(truncated); } catch(e) {}
+
+    throw new Error("Could not parse AI response as JSON");
   };
 
   try {
@@ -29,11 +58,6 @@ export default async function handler(req, res) {
 
     // ── CHAT handler ─────────────────────────────────────────────────────────
     if (type === "chat") {
-      const chatContext = body.chatContext || "";
-      const chatHistory = body.chatHistory || [];
-      if (!chatHistory.length) {
-        return res.status(200).json({ content: [{ type: "text", text: "No messages received." }] });
-      }
       const r = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: {
@@ -44,55 +68,40 @@ export default async function handler(req, res) {
         body: JSON.stringify({
           model: MODEL,
           max_tokens: 600,
-          system: chatContext,
-          messages: chatHistory,
+          system: body.chatContext || "",
+          messages: body.chatHistory || [],
         }),
       });
       if (!r.ok) {
         const t = await r.text();
         console.error("Chat error:", r.status, t.slice(0, 200));
-        return res.status(200).json({ content: [{ type: "text", text: "API error " + r.status + ". Try again." }] });
+        return res.status(200).json({ content: [{ type: "text", text: "API error " + r.status }] });
       }
-      const d = await r.json();
-      return res.status(200).json(d);
+      return res.status(200).json(await r.json());
     }
 
-    // ── Structured JSON types ─────────────────────────────────────────────────
+    // ── Structured types ──────────────────────────────────────────────────────
     const stats = body.stats || {};
     const dayStats = body.dayStats || {};
 
-    const prompts = {
-      full: "You are an expert MES futures trading coach. Analyze this trader's performance data.\n"
-        + "IMPORTANT: Respond with ONLY a valid JSON object. No explanation, no markdown, no trailing commas.\n"
-        + "Required format: "
-        + '{"patterns":[{"title":"string","detail":"string","type":"positive"}],'
-        + '"psychology":[{"title":"string","detail":"string","type":"positive"}],'
-        + '"actions":[{"priority":"high","action":"string","reasoning":"string"}],'
-        + '"summary":"string","score":75}'
-        + "\nTrader data: " + JSON.stringify(stats),
-
-      day: "You are a trading coach. Review this trading day.\n"
-        + "Respond with ONLY valid JSON, no markdown, no trailing commas:\n"
-        + '{"mood":"focused","summary":"string","wins":["string"],"improvements":["string"],"tomorrowFocus":"string"}'
-        + "\nData: " + JSON.stringify(stats),
-
-      trade: "You are a trading coach. Analyze this single trade.\n"
-        + "Respond with ONLY valid JSON, no markdown, no trailing commas:\n"
-        + '{"score":75,"verdict":"string","strengths":["string"],"improvements":["string"],"lesson":"string"}'
-        + "\nTrade: " + JSON.stringify(stats),
-
-      patterns: "You are a trading psychologist. Identify behavioral patterns.\n"
-        + "Respond with ONLY valid JSON, no markdown, no trailing commas:\n"
-        + '{"patterns":[{"title":"string","description":"string","frequency":"string","impact":"positive","suggestion":"string"}],"topIssue":"string","topStrength":"string"}'
-        + "\nData: " + JSON.stringify(stats),
-
-      economic: "You are a financial data assistant. Generate the US economic calendar.\n"
-        + "Respond with ONLY valid JSON, no markdown, no trailing commas:\n"
-        + '{"events":[{"date":"YYYY-MM-DD","time":"HH:MM","name":"string","impact":"high","currency":"USD","actual":"","forecast":"","previous":""}]}'
-        + "\nWeek: " + dayStats.weekStart + " to " + dayStats.weekEnd + ". Today: " + dayStats.today,
+    // Use explicit examples to reduce model creativity with JSON structure
+    const schemas = {
+      full: '{"patterns":[{"title":"Example","detail":"Details here","type":"positive"}],"psychology":[{"title":"Example","detail":"Details here","type":"neutral"}],"actions":[{"priority":"high","action":"Do this","reasoning":"Because"}],"summary":"Overall summary","score":72}',
+      day:  '{"mood":"focused","summary":"Day summary","wins":["Win 1"],"improvements":["Improve 1"],"tomorrowFocus":"Focus"}',
+      trade:'{"score":75,"verdict":"Good trade","strengths":["Strength 1"],"improvements":["Improve 1"],"lesson":"Key lesson"}',
+      patterns:'{"patterns":[{"title":"Pattern","description":"Desc","frequency":"Often","impact":"negative","suggestion":"Fix this"}],"topIssue":"Main issue","topStrength":"Main strength"}',
+      economic:'{"events":[{"date":"2026-04-07","time":"08:30","name":"Event Name","impact":"high","currency":"USD","actual":"","forecast":"100K","previous":"95K"}]}',
     };
 
-    const prompt = prompts[type];
+    const contexts = {
+      full: "You are an expert MES futures trading coach. Analyze the trader data and return JSON exactly matching this structure (no extra fields, no trailing commas, no markdown):\n" + schemas.full + "\n\nTrader data:\n" + JSON.stringify(stats),
+      day:  "Trading coach. Analyze this day. Return JSON matching this structure exactly (no markdown, no trailing commas):\n" + schemas.day + "\n\nDay data:\n" + JSON.stringify(stats),
+      trade:"Trading coach. Analyze this trade. Return JSON matching this structure exactly (no markdown, no trailing commas):\n" + schemas.trade + "\n\nTrade:\n" + JSON.stringify(stats),
+      patterns:"Trading psychologist. Find patterns. Return JSON matching this structure exactly (no markdown, no trailing commas):\n" + schemas.patterns + "\n\nData:\n" + JSON.stringify(stats),
+      economic:"Financial calendar assistant. Return JSON matching this structure exactly (no markdown, no trailing commas):\n" + schemas.economic + "\n\nGenerate all major USD events for week " + dayStats.weekStart + " to " + dayStats.weekEnd + ". Today: " + dayStats.today,
+    };
+
+    const prompt = contexts[type];
     if (!prompt) return res.status(400).json({ error: "Invalid type: " + type });
 
     const messages = type === "trade" && body.chartImage
@@ -124,15 +133,13 @@ export default async function handler(req, res) {
 
     const d = await r.json();
     const text = d.content?.[0]?.text || "";
-    if (!text) return res.status(200).json({ error: "Empty response" });
+    console.log("Response preview:", text.slice(0, 100));
 
-    console.log("Raw response length:", text.length, "chars");
-    const parsed = cleanJSON(text);
+    const parsed = parseAI(text);
     return res.status(200).json(parsed);
 
   } catch (err) {
     console.error("Coach error:", err.message);
-    // For chat type errors, return in chat format
     if ((req.body || {}).type === "chat") {
       return res.status(200).json({ content: [{ type: "text", text: "Error: " + err.message }] });
     }
