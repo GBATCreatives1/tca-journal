@@ -4024,12 +4024,12 @@ function AICoachWidget({trades}){
           {/* Score */}
           <div style={{display:"flex",alignItems:"center",gap:16,padding:"14px 16px",borderRadius:12,background:"rgba(0,0,0,0.3)",border:`1px solid ${B.border}`}}>
             <div style={{textAlign:"center"}}>
-              <div style={{fontSize:32,fontWeight:800,background:GL,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",fontFamily:"monospace"}}>{analysis.overallScore}</div>
+              <div style={{fontSize:32,fontWeight:800,background:GL,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",fontFamily:"monospace"}}>{analysis.score||analysis.overallScore||0}</div>
               <div style={{fontSize:9,color:B.textMuted,letterSpacing:1}}>/ 100</div>
             </div>
             <div>
-              <div style={{fontSize:15,fontWeight:700,color:B.text}}>{analysis.scoreLabel}</div>
-              <div style={{fontSize:12,color:B.textMuted,lineHeight:1.5,marginTop:4}}>{analysis.summary}</div>
+              <div style={{fontSize:15,fontWeight:700,color:B.text}}>{analysis.scoreLabel||(analysis.score>=80?"Excellent":analysis.score>=65?"Good":analysis.score>=50?"Average":"Needs Work")}</div>
+              <div style={{fontSize:12,color:B.textMuted,lineHeight:1.5,marginTop:4}}>{analysis.summary||"Analysis complete."}</div>
             </div>
           </div>
 
@@ -6890,6 +6890,8 @@ function WeeklyReview({trades, session}){
           </div>
         )}
       </div>
+    </div>
+  </div>
     </div>
   );
 }
