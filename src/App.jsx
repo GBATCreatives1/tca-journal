@@ -6911,7 +6911,7 @@ function TradeReplayButton({trade}){
   const [open, setOpen] = useState(false);
 
   const getSymbol=(instrument)=>{
-    const map={MES:"/MES1!",ES:"/ES1!",MNQ:"/MNQ1!",NQ:"/NQ1!",MGC:"/MGC1!",GC:"/GC1!",MCL:"/MCL1!",CL:"/CL1!",SPY:"SPY",QQQ:"QQQ",IWM:"IWM"};
+    const map={MES:"MES1!",ES:"ES1!",MNQ:"MNQ1!",NQ:"NQ1!",MGC:"MGC1!",GC:"GC1!",MCL:"MCL1!",CL:"CL1!",SPY:"SPY",QQQ:"QQQ",IWM:"IWM"};
     return map[instrument]||instrument;
   };
 
