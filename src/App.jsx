@@ -5509,7 +5509,7 @@ function RecurringPatternsWidget({trades}){
       const res=await fetch("/api/coach",{
         method:"POST",
         headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({type:"patterns",dayStats:stats}),
+        body:JSON.stringify({type:"patterns",stats:stats}),
       });
       const data=await res.json();
       // coach.js returns parsed JSON directly
@@ -5520,7 +5520,7 @@ function RecurringPatternsWidget({trades}){
         const clean=data.content[0].text.replace(/```json|```/g,"").trim();
         parsed=JSON.parse(clean);
       }
-      if(!parsed.patterns&&!parsed.overallScore){throw new Error("No patterns returned");}
+      if(!parsed.patterns&&!parsed.score&&!parsed.topIssue){throw new Error("No patterns returned");}
       setAnalysis(parsed);
       const today=new Date().toISOString().slice(0,10);
       setLastRun(today);
@@ -5528,8 +5528,8 @@ function RecurringPatternsWidget({trades}){
     }catch(e){
       console.error("Patterns AI error:",e);
       setAnalysis({
-        overallScore:0,
-        scoreLabel:"Analysis Failed",
+        score:0,
+        topIssue:"Analysis Failed",
         summary:`Could not complete analysis: ${e.message}. Make sure you have trades logged and try again.`,
         patterns:[{title:"Error",detail:e.message,type:"negative"}],
         actions:[]
@@ -5582,12 +5582,12 @@ function RecurringPatternsWidget({trades}){
           {/* Summary score */}
           <div style={{padding:"14px 16px",borderRadius:12,background:"rgba(0,0,0,0.3)",border:`1px solid ${B.border}`,display:"flex",alignItems:"center",gap:14}}>
             <div style={{textAlign:"center"}}>
-              <div style={{fontSize:32,fontWeight:800,background:GL,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",fontFamily:"monospace"}}>{analysis.overallScore}</div>
+              <div style={{fontSize:32,fontWeight:800,background:GL,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",fontFamily:"monospace"}}>{analysis.score||""}</div>
               <div style={{fontSize:9,color:B.textMuted}}>/100</div>
             </div>
             <div style={{flex:1}}>
-              <div style={{fontSize:14,fontWeight:700,color:B.text,marginBottom:4}}>{analysis.scoreLabel}</div>
-              <div style={{fontSize:12,color:B.textMuted,lineHeight:1.6}}>{analysis.summary}</div>
+              <div style={{fontSize:14,fontWeight:700,color:B.text,marginBottom:4}}>{analysis.topIssue||analysis.scoreLabel||"Behavioral Analysis"}</div>
+              <div style={{fontSize:12,color:B.textMuted,lineHeight:1.6}}>{analysis.summary||(analysis.topStrength?"Strength: "+analysis.topStrength:"See patterns below.")}</div>
             </div>
           </div>
 
@@ -5598,7 +5598,7 @@ function RecurringPatternsWidget({trades}){
                 <span style={{fontSize:14}}>{p.type==="positive"?"✅":p.type==="negative"?"⚠️":"💡"}</span>
                 <span style={{fontSize:12,fontWeight:700,color:TYPE_COLORS[p.type]||B.text}}>{p.title}</span>
               </div>
-              <div style={{fontSize:12,color:B.textMuted,lineHeight:1.6}}>{p.detail}</div>
+              <div style={{fontSize:12,color:B.textMuted,lineHeight:1.6}}>{p.description||p.detail||p.suggestion}</div>
             </div>
           ))}
 
