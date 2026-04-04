@@ -6902,6 +6902,8 @@ function WeeklyReview({trades, session}){
           </div>
         )}
       </div>
+    </div>
+  </div>
   );
 }
 
