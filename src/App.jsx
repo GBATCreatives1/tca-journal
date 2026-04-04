@@ -6631,29 +6631,18 @@ function WeeklyReview({trades, session}){
       const byDay = {};
       weekTrades.forEach(t=>{const d=new Date(t.date+"T12:00:00").toLocaleDateString("en-US",{weekday:"short"});if(!byDay[d])byDay[d]={w:0,n:0,pnl:0};byDay[d].n++;byDay[d].pnl+=t.pnl;if(t.result==="Win")byDay[d].w++;});
 
-      const context = `You are an expert trading coach specializing in ICT methodology and MES futures. Review this trader's week and give an honest, specific, actionable coaching report. Return ONLY valid JSON, no markdown.
-
-WEEK: ${selectedWeek} to ${weekEnd}
-TRADES: ${weekTrades.length} total | $${pnl.toFixed(2)} P&L | ${wr}% WR
-WINS: ${wins.length} | LOSSES: ${losses.length}
-BY SESSION: ${Object.entries(bySess).map(([s,d])=>s+"="+d.n+"t,"+Math.round(d.w/d.n*100)+"%WR,$"+d.pnl.toFixed(2)).join("|")}
-BY DAY: ${Object.entries(byDay).map(([d,v])=>d+"="+v.n+"t,"+Math.round(v.w/v.n*100)+"%WR,$"+v.pnl.toFixed(2)).join("|")}
-TRADE LOG: ${weekTrades.map(t=>t.date+"|"+t.instrument+"|"+t.direction+"|"+t.result+"|$"+t.pnl.toFixed(2)+"|"+(t.strategy||t.setup||"?")+"|"+t.session+"|Grade:"+t.grade).join(" / ")}`;
-
-Respond with this exact JSON:
-{
-  "headline": "one sentence summary of the week",
-  "score": 0-100,
-  "grade": "A+|A|B|C|D",
-  "whatWorked": ["specific thing 1", "specific thing 2", "specific thing 3"],
-  "whatDidnt": ["specific issue 1", "specific issue 2"],
-  "keyPattern": "the most important behavioral pattern you noticed this week",
-  "bestTrade": "describe the best trade and why it was good",
-  "worstTrade": "describe the worst trade and the lesson",
-  "focusNextWeek": "the single most important thing to work on next week",
-  "mindset": "assessment of trading psychology this week",
-  "consistency": 0-100
-}`;
+      const sessStats = Object.entries(bySess).map(([s,d])=>s+"="+d.n+"t,"+Math.round(d.w/d.n*100)+"%WR,$"+d.pnl.toFixed(2)).join("|");
+    const dayStats2 = Object.entries(byDay).map(([d,v])=>d+"="+v.n+"t,"+Math.round(v.w/v.n*100)+"%WR,$"+v.pnl.toFixed(2)).join("|");
+    const tradeLog = weekTrades.map(t=>t.date+"|"+t.instrument+"|"+t.direction+"|"+t.result+"|$"+t.pnl.toFixed(2)+"|"+(t.strategy||t.setup||"?")+"|"+t.session+"|Grade:"+t.grade).join(" / ");
+    const jsonSchema = '{"headline":"string","score":0,"grade":"A","whatWorked":[],"whatDidnt":[],"keyPattern":"string","bestTrade":"string","worstTrade":"string","focusNextWeek":"string","mindset":"string","consistency":0}';
+    const context = "You are an expert trading coach specializing in ICT methodology and MES futures. Review this trader's week and give an honest, specific, actionable coaching report. Return ONLY valid JSON, no markdown.\n\n"
+      + "WEEK: " + selectedWeek + " to " + weekEnd + "\n"
+      + "TRADES: " + weekTrades.length + " total | $" + pnl.toFixed(2) + " P&L | " + wr + "% WR\n"
+      + "WINS: " + wins.length + " | LOSSES: " + losses.length + "\n"
+      + "BY SESSION: " + sessStats + "\n"
+      + "BY DAY: " + dayStats2 + "\n"
+      + "TRADE LOG: " + tradeLog + "\n\n"
+      + "Respond with this exact JSON structure: " + jsonSchema;
 
       const res = await fetch("/api/coach",{
         method:"POST", headers:{"Content-Type":"application/json"},
