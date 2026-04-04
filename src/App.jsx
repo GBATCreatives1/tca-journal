@@ -6562,6 +6562,466 @@ function AdminPanel({onClose}){
 }
 
 
+// ── Weekly Review Page ────────────────────────────────────────────────────────
+function WeeklyReview({trades, session}){
+  const [selectedWeek, setSelectedWeek] = useState(()=>{
+    const d = new Date();
+    const dow = d.getDay();
+    const mon = new Date(d);
+    mon.setDate(d.getDate() - (dow === 0 ? 6 : dow - 1));
+    return mon.toISOString().slice(0,10);
+  });
+  const [review, setReview] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [saved, setSaved] = useState({});
+  const [notes, setNotes] = useState("");
+  const [focusNext, setFocusNext] = useState("");
+  const [rulesKept, setRulesKept] = useState([]);
+  const [rulesBroken, setRulesBroken] = useState([]);
+  const SKEY = `tca_weekly_review_${selectedWeek}`;
+
+  // Build week dates
+  const weekDates = Array.from({length:5}, (_,i)=>{
+    const d = new Date(selectedWeek+"T12:00:00");
+    d.setDate(d.getDate()+i);
+    return d.toISOString().slice(0,10);
+  });
+  const weekEnd = weekDates[4];
+  const weekTrades = trades.filter(t=>t.date>=selectedWeek&&t.date<=weekEnd);
+
+  // Load saved review
+  useEffect(()=>{
+    try{
+      const saved = JSON.parse(localStorage.getItem(SKEY)||"{}");
+      if(saved.notes)setNotes(saved.notes);
+      if(saved.focusNext)setFocusNext(saved.focusNext);
+      if(saved.rulesKept)setRulesKept(saved.rulesKept);
+      if(saved.rulesBroken)setRulesBroken(saved.rulesBroken);
+      if(saved.review)setReview(saved.review);
+    }catch(e){}
+  },[selectedWeek]);
+
+  const saveReview = ()=>{
+    const data = {notes,focusNext,rulesKept,rulesBroken,review,savedAt:new Date().toISOString()};
+    localStorage.setItem(SKEY, JSON.stringify(data));
+    setSaved(s=>({...s,[selectedWeek]:true}));
+    setTimeout(()=>setSaved(s=>({...s,[selectedWeek]:false})),2000);
+  };
+
+  const navWeek = (dir)=>{
+    const d = new Date(selectedWeek+"T12:00:00");
+    d.setDate(d.getDate()+(dir*7));
+    const dow = d.getDay();
+    const mon = new Date(d);
+    mon.setDate(d.getDate()-(dow===0?6:dow-1));
+    setSelectedWeek(mon.toISOString().slice(0,10));
+    setReview(null);setNotes("");setFocusNext("");setRulesKept([]);setRulesBroken([]);
+  };
+
+  const generateAIReview = async()=>{
+    if(!weekTrades.length){alert("No trades this week to review.");return;}
+    setLoading(true);
+    try{
+      const wins = weekTrades.filter(t=>t.result==="Win");
+      const losses = weekTrades.filter(t=>t.result==="Loss");
+      const pnl = weekTrades.reduce((a,t)=>a+t.pnl,0);
+      const wr = Math.round(wins.length/weekTrades.length*100);
+      const bySess = {};
+      weekTrades.forEach(t=>{if(!bySess[t.session])bySess[t.session]={w:0,n:0,pnl:0};bySess[t.session].n++;bySess[t.session].pnl+=t.pnl;if(t.result==="Win")bySess[t.session].w++;});
+      const byDay = {};
+      weekTrades.forEach(t=>{const d=new Date(t.date+"T12:00:00").toLocaleDateString("en-US",{weekday:"short"});if(!byDay[d])byDay[d]={w:0,n:0,pnl:0};byDay[d].n++;byDay[d].pnl+=t.pnl;if(t.result==="Win")byDay[d].w++;});
+
+      const context = `You are an expert trading coach specializing in ICT methodology and MES futures. Review this trader's week and give an honest, specific, actionable coaching report. Return ONLY valid JSON, no markdown.
+
+WEEK: ${selectedWeek} to ${weekEnd}
+TRADES: ${weekTrades.length} total | $${pnl.toFixed(2)} P&L | ${wr}% WR
+WINS: ${wins.length} | LOSSES: ${losses.length}
+BY SESSION: ${Object.entries(bySess).map(([s,d])=>`${s}=${d.n}t,${Math.round(d.w/d.n*100)}%WR,$${d.pnl.toFixed(2)}`).join("|")}
+BY DAY: ${Object.entries(byDay).map(([d,v])=>`${d}=${v.n}t,${Math.round(v.w/v.n*100)}%WR,$${v.pnl.toFixed(2)}`).join("|")}
+TRADE LOG: ${weekTrades.map(t=>`${t.date}|${t.instrument}|${t.direction}|${t.result}|$${t.pnl.toFixed(2)}|${t.strategy||t.setup||"?"}|${t.session}|Grade:${t.grade}`).join(" / ")}
+
+Respond with this exact JSON:
+{
+  "headline": "one sentence summary of the week",
+  "score": 0-100,
+  "grade": "A+|A|B|C|D",
+  "whatWorked": ["specific thing 1", "specific thing 2", "specific thing 3"],
+  "whatDidnt": ["specific issue 1", "specific issue 2"],
+  "keyPattern": "the most important behavioral pattern you noticed this week",
+  "bestTrade": "describe the best trade and why it was good",
+  "worstTrade": "describe the worst trade and the lesson",
+  "focusNextWeek": "the single most important thing to work on next week",
+  "mindset": "assessment of trading psychology this week",
+  "consistency": 0-100
+}`;
+
+      const res = await fetch("/api/coach",{
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({type:"chat", chatContext:context,
+          chatHistory:[{role:"user",content:"Generate the weekly review now."}]}),
+      });
+      const data = await res.json();
+      const text = data.content?.[0]?.text||"";
+      const cleaned = text.replace(/```json|```/g,"").trim();
+      const parsed = JSON.parse(cleaned);
+      setReview(parsed);
+      // Auto-fill focus
+      if(parsed.focusNextWeek)setFocusNext(parsed.focusNextWeek);
+    }catch(e){console.error(e);alert("AI review failed. Try again.");}
+    setLoading(false);
+  };
+
+  // Stats
+  const wins = weekTrades.filter(t=>t.result==="Win");
+  const losses = weekTrades.filter(t=>t.result==="Loss");
+  const pnl = weekTrades.reduce((a,t)=>a+t.pnl,0);
+  const wr = weekTrades.length?Math.round(wins.length/weekTrades.length*100):0;
+  const gradeColors = {"A+":B.teal,"A":B.teal,"B":B.blue,"C":"#FFB700","D":B.loss,"F":B.loss};
+
+  // Previous weeks for sidebar
+  const pastWeeks = Array.from({length:8},(_,i)=>{
+    const d = new Date(selectedWeek+"T12:00:00");
+    d.setDate(d.getDate()-((i+1)*7));
+    const dow = d.getDay();
+    const mon = new Date(d);
+    mon.setDate(d.getDate()-(dow===0?6:dow-1));
+    const wStart = mon.toISOString().slice(0,10);
+    const wEnd = new Date(mon.getTime()+4*86400000).toISOString().slice(0,10);
+    const wTrades = trades.filter(t=>t.date>=wStart&&t.date<=wEnd);
+    const wPnl = wTrades.reduce((a,t)=>a+t.pnl,0);
+    const wWr = wTrades.length?Math.round(wTrades.filter(t=>t.result==="Win").length/wTrades.length*100):0;
+    const hasReview = !!localStorage.getItem(`tca_weekly_review_${wStart}`);
+    return {start:wStart,end:wEnd,trades:wTrades.length,pnl:wPnl,wr:wWr,hasReview};
+  }).filter(w=>w.trades>0);
+
+  return(
+    <div style={{display:"flex",gap:0,minHeight:"80vh"}}>
+      {/* Sidebar - past weeks */}
+      <div style={{width:200,flexShrink:0,borderRight:`1px solid ${B.border}`,paddingRight:16,marginRight:24}}>
+        <div style={{fontSize:10,color:B.textMuted,letterSpacing:1.5,marginBottom:10}}>PAST WEEKS</div>
+        {pastWeeks.map(w=>(
+          <div key={w.start} onClick={()=>{setSelectedWeek(w.start);setReview(null);setNotes("");setFocusNext("");}}
+            style={{padding:"8px 10px",borderRadius:8,cursor:"pointer",marginBottom:4,
+              background:selectedWeek===w.start?`${B.teal}10`:"transparent",
+              border:`1px solid ${selectedWeek===w.start?B.teal:B.border}`}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div style={{fontSize:11,color:B.text,fontWeight:600}}>{new Date(w.start+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric"})}</div>
+              {w.hasReview&&<div style={{width:6,height:6,borderRadius:"50%",background:B.teal}}/>}
+            </div>
+            <div style={{fontSize:10,color:pnlColor(w.pnl),fontFamily:"monospace",fontWeight:700,marginTop:2}}>{w.pnl>=0?"+":""}${w.pnl.toFixed(2)}</div>
+            <div style={{fontSize:9,color:B.textMuted}}>{w.trades} trades · {w.wr}% WR</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Main content */}
+      <div style={{flex:1}}>
+        {/* Week nav */}
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:24}}>
+          <div style={{display:"flex",alignItems:"center",gap:12}}>
+            <button onClick={()=>navWeek(-1)} style={{width:32,height:32,borderRadius:8,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:16}}>‹</button>
+            <div>
+              <div style={{fontSize:18,fontWeight:800,color:B.text}}>Week of {new Date(selectedWeek+"T12:00:00").toLocaleDateString("en-US",{month:"long",day:"numeric",year:"numeric"})}</div>
+              <div style={{fontSize:11,color:B.textMuted}}>{selectedWeek} → {weekEnd}</div>
+            </div>
+            <button onClick={()=>navWeek(1)} style={{width:32,height:32,borderRadius:8,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:16}}>›</button>
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={saveReview} style={{padding:"8px 16px",borderRadius:9,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:12,fontWeight:600}}>
+              {saved[selectedWeek]?"✅ Saved":"💾 Save Review"}
+            </button>
+            <button onClick={generateAIReview} disabled={loading||!weekTrades.length} style={{padding:"8px 20px",borderRadius:9,border:"none",background:loading||!weekTrades.length?"rgba(255,255,255,0.05)":"linear-gradient(135deg,#00D4A8,#8B5CF6)",color:loading||!weekTrades.length?"#6B6880":"#0E0E10",cursor:loading||!weekTrades.length?"not-allowed":"pointer",fontSize:12,fontWeight:800}}>
+              {loading?"🧠 Generating...":"🧠 Generate AI Review"}
+            </button>
+          </div>
+        </div>
+
+        {/* Week stats bar */}
+        <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:12,marginBottom:24}}>
+          {[
+            {label:"Trades",value:weekTrades.length,color:B.blue},
+            {label:"Net P&L",value:`${pnl>=0?"+":""}$${pnl.toFixed(2)}`,color:pnlColor(pnl)},
+            {label:"Win Rate",value:`${wr}%`,color:wr>=55?B.teal:wr>=45?"#FFB700":B.loss},
+            {label:"Wins",value:wins.length,color:B.teal},
+            {label:"Losses",value:losses.length,color:B.loss},
+          ].map(s=>(
+            <div key={s.label} style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:12,padding:"14px 16px",textAlign:"center"}}>
+              <div style={{fontSize:9,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:6}}>{s.label}</div>
+              <div style={{fontSize:20,fontWeight:800,color:s.color,fontFamily:"monospace"}}>{s.value}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Day by day breakdown */}
+        <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:8,marginBottom:24}}>
+          {weekDates.map(date=>{
+            const dayTrades = weekTrades.filter(t=>t.date===date);
+            const dayPnl = dayTrades.reduce((a,t)=>a+t.pnl,0);
+            const dayWins = dayTrades.filter(t=>t.result==="Win").length;
+            const dayName = new Date(date+"T12:00:00").toLocaleDateString("en-US",{weekday:"short"});
+            const isToday = date===new Date().toISOString().slice(0,10);
+            return(
+              <div key={date} style={{background:dayTrades.length?dayPnl>=0?`rgba(0,212,168,0.06)`:`rgba(240,90,126,0.06)`:B.surface,
+                border:`1px solid ${isToday?B.teal:dayTrades.length?dayPnl>=0?B.borderTeal:B.borderPurp:B.border}`,
+                borderRadius:10,padding:"12px",textAlign:"center"}}>
+                <div style={{fontSize:11,fontWeight:700,color:isToday?B.teal:B.textMuted,marginBottom:4}}>{dayName}</div>
+                <div style={{fontSize:10,color:B.textDim,marginBottom:6}}>{date.slice(5)}</div>
+                {dayTrades.length?(
+                  <>
+                    <div style={{fontSize:14,fontWeight:800,fontFamily:"monospace",color:pnlColor(dayPnl)}}>{dayPnl>=0?"+":""}${dayPnl.toFixed(2)}</div>
+                    <div style={{fontSize:10,color:B.textMuted,marginTop:2}}>{dayTrades.length}t · {dayWins}/{dayTrades.length}</div>
+                  </>
+                ):(
+                  <div style={{fontSize:11,color:B.textDim}}>—</div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* AI Review */}
+        {review&&(
+          <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:16,padding:24,marginBottom:20}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                <div style={{width:36,height:36,borderRadius:"50%",background:"linear-gradient(135deg,#00D4A8,#8B5CF6)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>🧠</div>
+                <div>
+                  <div style={{fontSize:14,fontWeight:800,color:B.text}}>TCA Coach Review</div>
+                  <div style={{fontSize:11,color:B.textMuted}}>AI-generated weekly coaching report</div>
+                </div>
+              </div>
+              <div style={{textAlign:"right"}}>
+                <div style={{fontSize:28,fontWeight:900,color:gradeColors[review.grade]||B.teal}}>{review.grade}</div>
+                <div style={{fontSize:11,color:B.textMuted}}>Score: {review.score}/100</div>
+              </div>
+            </div>
+
+            {/* Headline */}
+            <div style={{padding:"12px 16px",borderRadius:10,background:"rgba(0,212,168,0.06)",border:`1px solid rgba(0,212,168,0.15)`,marginBottom:16,fontSize:13,color:B.text,fontStyle:"italic",lineHeight:1.6}}>
+              "{review.headline}"
+            </div>
+
+            {/* Score bar */}
+            <div style={{marginBottom:20}}>
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:B.textMuted,marginBottom:6}}>
+                <span>Overall Score</span><span>{review.score}/100</span>
+              </div>
+              <div style={{height:6,background:"rgba(255,255,255,0.05)",borderRadius:3,overflow:"hidden"}}>
+                <div style={{height:"100%",width:`${review.score}%`,background:review.score>=70?"linear-gradient(90deg,#00D4A8,#4F8EF7)":review.score>=50?"linear-gradient(90deg,#FFB700,#FF6B35)":"linear-gradient(90deg,#F05A7E,#FF6B6B)",borderRadius:3,transition:"width 1s"}}/>
+              </div>
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:B.textMuted,marginTop:4}}>
+                <span>Consistency: {review.consistency}/100</span>
+                <span>Mindset: {review.mindset?.slice(0,40)}...</span>
+              </div>
+            </div>
+
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
+              {/* What worked */}
+              <div style={{background:"rgba(0,212,168,0.04)",border:`1px solid rgba(0,212,168,0.15)`,borderRadius:10,padding:"14px 16px"}}>
+                <div style={{fontSize:10,color:B.teal,letterSpacing:1.5,fontWeight:700,marginBottom:10}}>✅ WHAT WORKED</div>
+                {(review.whatWorked||[]).map((w,i)=>(
+                  <div key={i} style={{fontSize:12,color:B.text,marginBottom:6,paddingLeft:12,position:"relative",lineHeight:1.5}}>
+                    <span style={{position:"absolute",left:0,color:B.teal}}>•</span>{w}
+                  </div>
+                ))}
+              </div>
+              {/* What didn't */}
+              <div style={{background:"rgba(240,90,126,0.04)",border:`1px solid rgba(240,90,126,0.15)`,borderRadius:10,padding:"14px 16px"}}>
+                <div style={{fontSize:10,color:B.loss,letterSpacing:1.5,fontWeight:700,marginBottom:10}}>⚠️ NEEDS WORK</div>
+                {(review.whatDidnt||[]).map((w,i)=>(
+                  <div key={i} style={{fontSize:12,color:B.text,marginBottom:6,paddingLeft:12,position:"relative",lineHeight:1.5}}>
+                    <span style={{position:"absolute",left:0,color:B.loss}}>•</span>{w}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Key insights */}
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
+              <div style={{padding:"12px 14px",borderRadius:10,background:"rgba(79,142,247,0.06)",border:`1px solid rgba(79,142,247,0.15)`}}>
+                <div style={{fontSize:9,color:B.blue,letterSpacing:1.5,fontWeight:700,marginBottom:6}}>🔑 KEY PATTERN</div>
+                <div style={{fontSize:12,color:B.text,lineHeight:1.6}}>{review.keyPattern}</div>
+              </div>
+              <div style={{padding:"12px 14px",borderRadius:10,background:"rgba(139,92,246,0.06)",border:`1px solid rgba(139,92,246,0.15)`}}>
+                <div style={{fontSize:9,color:B.purple,letterSpacing:1.5,fontWeight:700,marginBottom:6}}>🧘 MINDSET</div>
+                <div style={{fontSize:12,color:B.text,lineHeight:1.6}}>{review.mindset}</div>
+              </div>
+            </div>
+
+            {/* Best / Worst trade */}
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
+              <div style={{padding:"12px 14px",borderRadius:10,background:"rgba(0,212,168,0.04)",border:`1px solid rgba(0,212,168,0.2)`}}>
+                <div style={{fontSize:9,color:B.teal,letterSpacing:1.5,fontWeight:700,marginBottom:6}}>🏆 BEST TRADE</div>
+                <div style={{fontSize:12,color:B.text,lineHeight:1.5}}>{review.bestTrade}</div>
+              </div>
+              <div style={{padding:"12px 14px",borderRadius:10,background:"rgba(240,90,126,0.04)",border:`1px solid rgba(240,90,126,0.2)`}}>
+                <div style={{fontSize:9,color:B.loss,letterSpacing:1.5,fontWeight:700,marginBottom:6}}>📉 WORST TRADE</div>
+                <div style={{fontSize:12,color:B.text,lineHeight:1.5}}>{review.worstTrade}</div>
+              </div>
+            </div>
+
+            {/* Focus next week */}
+            <div style={{padding:"14px 16px",borderRadius:10,background:"linear-gradient(135deg,rgba(0,212,168,0.08),rgba(139,92,246,0.08))",border:`1px solid rgba(0,212,168,0.2)`}}>
+              <div style={{fontSize:9,color:B.teal,letterSpacing:1.5,fontWeight:700,marginBottom:6}}>🎯 FOCUS FOR NEXT WEEK</div>
+              <div style={{fontSize:13,color:B.text,fontWeight:700,lineHeight:1.5}}>{review.focusNextWeek}</div>
+            </div>
+          </div>
+        )}
+
+        {/* Manual notes section */}
+        <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:16,padding:20,marginBottom:16}}>
+          <div style={{fontSize:11,color:B.textMuted,letterSpacing:1.5,marginBottom:12}}>📝 MY PERSONAL NOTES</div>
+          <textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="What did you learn this week? What will you do differently? Any market observations..."
+            style={{width:"100%",minHeight:100,background:"rgba(0,0,0,0.3)",border:`1px solid ${B.border}`,borderRadius:10,padding:"12px 14px",color:B.text,fontSize:13,fontFamily:"'DM Sans',sans-serif",resize:"vertical",outline:"none",lineHeight:1.6}}/>
+        </div>
+
+        {/* Focus next week manual */}
+        <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:16,padding:20,marginBottom:16}}>
+          <div style={{fontSize:11,color:B.teal,letterSpacing:1.5,marginBottom:12}}>🎯 MY FOCUS FOR NEXT WEEK</div>
+          <input value={focusNext} onChange={e=>setFocusNext(e.target.value)} placeholder="One thing I will improve next week..."
+            style={{width:"100%",background:"rgba(0,0,0,0.3)",border:`1px solid ${B.border}`,borderRadius:10,padding:"11px 14px",color:B.text,fontSize:13,outline:"none"}}/>
+        </div>
+
+        {/* Trade list with replay button */}
+        {weekTrades.length>0&&(
+          <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:16,padding:20}}>
+            <div style={{fontSize:11,color:B.textMuted,letterSpacing:1.5,marginBottom:12}}>TRADES THIS WEEK ({weekTrades.length})</div>
+            <div style={{display:"flex",flexDirection:"column",gap:6}}>
+              {weekTrades.sort((a,b)=>a.date.localeCompare(b.date)).map(t=>(
+                <div key={t.id} style={{display:"grid",gridTemplateColumns:"80px 50px 60px 1fr 60px 75px 90px",gap:8,padding:"8px 12px",borderRadius:9,
+                  background:t.result==="Win"?`rgba(0,212,168,0.04)`:`rgba(240,90,126,0.04)`,
+                  border:`1px solid ${t.result==="Win"?`rgba(0,212,168,0.15)`:`rgba(240,90,126,0.15)`}`,
+                  alignItems:"center"}}>
+                  <div style={{fontSize:10,color:B.textMuted,fontFamily:"monospace"}}>{t.date.slice(5)}</div>
+                  <div><span style={{padding:"2px 6px",borderRadius:4,background:`${B.teal}15`,color:B.teal,fontSize:9,fontWeight:700}}>{t.instrument}</span></div>
+                  <div style={{fontSize:10,color:t.direction==="Long"?"#4ade80":"#f87171",fontWeight:700}}>{t.direction}</div>
+                  <div style={{fontSize:11,color:B.textMuted}}>{t.strategy||t.setup||"—"} · {t.session}</div>
+                  <div style={{fontSize:10,color:B.textMuted,textAlign:"center"}}>{t.grade}</div>
+                  <div style={{fontSize:12,fontWeight:800,fontFamily:"monospace",color:pnlColor(t.pnl),textAlign:"right"}}>{t.pnl>=0?"+":""}${t.pnl.toFixed(2)}</div>
+                  <TradeReplayButton trade={t}/>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {weekTrades.length===0&&(
+          <div style={{textAlign:"center",padding:"60px 20px",color:B.textMuted}}>
+            <div style={{fontSize:32,marginBottom:12}}>📅</div>
+            <div style={{fontSize:15,fontWeight:700,color:B.text}}>No trades this week</div>
+            <div style={{fontSize:12,marginTop:4}}>Navigate to a week where you have trades logged</div>
+          </div>
+        )}
+      </div>
+    </div>
+  </div>
+    </div>
+  );
+}
+
+// ── Trade Replay Button (inline) ──────────────────────────────────────────────
+function TradeReplayButton({trade}){
+  const [open, setOpen] = useState(false);
+
+  const getSymbol = (instrument)=>{
+    const map = {MES:"/MES1!",ES:"/ES1!",MNQ:"/MNQ1!",NQ:"/NQ1!",MGC:"/MGC1!",GC:"/GC1!",MCL:"/MCL1!",CL:"/CL1!",SPY:"SPY",QQQ:"QQQ",IWM:"IWM"};
+    return map[instrument] || instrument;
+  };
+
+  const getChartUrl = ()=>{
+    const symbol = encodeURIComponent(getSymbol(trade.instrument));
+    const date = new Date(trade.date+"T13:30:00"); // 9:30 AM ET
+    const timestamp = Math.floor(date.getTime()/1000);
+    return `https://www.tradingview.com/chart/?symbol=${symbol}&interval=5&theme=dark`;
+  };
+
+  if(!open){
+    return(
+      <button onClick={()=>setOpen(true)} style={{padding:"4px 8px",borderRadius:6,border:`1px solid rgba(79,142,247,0.3)`,background:"rgba(79,142,247,0.08)",color:B.blue,cursor:"pointer",fontSize:10,fontWeight:700,width:"100%"}}>
+        ▶ Replay
+      </button>
+    );
+  }
+
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.92)",zIndex:400,display:"flex",flexDirection:"column"}} onClick={()=>setOpen(false)}>
+      <div style={{background:"#13121A",borderBottom:`1px solid ${B.border}`,padding:"12px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}} onClick={e=>e.stopPropagation()}>
+        <div style={{display:"flex",alignItems:"center",gap:12}}>
+          <div style={{padding:"4px 10px",borderRadius:6,background:`${B.teal}15`,color:B.teal,fontSize:12,fontWeight:700}}>{trade.instrument}</div>
+          <div style={{fontSize:13,color:B.text,fontWeight:700}}>{trade.direction} · {trade.date} · {trade.session} Session</div>
+          <div style={{fontSize:12,fontFamily:"monospace",color:pnlColor(trade.pnl),fontWeight:800}}>{trade.pnl>=0?"+":""}${trade.pnl.toFixed(2)}</div>
+          <div style={{padding:"3px 8px",borderRadius:6,background:trade.result==="Win"?`${B.teal}15`:`${B.loss}15`,color:trade.result==="Win"?B.teal:B.loss,fontSize:11,fontWeight:700}}>{trade.result}</div>
+        </div>
+        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          <div style={{fontSize:11,color:B.textMuted}}>Entry: {trade.entry} · Exit: {trade.exit} · R:R: {trade.rr||"—"}</div>
+          <a href={getChartUrl()} target="_blank" rel="noopener noreferrer" style={{padding:"6px 12px",borderRadius:8,border:`1px solid ${B.border}`,color:B.textMuted,textDecoration:"none",fontSize:11,fontWeight:600}}>Open Full Chart ↗</a>
+          <button onClick={()=>setOpen(false)} style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${B.border}`,borderRadius:8,color:B.textMuted,cursor:"pointer",width:30,height:30,fontSize:16,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
+        </div>
+      </div>
+
+      {/* Trade info panel + chart */}
+      <div style={{flex:1,display:"flex",overflow:"hidden"}} onClick={e=>e.stopPropagation()}>
+        {/* Left: trade details */}
+        <div style={{width:260,borderRight:`1px solid ${B.border}`,padding:20,overflowY:"auto",flexShrink:0}}>
+          <div style={{fontSize:10,color:B.textMuted,letterSpacing:1.5,marginBottom:12}}>TRADE DETAILS</div>
+          {[
+            {label:"Date",value:trade.date},
+            {label:"Instrument",value:trade.instrument},
+            {label:"Direction",value:trade.direction},
+            {label:"Entry",value:trade.entry||"—"},
+            {label:"Exit",value:trade.exit||"—"},
+            {label:"Contracts",value:trade.contracts||1},
+            {label:"Session",value:trade.session||"—"},
+            {label:"Setup",value:trade.strategy||trade.setup||"—"},
+            {label:"Grade",value:trade.grade||"—"},
+            {label:"R:R",value:trade.rr||"—"},
+            {label:"Stop Loss",value:trade.stop_loss||"—"},
+            {label:"Take Profit",value:trade.take_profit||"—"},
+          ].map(r=>(
+            <div key={r.label} style={{display:"flex",justifyContent:"space-between",padding:"7px 0",borderBottom:`1px solid ${B.border}20`}}>
+              <div style={{fontSize:11,color:B.textMuted}}>{r.label}</div>
+              <div style={{fontSize:11,color:B.text,fontWeight:600}}>{r.value}</div>
+            </div>
+          ))}
+
+          {trade.notes&&(
+            <div style={{marginTop:16,padding:"10px 12px",borderRadius:8,background:"rgba(255,255,255,0.03)",border:`1px solid ${B.border}`}}>
+              <div style={{fontSize:9,color:B.textMuted,letterSpacing:1,marginBottom:6}}>NOTES</div>
+              <div style={{fontSize:11,color:B.text,lineHeight:1.6}}>{trade.notes}</div>
+            </div>
+          )}
+
+          {/* Price levels on chart guide */}
+          <div style={{marginTop:16,padding:"10px 12px",borderRadius:8,background:"rgba(79,142,247,0.06)",border:`1px solid rgba(79,142,247,0.2)`}}>
+            <div style={{fontSize:9,color:B.blue,letterSpacing:1,marginBottom:8}}>CHART REPLAY GUIDE</div>
+            <div style={{fontSize:11,color:B.textMuted,lineHeight:1.7}}>
+              1. Set timeframe to <strong style={{color:B.text}}>5m or 1m</strong><br/>
+              2. Navigate to <strong style={{color:B.text}}>{trade.date}</strong><br/>
+              3. Look for entry near <strong style={{color:B.text}}>{trade.entry||"your entry price"}</strong><br/>
+              {trade.stop_loss&&<>4. Stop was at <strong style={{color:B.loss}}>{trade.stop_loss}</strong><br/></>}
+              {trade.take_profit&&<>5. Target was at <strong style={{color:B.teal}}>{trade.take_profit}</strong></>}
+            </div>
+          </div>
+        </div>
+
+        {/* TradingView chart */}
+        <div style={{flex:1,position:"relative"}}>
+          <iframe
+            src={getChartUrl()}
+            style={{width:"100%",height:"100%",border:"none",display:"block"}}
+            title="Trade Replay Chart"
+            allowFullScreen
+          />
+          <div style={{position:"absolute",bottom:16,right:16,padding:"8px 14px",borderRadius:10,background:"rgba(0,0,0,0.8)",border:`1px solid ${B.border}`,fontSize:11,color:B.textMuted}}>
+            Navigate to <strong style={{color:B.text}}>{trade.date}</strong> to replay this trade
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 // ── TCA AI Chatbot ────────────────────────────────────────────────────────────
 function TCAChat({trades, strategies, isOpen, onClose}){
   const [messages, setMessages] = useState([{
@@ -6768,7 +7228,7 @@ function TradovateSyncModal({onClose, onSync, syncing, accounts=[]}){
 }
 
 
-const NAV=[{id:"overview",label:"Overview",icon:"▦"},{id:"journal",label:"Journal",icon:"⊟"},{id:"analytics",label:"Analytics",icon:"◈"},{id:"calendar",label:"P&L Calendar",icon:"⊞"},{id:"playbooks",label:"Strategies",icon:"⊕"},{id:"economiccalendar",label:"Eco Calendar",icon:"📰"},{id:"library",label:"Playbook",icon:"📚"},{id:"resources",label:"Resources",icon:"◎"}];
+const NAV=[{id:"overview",label:"Overview",icon:"▦"},{id:"journal",label:"Journal",icon:"⊟"},{id:"analytics",label:"Analytics",icon:"◈"},{id:"calendar",label:"P&L Calendar",icon:"⊞"},{id:"playbooks",label:"Strategies",icon:"⊕"},{id:"weeklyreview",label:"Weekly Review",icon:"🧠"},{id:"economiccalendar",label:"Eco Calendar",icon:"📰"},{id:"library",label:"Playbook",icon:"📚"},{id:"resources",label:"Resources",icon:"◎"}];
 
 export default function App(){
   const ADMIN_EMAIL = "admin@thecandlestickacademy.com";
@@ -6777,6 +7237,7 @@ export default function App(){
   const [showAdmin,setShowAdmin]=useState(false);
   const [showProfile,setShowProfile]=useState(false);
   const [showReport,setShowReport]=useState(false);
+  const [replayTrade,setReplayTrade]=useState(null);
     const [isDark,setIsDark]=useState(()=>{
     try{return localStorage.getItem("tca_theme")!=="light";}catch(e){return true;}
   });
@@ -7053,6 +7514,7 @@ export default function App(){
       {active==="calendar"&&<CalendarView trades={activeAccount==="all"?trades:trades.filter(t=>t.account_id===activeAccount)} onGradeUpdate={handleGradeUpdate} onEdit={handleEdit}/>}
       {active==="playbooks"&&<PlaybookView trades={activeAccount==="all"?trades:trades.filter(t=>t.account_id===activeAccount)}/>}
       {active==="resources"&&<ResourcesPage session={session}/>}
+      {active==="weeklyreview"&&<WeeklyReview trades={activeAccount==="all"?trades:trades.filter(t=>t.account_id===activeAccount)} session={session}/>}
       {active==="economiccalendar"&&<EconomicCalendar isDark={isDark}/>}
       {active==="library"&&<PlaybookLibrary session={session}/>}
     </div>
