@@ -6903,6 +6903,8 @@ function WeeklyReview({trades, session}){
         )}
       </div>
     </div>
+  </div>
+    </div>
   );
 }
 
@@ -6910,16 +6912,14 @@ function WeeklyReview({trades, session}){
 function TradeReplayButton({trade}){
   const [open, setOpen] = useState(false);
 
-  const getSymbol = (instrument)=>{
-    const map = {MES:"/MES1!",ES:"/ES1!",MNQ:"/MNQ1!",NQ:"/NQ1!",MGC:"/MGC1!",GC:"/GC1!",MCL:"/MCL1!",CL:"/CL1!",SPY:"SPY",QQQ:"QQQ",IWM:"IWM"};
-    return map[instrument] || instrument;
+  const getSymbol=(instrument)=>{
+    const map={MES:"/MES1!",ES:"/ES1!",MNQ:"/MNQ1!",NQ:"/NQ1!",MGC:"/MGC1!",GC:"/GC1!",MCL:"/MCL1!",CL:"/CL1!",SPY:"SPY",QQQ:"QQQ",IWM:"IWM"};
+    return map[instrument]||instrument;
   };
 
-  const getChartUrl = ()=>{
-    const symbol = encodeURIComponent(getSymbol(trade.instrument));
-    const date = new Date(trade.date+"T13:30:00"); // 9:30 AM ET
-    const timestamp = Math.floor(date.getTime()/1000);
-    return `https://www.tradingview.com/chart/?symbol=${symbol}&interval=5&theme=dark`;
+  const getTVUrl=(tf="5")=>{
+    const sym=encodeURIComponent(getSymbol(trade.instrument));
+    return `https://www.tradingview.com/chart/?symbol=${sym}&interval=${tf}&theme=dark`;
   };
 
   if(!open){
@@ -6930,24 +6930,46 @@ function TradeReplayButton({trade}){
     );
   }
 
+  // Price range for visual
+  const entry = parseFloat(trade.entry)||0;
+  const exit = parseFloat(trade.exit)||0;
+  const sl = parseFloat(trade.stop_loss)||0;
+  const tp = parseFloat(trade.take_profit)||0;
+  const allPrices = [entry,exit,sl,tp].filter(p=>p>0);
+  const minP = Math.min(...allPrices);
+  const maxP = Math.max(...allPrices);
+  const range = maxP-minP||10;
+  const pad = range*0.3;
+  const chartMin = minP-pad;
+  const chartMax = maxP+pad;
+  const chartRange = chartMax-chartMin;
+  const pct=(p)=>Math.round((1-(p-chartMin)/chartRange)*100);
+
   return(
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.92)",zIndex:400,display:"flex",flexDirection:"column"}} onClick={()=>setOpen(false)}>
+      {/* Header */}
       <div style={{background:"#13121A",borderBottom:`1px solid ${B.border}`,padding:"12px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}} onClick={e=>e.stopPropagation()}>
-        <div style={{display:"flex",alignItems:"center",gap:12}}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
           <div style={{padding:"4px 10px",borderRadius:6,background:`${B.teal}15`,color:B.teal,fontSize:12,fontWeight:700}}>{trade.instrument}</div>
           <div style={{fontSize:13,color:B.text,fontWeight:700}}>{trade.direction} · {trade.date} · {trade.session} Session</div>
-          <div style={{fontSize:12,fontFamily:"monospace",color:pnlColor(trade.pnl),fontWeight:800}}>{trade.pnl>=0?"+":""}${trade.pnl.toFixed(2)}</div>
+          <div style={{fontSize:14,fontFamily:"monospace",color:pnlColor(trade.pnl),fontWeight:800}}>{trade.pnl>=0?"+":""}${trade.pnl?.toFixed(2)}</div>
           <div style={{padding:"3px 8px",borderRadius:6,background:trade.result==="Win"?(B.teal+"15"):(B.loss+"15"),color:trade.result==="Win"?B.teal:B.loss,fontSize:11,fontWeight:700}}>{trade.result}</div>
         </div>
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
-          <div style={{fontSize:11,color:B.textMuted}}>Entry: {trade.entry} · Exit: {trade.exit} · R:R: {trade.rr||"—"}</div>
-          <a href={getChartUrl()} target="_blank" rel="noopener noreferrer" style={{padding:"6px 12px",borderRadius:8,border:`1px solid ${B.border}`,color:B.textMuted,textDecoration:"none",fontSize:11,fontWeight:600}}>Open Full Chart ↗</a>
-          <button onClick={()=>setOpen(false)} style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${B.border}`,borderRadius:8,color:B.textMuted,cursor:"pointer",width:30,height:30,fontSize:16,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
+          {/* TradingView links */}
+          {["1","5","15"].map(tf=>(
+            <a key={tf} href={getTVUrl(tf)} target="_blank" rel="noopener noreferrer"
+              style={{padding:"5px 10px",borderRadius:7,border:`1px solid ${B.border}`,color:B.textMuted,textDecoration:"none",fontSize:11,fontWeight:600}}>
+              {tf}m Chart ↗
+            </a>
+          ))}
+          <button onClick={()=>setOpen(false)} style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${B.border}`,borderRadius:8,color:B.textMuted,cursor:"pointer",width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>×</button>
         </div>
       </div>
 
-      {/* Trade info panel + chart */}
+      {/* Body */}
       <div style={{flex:1,display:"flex",overflow:"hidden"}} onClick={e=>e.stopPropagation()}>
+
         {/* Left: trade details */}
         <div style={{width:260,borderRight:`1px solid ${B.border}`,padding:20,overflowY:"auto",flexShrink:0}}>
           <div style={{fontSize:10,color:B.textMuted,letterSpacing:1.5,marginBottom:12}}>TRADE DETAILS</div>
@@ -6967,40 +6989,103 @@ function TradeReplayButton({trade}){
           ].map(r=>(
             <div key={r.label} style={{display:"flex",justifyContent:"space-between",padding:"7px 0",borderBottom:`1px solid ${B.border}20`}}>
               <div style={{fontSize:11,color:B.textMuted}}>{r.label}</div>
-              <div style={{fontSize:11,color:B.text,fontWeight:600}}>{r.value}</div>
+              <div style={{fontSize:11,color:B.text,fontWeight:600,fontFamily:["Entry","Exit","Stop Loss","Take Profit"].includes(r.label)?"monospace":"inherit"}}>{r.value}</div>
             </div>
           ))}
-
           {trade.notes&&(
-            <div style={{marginTop:16,padding:"10px 12px",borderRadius:8,background:"rgba(255,255,255,0.03)",border:`1px solid ${B.border}`}}>
+            <div style={{marginTop:14,padding:"10px 12px",borderRadius:8,background:"rgba(255,255,255,0.03)",border:`1px solid ${B.border}`}}>
               <div style={{fontSize:9,color:B.textMuted,letterSpacing:1,marginBottom:6}}>NOTES</div>
               <div style={{fontSize:11,color:B.text,lineHeight:1.6}}>{trade.notes}</div>
             </div>
           )}
-
-          {/* Price levels on chart guide */}
-          <div style={{marginTop:16,padding:"10px 12px",borderRadius:8,background:"rgba(79,142,247,0.06)",border:`1px solid rgba(79,142,247,0.2)`}}>
-            <div style={{fontSize:9,color:B.blue,letterSpacing:1,marginBottom:8}}>CHART REPLAY GUIDE</div>
-            <div style={{fontSize:11,color:B.textMuted,lineHeight:1.7}}>
-              1. Set timeframe to <strong style={{color:B.text}}>5m or 1m</strong><br/>
-              2. Navigate to <strong style={{color:B.text}}>{trade.date}</strong><br/>
-              3. Look for entry near <strong style={{color:B.text}}>{trade.entry||"your entry price"}</strong><br/>
-              {trade.stop_loss&&<>4. Stop was at <strong style={{color:B.loss}}>{trade.stop_loss}</strong><br/></>}
-              {trade.take_profit&&<>5. Target was at <strong style={{color:B.teal}}>{trade.take_profit}</strong></>}
-            </div>
-          </div>
         </div>
 
-        {/* TradingView chart */}
-        <div style={{flex:1,position:"relative"}}>
-          <iframe
-            src={getChartUrl()}
-            style={{width:"100%",height:"100%",border:"none",display:"block"}}
-            title="Trade Replay Chart"
-            allowFullScreen
-          />
-          <div style={{position:"absolute",bottom:16,right:16,padding:"8px 14px",borderRadius:10,background:"rgba(0,0,0,0.8)",border:`1px solid ${B.border}`,fontSize:11,color:B.textMuted}}>
-            Navigate to <strong style={{color:B.text}}>{trade.date}</strong> to replay this trade
+        {/* Right: price level diagram + chart instructions */}
+        <div style={{flex:1,display:"flex",flexDirection:"column",padding:28,gap:20,overflowY:"auto"}}>
+
+          {/* Open in TradingView CTA */}
+          <div style={{padding:"18px 22px",borderRadius:14,background:"rgba(79,142,247,0.06)",border:`1px solid rgba(79,142,247,0.2)`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            <div>
+              <div style={{fontSize:14,fontWeight:800,color:B.text,marginBottom:4}}>Open in TradingView to replay this trade</div>
+              <div style={{fontSize:12,color:B.textMuted}}>Navigate to <strong style={{color:B.text}}>{trade.date}</strong> on the chart, set timeframe to 1m or 5m, and find your entry at <strong style={{color:B.text,fontFamily:"monospace"}}>{trade.entry||"entry price"}</strong></div>
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:8,flexShrink:0,marginLeft:16}}>
+              {["1","5","15"].map(tf=>(
+                <a key={tf} href={getTVUrl(tf)} target="_blank" rel="noopener noreferrer"
+                  style={{padding:"8px 16px",borderRadius:9,border:"none",background:tf==="5"?"linear-gradient(135deg,#4F8EF7,#8B5CF6)":B.surface,color:tf==="5"?"#0E0E10":B.textMuted,textDecoration:"none",fontSize:12,fontWeight:700,textAlign:"center",display:"block",border:`1px solid ${B.border}`}}>
+                  Open {tf}m Chart ↗
+                </a>
+              ))}
+            </div>
+          </div>
+
+          {/* Price level diagram */}
+          {allPrices.length>=2&&(
+            <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:20}}>
+              <div style={{fontSize:10,color:B.textMuted,letterSpacing:1.5,marginBottom:16}}>PRICE LEVEL MAP</div>
+              <div style={{display:"flex",gap:16}}>
+                {/* Visual price ladder */}
+                <div style={{width:100,position:"relative",height:260,flexShrink:0}}>
+                  <div style={{position:"absolute",inset:0,left:40,width:4,background:"rgba(255,255,255,0.05)",borderRadius:2}}/>
+                  {/* Price levels */}
+                  {tp>0&&<div style={{position:"absolute",top:`${pct(tp)}%`,left:0,right:0,display:"flex",alignItems:"center",gap:6}}>
+                    <div style={{fontSize:9,color:B.teal,fontFamily:"monospace",textAlign:"right",width:36,fontWeight:700}}>{tp}</div>
+                    <div style={{width:12,height:2,background:B.teal}}/>
+                    <div style={{fontSize:8,color:B.teal,fontWeight:700}}>TP</div>
+                  </div>}
+                  {exit>0&&<div style={{position:"absolute",top:`${pct(exit)}%`,left:0,right:0,display:"flex",alignItems:"center",gap:6}}>
+                    <div style={{fontSize:9,color:pnlColor(trade.pnl),fontFamily:"monospace",textAlign:"right",width:36,fontWeight:700}}>{exit}</div>
+                    <div style={{width:12,height:2,background:pnlColor(trade.pnl)}}/>
+                    <div style={{fontSize:8,color:pnlColor(trade.pnl),fontWeight:700}}>EXIT</div>
+                  </div>}
+                  {entry>0&&<div style={{position:"absolute",top:`${pct(entry)}%`,left:0,right:0,display:"flex",alignItems:"center",gap:6}}>
+                    <div style={{fontSize:9,color:B.text,fontFamily:"monospace",textAlign:"right",width:36,fontWeight:700}}>{entry}</div>
+                    <div style={{width:16,height:3,background:B.text}}/>
+                    <div style={{fontSize:8,color:B.text,fontWeight:700}}>ENTRY</div>
+                  </div>}
+                  {sl>0&&<div style={{position:"absolute",top:`${pct(sl)}%`,left:0,right:0,display:"flex",alignItems:"center",gap:6}}>
+                    <div style={{fontSize:9,color:B.loss,fontFamily:"monospace",textAlign:"right",width:36,fontWeight:700}}>{sl}</div>
+                    <div style={{width:12,height:2,background:B.loss}}/>
+                    <div style={{fontSize:8,color:B.loss,fontWeight:700}}>SL</div>
+                  </div>}
+                </div>
+
+                {/* Stats beside diagram */}
+                <div style={{flex:1,display:"flex",flexDirection:"column",gap:10}}>
+                  {[
+                    {label:"Entry Price",value:trade.entry,color:B.text},
+                    {label:"Exit Price",value:trade.exit,color:pnlColor(trade.pnl)},
+                    tp>0&&{label:"Take Profit",value:trade.take_profit,color:B.teal},
+                    sl>0&&{label:"Stop Loss",value:trade.stop_loss,color:B.loss},
+                    {label:"Points captured",value:entry&&exit?Math.abs(exit-entry).toFixed(2)+" pts":null,color:pnlColor(trade.pnl)},
+                    {label:"Net P&L",value:`${trade.pnl>=0?"+":""}$${trade.pnl?.toFixed(2)}`,color:pnlColor(trade.pnl)},
+                  ].filter(Boolean).map(r=>(
+                    <div key={r.label} style={{display:"flex",justifyContent:"space-between",padding:"8px 12px",borderRadius:8,background:"rgba(255,255,255,0.02)",border:`1px solid ${B.border}20`}}>
+                      <div style={{fontSize:11,color:B.textMuted}}>{r.label}</div>
+                      <div style={{fontSize:12,fontWeight:700,color:r.color,fontFamily:"monospace"}}>{r.value||"—"}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Replay instructions */}
+          <div style={{padding:"14px 18px",borderRadius:12,background:"rgba(255,183,0,0.05)",border:`1px solid rgba(255,183,0,0.2)`}}>
+            <div style={{fontSize:10,color:"#FFB700",letterSpacing:1.5,fontWeight:700,marginBottom:10}}>REPLAY CHECKLIST</div>
+            {[
+              `Open TradingView and search for ${getSymbol(trade.instrument)}`,
+              `Set chart date to ${trade.date} — use the date range picker`,
+              `Switch to 1m or 5m timeframe for detailed view`,
+              `Find the ${trade.session} session (${trade.session==="AM"?"9:30-11:30 AM":"10AM-12PM"} ET)`,
+              `Locate entry near ${trade.entry||"your entry price"} and trace the move to ${trade.exit||"your exit"}`,
+              `Ask: Was my entry valid? Did I follow my rules? Was my exit optimal?`,
+            ].map((step,i)=>(
+              <div key={i} style={{display:"flex",gap:10,marginBottom:8,alignItems:"flex-start"}}>
+                <div style={{width:18,height:18,borderRadius:"50%",background:"rgba(255,183,0,0.15)",border:"1px solid rgba(255,183,0,0.3)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,color:"#FFB700",fontWeight:700,flexShrink:0,marginTop:1}}>{i+1}</div>
+                <div style={{fontSize:12,color:B.text,lineHeight:1.5}}>{step}</div>
+              </div>
+            ))}
           </div>
         </div>
       </div>
