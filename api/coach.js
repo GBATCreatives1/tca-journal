@@ -11,8 +11,16 @@ export default async function handler(req, res) {
     const end = s.lastIndexOf("}");
     if (start === -1 || end === -1) return null;
     s = s.slice(start, end + 1);
-    s = s.replace(/,\s*([\]}])/g, "$1");
-    try { return JSON.parse(s); } catch(e) { return null; }
+    // Try 1: direct parse
+    try { return JSON.parse(s); } catch(e) {}
+    // Try 2: fix trailing commas
+    const fixed = s.replace(/,\s*([\]}])/g, "$1");
+    try { return JSON.parse(fixed); } catch(e) {}
+    // Try 3: fix unescaped control chars in strings
+    const fixed2 = fixed.replace(/[\x00-\x1F\x7F]/g, " ");
+    try { return JSON.parse(fixed2); } catch(e) {}
+    console.error("repairJSON failed on:", s.slice(0, 200));
+    return null;
   };
 
   try {
@@ -103,7 +111,7 @@ Include all major USD events. Today is ${dayStats.today}.`,
       headers:{"Content-Type":"application/json","x-api-key":process.env.ANTHROPIC_API_KEY,"anthropic-version":"2023-06-01"},
       body: JSON.stringify({
         model: MODEL,
-        max_tokens: type==="full"?1200 : type==="patterns"?1000 : type==="economic"?1500 : 600,
+        max_tokens: type==="full"?2000 : type==="patterns"?1500 : type==="economic"?1500 : 800,
         system,
         messages,
       }),
