@@ -6781,7 +6781,7 @@ function WeeklyReview({trades, session}){
               </div>
               <div style={{textAlign:"right"}}>
                 <div style={{fontSize:28,fontWeight:900,color:gradeColors[review.grade]||B.teal}}>{review.grade}</div>
-                <div style={{fontSize:11,color:B.textMuted}}>Score: {review.score}/100</div>
+                <div style={{fontSize:11,color:B.textMuted}}>Score: {review.score} / 100</div>
               </div>
             </div>
 
@@ -6793,13 +6793,13 @@ function WeeklyReview({trades, session}){
             {/* Score bar */}
             <div style={{marginBottom:20}}>
               <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:B.textMuted,marginBottom:6}}>
-                <span>Overall Score</span><span>{review.score}/100</span>
+                <span>Overall Score</span><span>{review.score} / 100</span>
               </div>
               <div style={{height:6,background:"rgba(255,255,255,0.05)",borderRadius:3,overflow:"hidden"}}>
                 <div style={{height:"100%",width:`${review.score}%`,background:review.score>=70?"linear-gradient(90deg,#00D4A8,#4F8EF7)":review.score>=50?"linear-gradient(90deg,#FFB700,#FF6B35)":"linear-gradient(90deg,#F05A7E,#FF6B6B)",borderRadius:3,transition:"width 1s"}}/>
               </div>
               <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:B.textMuted,marginTop:4}}>
-                <span>Consistency: {review.consistency}/100</span>
+                <span>Consistency: {review.consistency} / 100</span>
                 <span>Mindset: {review.mindset?.slice(0,40)}...</span>
               </div>
             </div>
