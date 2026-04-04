@@ -3964,12 +3964,14 @@ function AICoachWidget({trades}){
         headers:{"Content-Type":"application/json"},
         body:JSON.stringify({type:"full",stats})
       });
+      if(!res.ok) throw new Error("Server error "+res.status);
       const data=await res.json();
-      if(data.error)throw new Error(data.error);
+      if(data.error) throw new Error(data.error);
+      if(!data.patterns && !data.summary) throw new Error("Invalid response format");
       setAnalysis(data);
     }catch(e){
-      setError("Analysis failed. Please try again.");
-      console.error(e);
+      setError("Analysis failed: "+e.message+". Please try again.");
+      console.error("AI Coach error:", e.message);
     }
     setLoading(false);
   };
@@ -6655,14 +6657,22 @@ function WeeklyReview({trades, session}){
         body:JSON.stringify({type:"chat", chatContext:context,
           chatHistory:[{role:"user",content:"Generate the weekly review now."}]}),
       });
+      if(!res.ok) throw new Error("Server error "+res.status);
       const data = await res.json();
       const text = data.content?.[0]?.text||"";
+      if(!text) throw new Error("Empty response from AI");
       const cleaned = text.split("```json").join("").split("```").join("").trim();
-      const parsed = JSON.parse(cleaned);
+      // Find JSON object in response
+      const jsonStart = cleaned.indexOf("{");
+      const jsonEnd = cleaned.lastIndexOf("}");
+      if(jsonStart === -1 || jsonEnd === -1) throw new Error("No JSON in response");
+      const parsed = JSON.parse(cleaned.slice(jsonStart, jsonEnd+1));
       setReview(parsed);
-      // Auto-fill focus
-      if(parsed.focusNextWeek)setFocusNext(parsed.focusNextWeek);
-    }catch(e){console.error(e);alert("AI review failed. Try again.");}
+      if(parsed.focusNextWeek) setFocusNext(parsed.focusNextWeek);
+    }catch(e){
+      console.error("Weekly review error:",e.message);
+      alert("AI review failed: "+e.message+". Please try again.");
+    }
     setLoading(false);
   };
 
