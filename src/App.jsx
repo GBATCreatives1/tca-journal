@@ -565,7 +565,7 @@ function TCAIcon({size=34}){
 
 function StatCard({label,value,sub,accent,grad}){return(<div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:"20px 22px",position:"relative",overflow:"hidden"}}><div style={{position:"absolute",top:0,left:0,right:0,height:2,background:grad||`linear-gradient(90deg,${accent},transparent)`}}/><div style={{position:"absolute",top:-20,right:-20,width:90,height:90,background:`radial-gradient(circle,${accent}14 0%,transparent 70%)`,pointerEvents:"none"}}/><div style={{fontSize:10,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>{label}</div>{grad?<div style={{fontSize:26,fontWeight:800,background:grad,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",fontFamily:"'Space Mono',monospace",letterSpacing:-1}}>{value}</div>:<div style={{fontSize:26,fontWeight:800,color:accent,fontFamily:"'Space Mono',monospace",letterSpacing:-1}}>{value}</div>}{sub&&<div style={{fontSize:11,color:B.textMuted,marginTop:5}}>{sub}</div>}</div>);}
 function Tag({label}){const c=TAG_COLOR[label]||"#666";return <span style={{fontSize:10,padding:"2px 9px",borderRadius:20,border:`1px solid ${c}44`,color:c,background:"rgba(0,0,0,0.35)",letterSpacing:0.5,fontWeight:700}}>{label}</span>;}
-const CTip=({active,payload,label})=>{if(!active||!payload?.length)return null;return(<div style={{background:"#16151C",border:`1px solid ${B.borderTeal}`,borderRadius:10,padding:"10px 16px",fontSize:12}}><div style={{color:B.textMuted,marginBottom:5}}>{label}</div>{payload.map((p,i)=>(<div key={i} style={{color:p.value>=0?B.profit:B.loss,fontFamily:"monospace",fontWeight:700}}>{p.name}: {p.value>=0?"+":""}${p.value}</div>))}</div>);};
+const CTip=({active,payload,label})=>{if(!active||!payload?.length)return null;return(<div style={{background:"#16151C",border:`1px solid ${B.borderTeal}`,borderRadius:10,padding:"10px 16px",fontSize:12}}><div style={{color:B.textMuted,marginBottom:5}}>{label}</div>{payload.map((p,i)=>(<div key={i} style={{color:p.value>=0?B.profit:B.loss,fontFamily:"monospace",fontWeight:700}}>{p.name}: {(p.value>=0?"+":"-")+"$"+Math.abs(p.value)}</div>))}</div>);};
 
 function LoginScreen(){
   const [email,setEmail]=useState("");
@@ -6278,7 +6278,7 @@ function PDFReportModal({trades, session, onClose}){
               <div style={{fontSize:11,color:B.textMuted,marginTop:2}}>{from} → {to}</div>
             </div>
             <div style={{textAlign:"right"}}>
-              <div style={{fontSize:18,fontWeight:800,fontFamily:"monospace",color:previewPnl>=0?B.teal:B.loss}}>{previewPnl>=0?"+":""}${Math.abs(previewPnl).toFixed(2)}</div>
+              <div style={{fontSize:18,fontWeight:800,fontFamily:"monospace",color:previewPnl>=0?B.teal:B.loss}}>{(previewPnl>=0?"+":"-")+"$"+Math.abs(previewPnl).toFixed(2)}</div>
               <div style={{fontSize:10,color:B.textMuted}}>{count} trades</div>
             </div>
           </div>
@@ -6697,7 +6697,7 @@ function WeeklyReview({trades, session}){
               <div style={{fontSize:11,color:B.text,fontWeight:600}}>{new Date(w.start+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric"})}</div>
               {w.hasReview&&<div style={{width:6,height:6,borderRadius:"50%",background:B.teal}}/>}
             </div>
-            <div style={{fontSize:10,color:pnlColor(w.pnl),fontFamily:"monospace",fontWeight:700,marginTop:2}}>{w.pnl>=0?"+":""}${w.pnl.toFixed(2)}</div>
+            <div style={{fontSize:10,color:pnlColor(w.pnl),fontFamily:"monospace",fontWeight:700,marginTop:2}}>{(w.pnl>=0?"+":"-")+"$"+Math.abs(w.pnl).toFixed(2)}</div>
             <div style={{fontSize:9,color:B.textMuted}}>{w.trades} trades · {w.wr}% WR</div>
           </div>
         ))}
@@ -6757,8 +6757,8 @@ function WeeklyReview({trades, session}){
                 <div style={{fontSize:10,color:B.textDim,marginBottom:6}}>{date.slice(5)}</div>
                 {dayTrades.length?(
                   <>
-                    <div style={{fontSize:14,fontWeight:800,fontFamily:"monospace",color:pnlColor(dayPnl)}}>{dayPnl>=0?"+":""}${dayPnl.toFixed(2)}</div>
-                    <div style={{fontSize:10,color:B.textMuted,marginTop:2}}>{dayTrades.length}t · {dayWins}/{dayTrades.length}</div>
+                    <div style={{fontSize:14,fontWeight:800,fontFamily:"monospace",color:pnlColor(dayPnl)}}>{(dayPnl>=0?"+":"-")+"$"+Math.abs(dayPnl).toFixed(2)}</div>
+                    <div style={{fontSize:10,color:B.textMuted,marginTop:2}}>{dayTrades.length}t · {dayWins} / {dayTrades.length}</div>
                   </>
                 ):(
                   <div style={{fontSize:11,color:B.textDim}}>—</div>
@@ -6793,7 +6793,7 @@ function WeeklyReview({trades, session}){
             {/* Score bar */}
             <div style={{marginBottom:20}}>
               <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:B.textMuted,marginBottom:6}}>
-                <span>Overall Score</span><span>{review.score} / 100</span>
+                <span>Overall Score</span><span>{String(review.score)+" / 100"}</span>
               </div>
               <div style={{height:6,background:"rgba(255,255,255,0.05)",borderRadius:3,overflow:"hidden"}}>
                 <div style={{height:"100%",width:`${review.score}%`,background:review.score>=70?"linear-gradient(90deg,#00D4A8,#4F8EF7)":review.score>=50?"linear-gradient(90deg,#FFB700,#FF6B35)":"linear-gradient(90deg,#F05A7E,#FF6B6B)",borderRadius:3,transition:"width 1s"}}/>
@@ -6886,7 +6886,7 @@ function WeeklyReview({trades, session}){
                   <div style={{fontSize:10,color:t.direction==="Long"?"#4ade80":"#f87171",fontWeight:700}}>{t.direction}</div>
                   <div style={{fontSize:11,color:B.textMuted}}>{t.strategy||t.setup||"—"} · {t.session}</div>
                   <div style={{fontSize:10,color:B.textMuted,textAlign:"center"}}>{t.grade}</div>
-                  <div style={{fontSize:12,fontWeight:800,fontFamily:"monospace",color:pnlColor(t.pnl),textAlign:"right"}}>{t.pnl>=0?"+":""}${t.pnl.toFixed(2)}</div>
+                  <div style={{fontSize:12,fontWeight:800,fontFamily:"monospace",color:pnlColor(t.pnl),textAlign:"right"}}>{(t.pnl>=0?"+":"-")+"$"+Math.abs(t.pnl).toFixed(2)}</div>
                   <TradeReplayButton trade={t}/>
                 </div>
               ))}
@@ -6952,7 +6952,7 @@ function TradeReplayButton({trade}){
         <div style={{display:"flex",alignItems:"center",gap:10}}>
           <div style={{padding:"4px 10px",borderRadius:6,background:`${B.teal}15`,color:B.teal,fontSize:12,fontWeight:700}}>{trade.instrument}</div>
           <div style={{fontSize:13,color:B.text,fontWeight:700}}>{trade.direction} · {trade.date} · {trade.session} Session</div>
-          <div style={{fontSize:14,fontFamily:"monospace",color:pnlColor(trade.pnl),fontWeight:800}}>{trade.pnl>=0?"+":""}${trade.pnl?.toFixed(2)}</div>
+          <div style={{fontSize:14,fontFamily:"monospace",color:pnlColor(trade.pnl),fontWeight:800}}>{(trade.pnl>=0?"+":"-")+"$"+Math.abs(trade.pnl||0).toFixed(2)}</div>
           <div style={{padding:"3px 8px",borderRadius:6,background:trade.result==="Win"?(B.teal+"15"):(B.loss+"15"),color:trade.result==="Win"?B.teal:B.loss,fontSize:11,fontWeight:700}}>{trade.result}</div>
         </div>
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
