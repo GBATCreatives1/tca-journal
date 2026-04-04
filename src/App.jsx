@@ -2696,7 +2696,7 @@ Setup 2:
     icon: "[ ]",
     color: "#8B5CF6",
     locked: true,
-    content: `[ ] WEEKLY REVIEW — Week of {date}
+    content: `WEEKLY REVIEW — Week of {date}
 
 📊 PERFORMANCE SUMMARY
 • Total trades:
@@ -6884,12 +6884,14 @@ function WeeklyReview({trades, session}){
 
         {weekTrades.length===0&&(
           <div style={{textAlign:"center",padding:"60px 20px",color:B.textMuted}}>
-            <div style={{fontSize:32,marginBottom:12}}>[ ]</div>
+            <div style={{fontSize:32,marginBottom:12}}>--</div>
             <div style={{fontSize:15,fontWeight:700,color:B.text}}>No trades this week</div>
             <div style={{fontSize:12,marginTop:4}}>Navigate to a week where you have trades logged</div>
           </div>
         )}
       </div>
+    </div>
+  </div>
     </div>
   );
 }
