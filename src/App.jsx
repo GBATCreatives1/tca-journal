@@ -6761,7 +6761,7 @@ Respond with this exact JSON:
             const dayName = new Date(date+"T12:00:00").toLocaleDateString("en-US",{weekday:"short"});
             const isToday = date===new Date().toISOString().slice(0,10);
             return(
-              <div key={date} style={{background:dayTrades.length?dayPnl>=0?`rgba(0,212,168,0.06)`:`rgba(240,90,126,0.06)`:B.surface,
+              <div key={date} style={{background:dayTrades.length?(dayPnl>=0?"rgba(0,212,168,0.06)":"rgba(240,90,126,0.06)"):B.surface,
                 border:`1px solid ${isToday?B.teal:dayTrades.length?dayPnl>=0?B.borderTeal:B.borderPurp:B.border}`,
                 borderRadius:10,padding:"12px",textAlign:"center"}}>
                 <div style={{fontSize:11,fontWeight:700,color:isToday?B.teal:B.textMuted,marginBottom:4}}>{dayName}</div>
@@ -6889,8 +6889,8 @@ Respond with this exact JSON:
             <div style={{display:"flex",flexDirection:"column",gap:6}}>
               {weekTrades.sort((a,b)=>a.date.localeCompare(b.date)).map(t=>(
                 <div key={t.id} style={{display:"grid",gridTemplateColumns:"80px 50px 60px 1fr 60px 75px 90px",gap:8,padding:"8px 12px",borderRadius:9,
-                  background:t.result==="Win"?`rgba(0,212,168,0.04)`:`rgba(240,90,126,0.04)`,
-                  border:`1px solid ${t.result==="Win"?`rgba(0,212,168,0.15)`:`rgba(240,90,126,0.15)`}`,
+                  background:t.result==="Win"?"rgba(0,212,168,0.04)":"rgba(240,90,126,0.04)",
+                  border:"1px solid "+(t.result==="Win"?"rgba(0,212,168,0.15)":"rgba(240,90,126,0.15)"),
                   alignItems:"center"}}>
                   <div style={{fontSize:10,color:B.textMuted,fontFamily:"monospace"}}>{t.date.slice(5)}</div>
                   <div><span style={{padding:"2px 6px",borderRadius:4,background:`${B.teal}15`,color:B.teal,fontSize:9,fontWeight:700}}>{t.instrument}</span></div>
