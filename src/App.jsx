@@ -1450,7 +1450,7 @@ function Overview({trades, onGradeUpdate, session, onEdit}){
     {id:"progress",   label:"Progress Tracker",     icon:"✅"},
     {id:"report",     label:"Report",               icon:"📋"},
     {id:"aicoach",    label:"AI Trade Coach",       icon:"🧠"},
-    {id:"calendar",   label:"Calendar (main)",      icon:"📅"},
+    {id:"calendar",   label:"Calendar (main)",      icon:"[ ]"},
     {id:"dailygoals", label:"Daily Goals",           icon:"🎯"},
     {id:"apex",       label:"Apex Account Tracker",  icon:"📈"},
     {id:"ictags",     label:"ICT Concept Tagger",    icon:"🧠"},
@@ -1621,7 +1621,7 @@ function Overview({trades, onGradeUpdate, session, onEdit}){
             <div style={{height:3,background:GL,borderRadius:"20px 20px 0 0",flexShrink:0}}/>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"16px 22px",borderBottom:`1px solid ${B.border}`,flexShrink:0}}>
               <div style={{fontSize:15,fontWeight:700,color:B.text}}>
-                {{"gauges":"🎯 Performance Gauges","calendar":"📅 Calendar","equity":"📈 Equity Curve","dailypnl":"📊 Daily P&L","setups":"🏆 Setup Performance","session":"🌡️ Session Heatmap","timeof":"🕐 Time of Day","cumulative":"📉 Daily & Cumulative","drawdown":"⚠️ Drawdown","winAvg":"💹 Win% / Avg Win / Loss","duration":"⏱️ Trade Duration","leaderboard":"🥇 Setup Leaderboard","yearly":"🗓️ Yearly Calendar","progress":"✅ Progress Tracker","report":"📋 Report","aicoach":"🧠 AI Trade Coach"}[expandedWidget]||expandedWidget}
+                {{"gauges":"🎯 Performance Gauges","calendar":"[ ] Calendar","equity":"📈 Equity Curve","dailypnl":"📊 Daily P&L","setups":"🏆 Setup Performance","session":"🌡️ Session Heatmap","timeof":"🕐 Time of Day","cumulative":"📉 Daily & Cumulative","drawdown":"⚠️ Drawdown","winAvg":"💹 Win% / Avg Win / Loss","duration":"⏱️ Trade Duration","leaderboard":"🥇 Setup Leaderboard","yearly":"🗓️ Yearly Calendar","progress":"✅ Progress Tracker","report":"📋 Report","aicoach":"🧠 AI Trade Coach"}[expandedWidget]||expandedWidget}
               </div>
               <button onClick={()=>setExpandedWidget(null)} style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${B.border}`,borderRadius:8,color:B.textMuted,cursor:"pointer",fontSize:18,width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
             </div>
@@ -2347,13 +2347,19 @@ function TradeDetailModal({trade, onClose, onEdit, onGradeUpdate}){
       const res = await fetch("/api/coach", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({ type: "trade", dayStats: tradeData, chartImage: imageData }),
+        body: JSON.stringify({ type: "trade", stats: tradeData, chartImage: imageData }),
       });
+      if(!res.ok) throw new Error("Server error "+res.status);
       const data = await res.json();
-      const text = data.content?.[0]?.text || JSON.stringify(data);
-      const clean = text.replace(/```json|```/g, "").trim();
-      const parsed = JSON.parse(clean);
-      setAiAnalysis(parsed);
+      // coach.js returns parsed JSON directly for trade type
+      if(data.score !== undefined) {
+        setAiAnalysis(data);
+      } else if(data.content?.[0]?.text) {
+        const clean = data.content[0].text.split("```json").join("").split("```").join("").trim();
+        setAiAnalysis(JSON.parse(clean));
+      } else {
+        throw new Error(data.error || "Invalid response");
+      }
     } catch(e) {
       console.error("Trade AI error:", e);
       setAiAnalysis({score:50, verdict:"Could not analyze this trade. Please check your connection and try again.", strengths:[], improvements:[], lesson:""});
@@ -2687,10 +2693,10 @@ Setup 2:
   {
     id: "weekly",
     name: "Weekly Review",
-    icon: "📅",
+    icon: "[ ]",
     color: "#8B5CF6",
     locked: true,
-    content: `📅 WEEKLY REVIEW — Week of {date}
+    content: `[ ] WEEKLY REVIEW — Week of {date}
 
 📊 PERFORMANCE SUMMARY
 • Total trades:
@@ -2823,7 +2829,7 @@ function TemplatePanel({ date, currentNotes, onApply, onClose }) {
     setTimeout(() => setSaving(false), 1500);
   };
 
-  const ICONS = ["📝","🌅","📊","📅","🎯","💡","⚡","🔥","📈","🧠","✅","⚠️"];
+  const ICONS = ["📝","🌅","📊","[ ]","🎯","💡","⚡","🔥","📈","🧠","✅","⚠️"];
   const COLORS = [B.teal, B.blue, B.purple, B.spark, "#f97316", B.loss];
 
   return (
@@ -5015,7 +5021,7 @@ function AchievementsWidget({trades, session}){
     {id:"first_500",icon:"💰",name:"First $500",desc:"Reach $500 total P&L",unlocked:totalPnl>=500,progress:Math.min(Math.max(totalPnl/500,0),1)},
     {id:"first_1000",icon:"🚀",name:"Four Figures",desc:"Reach $1,000 total P&L",unlocked:totalPnl>=1000,progress:Math.min(Math.max(totalPnl/1000,0),1)},
     {id:"best_day_200",icon:"⚡",name:"Big Day",desc:"$200+ in a single day",unlocked:bestDay>=200,progress:Math.min(bestDay/200,1)},
-    {id:"green_days_10",icon:"📅",name:"Consistent",desc:"10 green trading days",unlocked:greenDays>=10,progress:Math.min(greenDays/10,1)},
+    {id:"green_days_10",icon:"[ ]",name:"Consistent",desc:"10 green trading days",unlocked:greenDays>=10,progress:Math.min(greenDays/10,1)},
     {id:"discipline",icon:"🏆",name:"Disciplined Trader",desc:"30 green days total",unlocked:greenDays>=30,progress:Math.min(greenDays/30,1)},
   ];
 
@@ -6685,7 +6691,6 @@ function WeeklyReview({trades, session}){
 
   return(
     <div style={{display:"flex",gap:0,minHeight:"80vh"}}>
-      {/* Sidebar - past weeks */}
       <div style={{width:200,flexShrink:0,borderRight:`1px solid ${B.border}`,paddingRight:16,marginRight:24}}>
         <div style={{fontSize:10,color:B.textMuted,letterSpacing:1.5,marginBottom:10}}>PAST WEEKS</div>
         {pastWeeks.map(w=>(
@@ -6702,10 +6707,7 @@ function WeeklyReview({trades, session}){
           </div>
         ))}
       </div>
-
-      {/* Main content */}
       <div style={{flex:1}}>
-        {/* Week nav */}
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:24}}>
           <div style={{display:"flex",alignItems:"center",gap:12}}>
             <button onClick={()=>navWeek(-1)} style={{width:32,height:32,borderRadius:8,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:16}}>‹</button>
@@ -6724,8 +6726,6 @@ function WeeklyReview({trades, session}){
             </button>
           </div>
         </div>
-
-        {/* Week stats bar */}
         <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:12,marginBottom:24}}>
           {[
             {label:"Trades",value:weekTrades.length,color:B.blue},
@@ -6740,8 +6740,6 @@ function WeeklyReview({trades, session}){
             </div>
           ))}
         </div>
-
-        {/* Day by day breakdown */}
         <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:8,marginBottom:24}}>
           {weekDates.map(date=>{
             const dayTrades = weekTrades.filter(t=>t.date===date);
@@ -6758,7 +6756,7 @@ function WeeklyReview({trades, session}){
                 {dayTrades.length?(
                   <>
                     <div style={{fontSize:14,fontWeight:800,fontFamily:"monospace",color:pnlColor(dayPnl)}}>{(dayPnl>=0?"+":"-")+"$"+Math.abs(dayPnl).toFixed(2)}</div>
-                    <div style={{fontSize:10,color:B.textMuted,marginTop:2}}>{dayTrades.length}t · {dayWins} / {dayTrades.length}</div>
+                    <div style={{fontSize:10,color:B.textMuted,marginTop:2}}>{dayTrades.length}t · {dayWins+" / "+dayTrades.length}</div>
                   </>
                 ):(
                   <div style={{fontSize:11,color:B.textDim}}>—</div>
@@ -6767,8 +6765,6 @@ function WeeklyReview({trades, session}){
             );
           })}
         </div>
-
-        {/* AI Review */}
         {review&&(
           <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:16,padding:24,marginBottom:20}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
@@ -6781,16 +6777,12 @@ function WeeklyReview({trades, session}){
               </div>
               <div style={{textAlign:"right"}}>
                 <div style={{fontSize:28,fontWeight:900,color:gradeColors[review.grade]||B.teal}}>{review.grade}</div>
-                <div style={{fontSize:11,color:B.textMuted}}>Score: {review.score} / 100</div>
+                <div style={{fontSize:11,color:B.textMuted}}>Score: {String(review.score)+" / 100"}</div>
               </div>
             </div>
-
-            {/* Headline */}
             <div style={{padding:"12px 16px",borderRadius:10,background:"rgba(0,212,168,0.06)",border:`1px solid rgba(0,212,168,0.15)`,marginBottom:16,fontSize:13,color:B.text,fontStyle:"italic",lineHeight:1.6}}>
               "{review.headline}"
             </div>
-
-            {/* Score bar */}
             <div style={{marginBottom:20}}>
               <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:B.textMuted,marginBottom:6}}>
                 <span>Overall Score</span><span>{String(review.score)+" / 100"}</span>
@@ -6799,13 +6791,12 @@ function WeeklyReview({trades, session}){
                 <div style={{height:"100%",width:`${review.score}%`,background:review.score>=70?"linear-gradient(90deg,#00D4A8,#4F8EF7)":review.score>=50?"linear-gradient(90deg,#FFB700,#FF6B35)":"linear-gradient(90deg,#F05A7E,#FF6B6B)",borderRadius:3,transition:"width 1s"}}/>
               </div>
               <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:B.textMuted,marginTop:4}}>
-                <span>Consistency: {review.consistency} / 100</span>
+                <span>Consistency: {String(review.consistency)+" / 100"}</span>
                 <span>Mindset: {review.mindset?.slice(0,40)}...</span>
               </div>
             </div>
 
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
-              {/* What worked */}
               <div style={{background:"rgba(0,212,168,0.04)",border:`1px solid rgba(0,212,168,0.15)`,borderRadius:10,padding:"14px 16px"}}>
                 <div style={{fontSize:10,color:B.teal,letterSpacing:1.5,fontWeight:700,marginBottom:10}}>✅ WHAT WORKED</div>
                 {(review.whatWorked||[]).map((w,i)=>(
@@ -6814,7 +6805,6 @@ function WeeklyReview({trades, session}){
                   </div>
                 ))}
               </div>
-              {/* What didn't */}
               <div style={{background:"rgba(240,90,126,0.04)",border:`1px solid rgba(240,90,126,0.15)`,borderRadius:10,padding:"14px 16px"}}>
                 <div style={{fontSize:10,color:B.loss,letterSpacing:1.5,fontWeight:700,marginBottom:10}}>⚠️ NEEDS WORK</div>
                 {(review.whatDidnt||[]).map((w,i)=>(
@@ -6824,8 +6814,6 @@ function WeeklyReview({trades, session}){
                 ))}
               </div>
             </div>
-
-            {/* Key insights */}
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
               <div style={{padding:"12px 14px",borderRadius:10,background:"rgba(79,142,247,0.06)",border:`1px solid rgba(79,142,247,0.15)`}}>
                 <div style={{fontSize:9,color:B.blue,letterSpacing:1.5,fontWeight:700,marginBottom:6}}>🔑 KEY PATTERN</div>
@@ -6836,8 +6824,6 @@ function WeeklyReview({trades, session}){
                 <div style={{fontSize:12,color:B.text,lineHeight:1.6}}>{review.mindset}</div>
               </div>
             </div>
-
-            {/* Best / Worst trade */}
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
               <div style={{padding:"12px 14px",borderRadius:10,background:"rgba(0,212,168,0.04)",border:`1px solid rgba(0,212,168,0.2)`}}>
                 <div style={{fontSize:9,color:B.teal,letterSpacing:1.5,fontWeight:700,marginBottom:6}}>🏆 BEST TRADE</div>
@@ -6848,30 +6834,22 @@ function WeeklyReview({trades, session}){
                 <div style={{fontSize:12,color:B.text,lineHeight:1.5}}>{review.worstTrade}</div>
               </div>
             </div>
-
-            {/* Focus next week */}
             <div style={{padding:"14px 16px",borderRadius:10,background:"linear-gradient(135deg,rgba(0,212,168,0.08),rgba(139,92,246,0.08))",border:`1px solid rgba(0,212,168,0.2)`}}>
               <div style={{fontSize:9,color:B.teal,letterSpacing:1.5,fontWeight:700,marginBottom:6}}>🎯 FOCUS FOR NEXT WEEK</div>
               <div style={{fontSize:13,color:B.text,fontWeight:700,lineHeight:1.5}}>{review.focusNextWeek}</div>
             </div>
           </div>
         )}
-
-        {/* Manual notes section */}
         <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:16,padding:20,marginBottom:16}}>
           <div style={{fontSize:11,color:B.textMuted,letterSpacing:1.5,marginBottom:12}}>📝 MY PERSONAL NOTES</div>
           <textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="What did you learn this week? What will you do differently? Any market observations..."
             style={{width:"100%",minHeight:100,background:"rgba(0,0,0,0.3)",border:`1px solid ${B.border}`,borderRadius:10,padding:"12px 14px",color:B.text,fontSize:13,fontFamily:"'DM Sans',sans-serif",resize:"vertical",outline:"none",lineHeight:1.6}}/>
         </div>
-
-        {/* Focus next week manual */}
         <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:16,padding:20,marginBottom:16}}>
-          <div style={{fontSize:11,color:B.teal,letterSpacing:1.5,marginBottom:12}}>🎯 MY FOCUS FOR NEXT WEEK</div>
+          <div style={{fontSize:11,color:B.teal,letterSpacing:1.5,marginBottom:12}}>MY FOCUS FOR NEXT WEEK</div>
           <input value={focusNext} onChange={e=>setFocusNext(e.target.value)} placeholder="One thing I will improve next week..."
             style={{width:"100%",background:"rgba(0,0,0,0.3)",border:`1px solid ${B.border}`,borderRadius:10,padding:"11px 14px",color:B.text,fontSize:13,outline:"none"}}/>
         </div>
-
-        {/* Trade list with replay button */}
         {weekTrades.length>0&&(
           <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:16,padding:20}}>
             <div style={{fontSize:11,color:B.textMuted,letterSpacing:1.5,marginBottom:12}}>TRADES THIS WEEK ({weekTrades.length})</div>
@@ -6884,7 +6862,7 @@ function WeeklyReview({trades, session}){
                   <div style={{fontSize:10,color:B.textMuted,fontFamily:"monospace"}}>{t.date.slice(5)}</div>
                   <div><span style={{padding:"2px 6px",borderRadius:4,background:`${B.teal}15`,color:B.teal,fontSize:9,fontWeight:700}}>{t.instrument}</span></div>
                   <div style={{fontSize:10,color:t.direction==="Long"?"#4ade80":"#f87171",fontWeight:700}}>{t.direction}</div>
-                  <div style={{fontSize:11,color:B.textMuted}}>{t.strategy||t.setup||"—"} · {t.session}</div>
+                  <div style={{fontSize:11,color:B.textMuted}}>{t.strategy||t.setup||"—"} {t.session}</div>
                   <div style={{fontSize:10,color:B.textMuted,textAlign:"center"}}>{t.grade}</div>
                   <div style={{fontSize:12,fontWeight:800,fontFamily:"monospace",color:pnlColor(t.pnl),textAlign:"right"}}>{(t.pnl>=0?"+":"-")+"$"+Math.abs(t.pnl).toFixed(2)}</div>
                   <TradeReplayButton trade={t}/>
@@ -6896,7 +6874,7 @@ function WeeklyReview({trades, session}){
 
         {weekTrades.length===0&&(
           <div style={{textAlign:"center",padding:"60px 20px",color:B.textMuted}}>
-            <div style={{fontSize:32,marginBottom:12}}>📅</div>
+            <div style={{fontSize:32,marginBottom:12}}>[ ]</div>
             <div style={{fontSize:15,fontWeight:700,color:B.text}}>No trades this week</div>
             <div style={{fontSize:12,marginTop:4}}>Navigate to a week where you have trades logged</div>
           </div>
@@ -6911,7 +6889,7 @@ function TradeReplayButton({trade}){
   const [open, setOpen] = useState(false);
 
   const getSymbol=(instrument)=>{
-    const map={MES:"MES1!",ES:"ES1!",MNQ:"MNQ1!",NQ:"NQ1!",MGC:"MGC1!",GC:"GC1!",MCL:"MCL1!",CL:"CL1!",SPY:"SPY",QQQ:"QQQ",IWM:"IWM"};
+    const map={MES:"CME_MINI:MES1!",ES:"CME_MINI:ES1!",MNQ:"CME_MINI:MNQ1!",NQ:"CME:NQ1!",MGC:"COMEX:MGC1!",GC:"COMEX:GC1!",MCL:"NYMEX:MCL1!",CL:"NYMEX:CL1!",SPY:"AMEX:SPY",QQQ:"NASDAQ:QQQ",IWM:"AMEX:IWM"};
     return map[instrument]||instrument;
   };
 
@@ -6923,7 +6901,7 @@ function TradeReplayButton({trade}){
   if(!open){
     return(
       <button onClick={()=>setOpen(true)} style={{padding:"4px 8px",borderRadius:6,border:`1px solid rgba(79,142,247,0.3)`,background:"rgba(79,142,247,0.08)",color:B.blue,cursor:"pointer",fontSize:10,fontWeight:700,width:"100%"}}>
-        ▶ Replay
+        Replay
       </button>
     );
   }
@@ -6945,7 +6923,6 @@ function TradeReplayButton({trade}){
 
   return(
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.92)",zIndex:400,display:"flex",flexDirection:"column"}} onClick={()=>setOpen(false)}>
-      {/* Header */}
       <div style={{background:"#13121A",borderBottom:`1px solid ${B.border}`,padding:"12px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}} onClick={e=>e.stopPropagation()}>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
           <div style={{padding:"4px 10px",borderRadius:6,background:`${B.teal}15`,color:B.teal,fontSize:12,fontWeight:700}}>{trade.instrument}</div>
@@ -6954,7 +6931,6 @@ function TradeReplayButton({trade}){
           <div style={{padding:"3px 8px",borderRadius:6,background:trade.result==="Win"?(B.teal+"15"):(B.loss+"15"),color:trade.result==="Win"?B.teal:B.loss,fontSize:11,fontWeight:700}}>{trade.result}</div>
         </div>
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
-          {/* TradingView links */}
           {["1","5","15"].map(tf=>(
             <a key={tf} href={getTVUrl(tf)} target="_blank" rel="noopener noreferrer"
               style={{padding:"5px 10px",borderRadius:7,border:`1px solid ${B.border}`,color:B.textMuted,textDecoration:"none",fontSize:11,fontWeight:600}}>
@@ -6964,11 +6940,7 @@ function TradeReplayButton({trade}){
           <button onClick={()=>setOpen(false)} style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${B.border}`,borderRadius:8,color:B.textMuted,cursor:"pointer",width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>×</button>
         </div>
       </div>
-
-      {/* Body */}
       <div style={{flex:1,display:"flex",overflow:"hidden"}} onClick={e=>e.stopPropagation()}>
-
-        {/* Left: trade details */}
         <div style={{width:260,borderRight:`1px solid ${B.border}`,padding:20,overflowY:"auto",flexShrink:0}}>
           <div style={{fontSize:10,color:B.textMuted,letterSpacing:1.5,marginBottom:12}}>TRADE DETAILS</div>
           {[
@@ -6997,11 +6969,7 @@ function TradeReplayButton({trade}){
             </div>
           )}
         </div>
-
-        {/* Right: price level diagram + chart instructions */}
         <div style={{flex:1,display:"flex",flexDirection:"column",padding:28,gap:20,overflowY:"auto"}}>
-
-          {/* Open in TradingView CTA */}
           <div style={{padding:"18px 22px",borderRadius:14,background:"rgba(79,142,247,0.06)",border:`1px solid rgba(79,142,247,0.2)`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
             <div>
               <div style={{fontSize:14,fontWeight:800,color:B.text,marginBottom:4}}>Open in TradingView to replay this trade</div>
@@ -7016,16 +6984,12 @@ function TradeReplayButton({trade}){
               ))}
             </div>
           </div>
-
-          {/* Price level diagram */}
           {allPrices.length>=2&&(
             <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:20}}>
               <div style={{fontSize:10,color:B.textMuted,letterSpacing:1.5,marginBottom:16}}>PRICE LEVEL MAP</div>
               <div style={{display:"flex",gap:16}}>
-                {/* Visual price ladder */}
                 <div style={{width:100,position:"relative",height:260,flexShrink:0}}>
                   <div style={{position:"absolute",inset:0,left:40,width:4,background:"rgba(255,255,255,0.05)",borderRadius:2}}/>
-                  {/* Price levels */}
                   {tp>0&&<div style={{position:"absolute",top:`${pct(tp)}%`,left:0,right:0,display:"flex",alignItems:"center",gap:6}}>
                     <div style={{fontSize:9,color:B.teal,fontFamily:"monospace",textAlign:"right",width:36,fontWeight:700}}>{tp}</div>
                     <div style={{width:12,height:2,background:B.teal}}/>
@@ -7047,8 +7011,6 @@ function TradeReplayButton({trade}){
                     <div style={{fontSize:8,color:B.loss,fontWeight:700}}>SL</div>
                   </div>}
                 </div>
-
-                {/* Stats beside diagram */}
                 <div style={{flex:1,display:"flex",flexDirection:"column",gap:10}}>
                   {[
                     {label:"Entry Price",value:trade.entry,color:B.text},
@@ -7067,8 +7029,6 @@ function TradeReplayButton({trade}){
               </div>
             </div>
           )}
-
-          {/* Replay instructions */}
           <div style={{padding:"14px 18px",borderRadius:12,background:"rgba(255,183,0,0.05)",border:`1px solid rgba(255,183,0,0.2)`}}>
             <div style={{fontSize:10,color:"#FFB700",letterSpacing:1.5,fontWeight:700,marginBottom:10}}>REPLAY CHECKLIST</div>
             {[
