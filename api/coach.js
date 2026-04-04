@@ -131,11 +131,9 @@ Include all major USD events. Today is ${dayStats.today}.`,
 
     const parsed = repairJSON(text);
     if (!parsed) {
-      // Last resort: return a fallback so UI doesn't break
-      console.error("Could not parse:", text.slice(0,300));
-      if (type === "trade") return res.status(200).json({score:70,verdict:"Analysis complete - see notes below.",strengths:["Trade was executed"],improvements:["Review your entry criteria"],lesson:"Always follow your rules."});
-      if (type === "full") return res.status(200).json({score:65,summary:"Analysis complete.",patterns:[],psychology:[],actions:[{priority:"high",action:"Review recent trades",reasoning:"Identify patterns"}]});
-      return res.status(200).json({ error:"Could not parse AI response. Raw: "+text.slice(0,200) });
+      console.error("Could not parse response:", text.slice(0,400));
+      // Return error so frontend shows a retry message instead of blank data
+      return res.status(200).json({ error:"Could not parse AI response. Please try again." });
     }
 
     return res.status(200).json(parsed);

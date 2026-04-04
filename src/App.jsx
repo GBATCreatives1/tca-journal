@@ -3935,7 +3935,11 @@ function SetupLeaderboardWidget({trades}){
 
 // ── AI Trade Coach ───────────────────────────────────────────────────────────
 function AICoachWidget({trades}){
-  const [analysis,setAnalysis]=useState(null);
+  const CACHE_KEY = "tca_aicoach_cache";
+  const [analysis,setAnalysis]=useState(()=>{
+    try{const c=localStorage.getItem("tca_aicoach_cache");if(c)return JSON.parse(c).data;}catch(e){}
+    return null;
+  });
   const [loading,setLoading]=useState(false);
   const [error,setError]=useState("");
   const [tab,setTab]=useState("patterns"); // patterns | psychology | action
@@ -3967,8 +3971,10 @@ function AICoachWidget({trades}){
       if(!res.ok) throw new Error("Server error "+res.status);
       const data=await res.json();
       if(data.error) throw new Error(data.error);
-      if(!data.patterns && !data.summary) throw new Error("Invalid response format");
+      // Accept any response that has at least some useful data
+      if(!data.score && !data.summary && !data.patterns) throw new Error("Invalid response format");
       setAnalysis(data);
+      try{localStorage.setItem("tca_aicoach_cache",JSON.stringify({data,date:new Date().toISOString().slice(0,10)}));}catch(e){}
     }catch(e){
       setError("Analysis failed: "+e.message+". Please try again.");
       console.error("AI Coach error:", e.message);
@@ -5441,13 +5447,15 @@ function PlaybookLibrary({session}){
 
 // ── Recurring Patterns AI ─────────────────────────────────────────────────────
 function RecurringPatternsWidget({trades}){
-  const [analysis,setAnalysis]=useState(null);
+  const [analysis,setAnalysis]=useState(()=>{
+    try{const c=localStorage.getItem("tca_patterns_cache");if(c)return JSON.parse(c).data;}catch(e){}
+    return null;
+  });
   const [loading,setLoading]=useState(false);
-  const [lastRun,setLastRun]=useState(null);
-
-  useEffect(()=>{
-    try{const l=localStorage.getItem("tca_patterns_cache");if(l){const v=JSON.parse(l);setAnalysis(v.data);setLastRun(v.date);}}catch(e){}
-  },[]);
+  const [lastRun,setLastRun]=useState(()=>{
+    try{const c=localStorage.getItem("tca_patterns_cache");if(c)return JSON.parse(c).date;}catch(e){}
+    return null;
+  });
 
   const runAnalysis=async()=>{
     if(!trades.length)return;
