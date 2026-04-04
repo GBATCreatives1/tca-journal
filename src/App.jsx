@@ -6636,9 +6636,9 @@ function WeeklyReview({trades, session}){
 WEEK: ${selectedWeek} to ${weekEnd}
 TRADES: ${weekTrades.length} total | $${pnl.toFixed(2)} P&L | ${wr}% WR
 WINS: ${wins.length} | LOSSES: ${losses.length}
-BY SESSION: ${Object.entries(bySess).map(([s,d])=>`${s}=${d.n}t,${Math.round(d.w/d.n*100)}%WR,$${d.pnl.toFixed(2)}`).join("|")}
-BY DAY: ${Object.entries(byDay).map(([d,v])=>`${d}=${v.n}t,${Math.round(v.w/v.n*100)}%WR,$${v.pnl.toFixed(2)}`).join("|")}
-TRADE LOG: ${weekTrades.map(t=>`${t.date}|${t.instrument}|${t.direction}|${t.result}|$${t.pnl.toFixed(2)}|${t.strategy||t.setup||"?"}|${t.session}|Grade:${t.grade}`).join(" / ")}
+BY SESSION: ${Object.entries(bySess).map(([s,d])=>s+"="+d.n+"t,"+Math.round(d.w/d.n*100)+"%WR,$"+d.pnl.toFixed(2)).join("|")}
+BY DAY: ${Object.entries(byDay).map(([d,v])=>d+"="+v.n+"t,"+Math.round(v.w/v.n*100)+"%WR,$"+v.pnl.toFixed(2)).join("|")}
+TRADE LOG: ${weekTrades.map(t=>t.date+"|"+t.instrument+"|"+t.direction+"|"+t.result+"|$"+t.pnl.toFixed(2)+"|"+(t.strategy||t.setup||"?")+"|"+t.session+"|Grade:"+t.grade).join(" / ")}`;
 
 Respond with this exact JSON:
 {
@@ -6662,7 +6662,7 @@ Respond with this exact JSON:
       });
       const data = await res.json();
       const text = data.content?.[0]?.text||"";
-      const cleaned = text.replace(/```json|```/g,"").trim();
+      const cleaned = text.split("```json").join("").split("```").join("").trim();
       const parsed = JSON.parse(cleaned);
       setReview(parsed);
       // Auto-fill focus
@@ -6950,7 +6950,7 @@ function TradeReplayButton({trade}){
           <div style={{padding:"4px 10px",borderRadius:6,background:`${B.teal}15`,color:B.teal,fontSize:12,fontWeight:700}}>{trade.instrument}</div>
           <div style={{fontSize:13,color:B.text,fontWeight:700}}>{trade.direction} · {trade.date} · {trade.session} Session</div>
           <div style={{fontSize:12,fontFamily:"monospace",color:pnlColor(trade.pnl),fontWeight:800}}>{trade.pnl>=0?"+":""}${trade.pnl.toFixed(2)}</div>
-          <div style={{padding:"3px 8px",borderRadius:6,background:trade.result==="Win"?`${B.teal}15`:`${B.loss}15`,color:trade.result==="Win"?B.teal:B.loss,fontSize:11,fontWeight:700}}>{trade.result}</div>
+          <div style={{padding:"3px 8px",borderRadius:6,background:trade.result==="Win"?(B.teal+"15"):(B.loss+"15"),color:trade.result==="Win"?B.teal:B.loss,fontSize:11,fontWeight:700}}>{trade.result}</div>
         </div>
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
           <div style={{fontSize:11,color:B.textMuted}}>Entry: {trade.entry} · Exit: {trade.exit} · R:R: {trade.rr||"—"}</div>
@@ -7055,9 +7055,9 @@ function TCAChat({trades, strategies, isOpen, onClose}){
     return `You are TCA Coach for The Candlestick Academy. Expert in MES futures + ICT methodology. You have this trader's data. Be direct, specific, use their numbers. Max 4 sentences unless asked for full review.
 
 STATS: ${trades.length} trades | $${Math.round(totalPnl*100)/100} PnL | ${winRate}%WR | AvgW:$${avgWin} | AvgL:$${avgLoss} | PF:${Math.round(pf*100)/100}
-SESSIONS: ${Object.entries(bySession).map(([s,d])=>`${s}=${d.total}t,${Math.round(d.wins/d.total*100)}%WR,$${Math.round(d.pnl*100)/100}`).join("|")}
-DAYS: ${Object.entries(byDay).map(([d,v])=>`${d}=${v.total}t,${Math.round(v.wins/v.total*100)}%WR,$${Math.round(v.pnl*100)/100}`).join("|")}
-SETUPS: ${Object.entries(bySetup).slice(0,6).map(([s,d])=>`${s.slice(0,15)}=${d.total}t,${Math.round(d.wins/d.total*100)}%WR,$${Math.round(d.pnl*100)/100}`).join("|")}
+SESSIONS: ${Object.entries(bySession).map(([s,d])=>s+"="+d.total+"t,"+Math.round(d.wins/d.total*100)+"%WR,$"+Math.round(d.pnl*100)/100).join("|")}
+DAYS: ${Object.entries(byDay).map(([d,v])=>d+"="+v.total+"t,"+Math.round(v.wins/v.total*100)+"%WR,$"+Math.round(v.pnl*100)/100).join("|")}
+SETUPS: ${Object.entries(bySetup).slice(0,6).map(([s,d])=>s.slice(0,15)+"="+d.total+"t,"+Math.round(d.wins/d.total*100)+"%WR,$"+Math.round(d.pnl*100)/100).join("|")}
 STRATEGIES: ${strategies.map(s=>s.name).join(",")||"none"}
 RECENT 15: ${recent.join(" / ")}`;
   };
