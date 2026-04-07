@@ -3218,50 +3218,27 @@ function DayJournalModal({date, trades, onClose, onGradeUpdate}){
           {/* Notes Tab */}
           {tab==="notes"&&(
             <div>
-              <div style={{fontSize:11,color:B.textMuted,marginBottom:10}}>Your trading journal for this day — thoughts, observations, lessons learned.</div>
-              {/* Rich Text Toolbar */}
-              <div style={{display:"flex",gap:4,padding:"6px 10px",borderRadius:"8px 8px 0 0",background:B.inputBg,border:`1px solid ${B.border}`,borderBottom:"none",flexWrap:"wrap",alignItems:"center"}}>
-                {[{cmd:"bold",label:"B",extra:{fontWeight:800}},{cmd:"italic",label:"I",extra:{fontStyle:"italic"}},{cmd:"underline",label:"U",extra:{textDecoration:"underline"}}].map(btn=>(
-                  <button key={btn.cmd} onMouseDown={e=>{e.preventDefault();document.execCommand(btn.cmd,false,null);}}
-                    style={{...btn.extra,padding:"2px 8px",borderRadius:4,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:12,minWidth:28,lineHeight:1.6}}>
-                    {btn.label}
-                  </button>
-                ))}
-                <div style={{width:1,height:16,background:B.border,margin:"0 3px"}}/>
-                {[{cmd:"insertUnorderedList",label:"• List"},{cmd:"insertOrderedList",label:"1. List"}].map(btn=>(
-                  <button key={btn.cmd} onMouseDown={e=>{e.preventDefault();document.execCommand(btn.cmd,false,null);}}
-                    style={{padding:"2px 8px",borderRadius:4,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:11}}>
-                    {btn.label}
-                  </button>
-                ))}
-                <div style={{width:1,height:16,background:B.border,margin:"0 3px"}}/>
-                {[{e:"🔴",c:"#E53E3E"},{e:"🟡",c:"#D97706"},{e:"🟢",c:"#059669"},{e:"🔵",c:"#3B82F6"}].map(({e:emoji,c:color})=>(
-                  <button key={color} onMouseDown={ev=>{ev.preventDefault();document.execCommand("foreColor",false,color);}}
-                    title="Color text" style={{padding:"1px 5px",borderRadius:4,border:`1px solid ${B.border}`,background:"transparent",cursor:"pointer",fontSize:13}}>
-                    {emoji}
-                  </button>
-                ))}
-                <div style={{marginLeft:"auto",fontSize:10,color:B.textDim}}>Rich text · Ctrl+B/I/U</div>
-              </div>
-              {/* Editable rich text area */}
-              <div
-                contentEditable
-                suppressContentEditableWarning
-                dir="ltr"
-                onInput={e=>{
-                  // Strip bidi control characters that cause RTL
-                  const html=e.currentTarget.innerHTML.replace(/[‏‎‪-‮⁦-⁩]/g,"");
-                  setNotes(html);
+              <div style={{fontSize:11,color:B.textMuted,marginBottom:10}}>Your trading journal for this day</div>
+              <textarea
+                value={typeof notes==="string"?notes.replace(/<[^>]*>/g,"").replace(/&nbsp;/g," ").replace(/&amp;/g,"&").replace(/&lt;/g,"<").replace(/&gt;/g,">"):""}
+                onChange={e=>setNotes(e.target.value)}
+                onBlur={e=>save(e.target.value,undefined)}
+                placeholder="Write your trading notes here... What happened? What did you learn?"
+                style={{
+                  width:"100%",minHeight:260,background:"rgba(0,0,0,0.3)",
+                  border:`1px solid ${B.border}`,borderRadius:10,
+                  padding:"14px 16px",color:B.text,fontSize:13,
+                  fontFamily:"'DM Sans',sans-serif",resize:"vertical",
+                  outline:"none",lineHeight:1.8,direction:"ltr",
+                  textAlign:"left",boxSizing:"border-box",
                 }}
-                onBlur={e=>{save(e.currentTarget.innerHTML,undefined);}}
-                dangerouslySetInnerHTML={{__html:notes||""}}
-                style={{...iS,minHeight:220,resize:"none",lineHeight:1.8,fontSize:13,borderRadius:"0 0 8px 8px",direction:"ltr",unicodeBidi:"embed",textAlign:"left",overflowY:"auto",whiteSpace:"pre-wrap",writingMode:"horizontal-tb"}}
               />
               <div style={{display:"flex",justifyContent:"flex-end",marginTop:10}}>
                 <button onClick={()=>save(notes,undefined)} style={{padding:"8px 20px",borderRadius:8,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:12,fontWeight:800}}>Save Notes</button>
               </div>
             </div>
           )}
+
 
           {/* Templates Tab */}
           {tab==="templates"&&(
