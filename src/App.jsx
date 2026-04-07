@@ -3250,7 +3250,7 @@ function DayJournalModal({date, trades, onClose, onGradeUpdate}){
                 onInput={e=>{const html=e.currentTarget.innerHTML;setNotes(html);}}
                 onBlur={e=>{save(e.currentTarget.innerHTML,undefined);}}
                 dangerouslySetInnerHTML={{__html:notes||""}}
-                style={{...iS,minHeight:220,resize:"none",lineHeight:1.8,fontSize:13,borderRadius:"0 0 8px 8px",overflowY:"auto",whiteSpace:"pre-wrap"}}
+                style={{...iS,minHeight:220,resize:"none",lineHeight:1.8,fontSize:13,borderRadius:"0 0 8px 8px",direction:"ltr",unicodeBidi:"plaintext",textAlign:"left",overflowY:"auto",whiteSpace:"pre-wrap"}}
               />
               <div style={{display:"flex",justifyContent:"flex-end",marginTop:10}}>
                 <button onClick={()=>save(notes,undefined)} style={{padding:"8px 20px",borderRadius:8,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:12,fontWeight:800}}>Save Notes</button>
