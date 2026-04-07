@@ -5,144 +5,137 @@ export default async function handler(req, res) {
   if (req.method === "OPTIONS") return res.status(200).end();
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
-  const repairJSON = (text) => {
-    let s = text.replace(/```json\s*/gi,"").replace(/```\s*/g,"").trim();
-    const start = s.indexOf("{");
-    const end = s.lastIndexOf("}");
-    if (start === -1 || end === -1) return null;
-    s = s.slice(start, end + 1);
-    // Try 1: direct parse
-    try { return JSON.parse(s); } catch(e) {}
-    // Try 2: fix trailing commas
-    const fixed = s.replace(/,\s*([\]}])/g, "$1");
-    try { return JSON.parse(fixed); } catch(e) {}
-    // Try 3: fix unescaped control chars in strings
-    const fixed2 = fixed.replace(/[\x00-\x1F\x7F]/g, " ");
-    try { return JSON.parse(fixed2); } catch(e) {}
-    console.error("repairJSON failed on:", s.slice(0, 200));
-    return null;
-  };
-
   try {
     const body = req.body || {};
     const type = body.type || "";
     const MODEL = "claude-sonnet-4-6";
-    console.log("Coach type:", type);
+    console.log("Coach called, type:", type);
 
     // ── CHAT ─────────────────────────────────────────────────────────────────
     if (type === "chat") {
       const r = await fetch("https://api.anthropic.com/v1/messages", {
-        method:"POST",
-        headers:{"Content-Type":"application/json","x-api-key":process.env.ANTHROPIC_API_KEY,"anthropic-version":"2023-06-01"},
-        body: JSON.stringify({ model:MODEL, max_tokens:600, system:body.chatContext||"", messages:body.chatHistory||[] }),
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-api-key": process.env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01" },
+        body: JSON.stringify({ model: MODEL, max_tokens: 600, system: body.chatContext || "", messages: body.chatHistory || [] }),
       });
-      if (!r.ok) return res.status(200).json({ content:[{type:"text",text:"API error "+r.status}] });
+      if (!r.ok) return res.status(200).json({ content: [{ type: "text", text: "API error " + r.status }] });
       return res.status(200).json(await r.json());
     }
 
-    // ── STRUCTURED TYPES ─────────────────────────────────────────────────────
+    // ── STRUCTURED TYPES ──────────────────────────────────────────────────────
     const stats = body.stats || {};
     const dayStats = body.dayStats || {};
 
-    // Use a two-message conversation: system sets role, user asks for JSON
-    // This is more reliable than a single prompt
-    const systemPrompts = {
-      full:     "You are an expert MES futures trading coach API. You ONLY respond with raw JSON objects, never with explanations or markdown. Your responses are always valid, parseable JSON.",
-      day:      "You are a trading coach API. You ONLY respond with raw JSON objects, never with explanations or markdown.",
-      trade:    "You are a trading coach API. You ONLY respond with raw JSON objects, never with explanations or markdown.",
-      patterns: "You are a trading psychology API. You ONLY respond with raw JSON objects, never with explanations or markdown.",
-      economic: "You are a financial calendar API. You ONLY respond with raw JSON objects, never with explanations or markdown.",
-    };
+    let systemPrompt = "";
+    let userPrompt = "";
+    let maxTokens = 1000;
 
-    const userPrompts = {
-      full: `Analyze this trader's MES futures performance data and return a JSON object with exactly these keys:
-- "score": integer 0-100 overall performance score
-- "summary": string, 2-3 sentence overall summary
-- "patterns": array of objects with keys "title" (string), "detail" (string), "type" ("positive"|"negative"|"neutral")
-- "psychology": array of objects with keys "title" (string), "detail" (string), "type" ("positive"|"negative"|"neutral")  
-- "actions": array of objects with keys "priority" ("high"|"medium"|"low"), "action" (string), "reasoning" (string)
+    if (type === "full") {
+      maxTokens = 2000;
+      systemPrompt = "You are a trading coach. Output ONLY raw JSON. No prose, no markdown, no explanation before or after.";
+      userPrompt = `Analyze this trader's performance. Output ONLY this JSON structure with real values filled in:
+{"score":75,"summary":"2-3 sentence summary here","patterns":[{"title":"Pattern name","detail":"Specific detail with numbers","type":"positive"},{"title":"Pattern name","detail":"Specific detail","type":"negative"},{"title":"Pattern name","detail":"Specific detail","type":"neutral"}],"psychology":[{"title":"Psychology observation","detail":"Specific detail","type":"positive"},{"title":"Psychology observation","detail":"Detail","type":"negative"}],"actions":[{"priority":"high","action":"Specific action to take","reasoning":"Why this matters"},{"priority":"medium","action":"Another action","reasoning":"Why"}]}
 
-Trader data: ${JSON.stringify(stats)}`,
+Trader stats: winRate=${stats.winRate}%, totalTrades=${stats.totalTrades}, totalPnl=$${stats.totalPnl}, avgWin=$${stats.avgWin}, avgLoss=$${stats.avgLoss}
+Sessions: ${JSON.stringify(stats.sessions)}
+Setups: ${JSON.stringify(stats.setups?.slice(0,5))}
+Recent trades: ${JSON.stringify(stats.recentTrades?.slice(0,8))}`;
+    }
 
-      day: `Review this trading day and return a JSON object with exactly these keys:
-- "mood": string (e.g. "focused", "frustrated", "disciplined")
-- "summary": string, brief day summary
-- "wins": array of strings, what went well
-- "improvements": array of strings, what to improve
-- "tomorrowFocus": string, one thing to focus on tomorrow
+    else if (type === "trade") {
+      maxTokens = 600;
+      systemPrompt = "You are a trading coach. Output ONLY raw JSON. No prose, no markdown.";
+      userPrompt = `Analyze this trade. Output ONLY this JSON structure:
+{"score":75,"verdict":"One sentence verdict","strengths":["Strength 1","Strength 2"],"improvements":["Improvement 1","Improvement 2"],"lesson":"Key lesson learned"}
 
-Day data: ${JSON.stringify(stats)}`,
+Trade: ${JSON.stringify(stats)}`;
+    }
 
-      trade: `Analyze this single trade and return a JSON object with exactly these keys:
-- "score": integer 0-100
-- "verdict": string, one sentence verdict
-- "strengths": array of strings (2-3 items)
-- "improvements": array of strings (2-3 items)
-- "lesson": string, the key lesson
+    else if (type === "patterns") {
+      maxTokens = 1500;
+      systemPrompt = "You are a trading psychologist. Output ONLY raw JSON. No prose, no markdown.";
+      userPrompt = `Find behavioral patterns. Output ONLY this JSON structure:
+{"topIssue":"Main problem area","topStrength":"Main strength","patterns":[{"title":"Pattern name","description":"Detailed description with specifics","type":"negative","frequency":"How often","suggestion":"What to do about it"},{"title":"Pattern name","description":"Description","type":"positive","frequency":"How often","suggestion":"Keep doing this"}],"actions":[{"priority":"high","action":"Specific action","reasoning":"Why"}]}
 
-Trade data: ${JSON.stringify(stats)}`,
+Data: ${JSON.stringify(stats)}`;
+    }
 
-      patterns: `Analyze behavioral trading patterns and return a JSON object with exactly these keys:
-- "patterns": array of objects with keys "title", "description", "frequency", "impact" ("positive"|"negative"), "suggestion"
-- "topIssue": string
-- "topStrength": string
+    else if (type === "day") {
+      maxTokens = 600;
+      systemPrompt = "You are a trading coach. Output ONLY raw JSON. No prose, no markdown.";
+      userPrompt = `Review this trading day. Output ONLY this JSON:
+{"mood":"focused","summary":"Day summary","wins":["Win 1","Win 2"],"improvements":["Improve 1"],"tomorrowFocus":"Focus for tomorrow"}
 
-Data: ${JSON.stringify(stats)}`,
+Day data: ${JSON.stringify(stats)}`;
+    }
 
-      economic: `Generate the US economic calendar for ${dayStats.weekStart} to ${dayStats.weekEnd} and return a JSON object with exactly this key:
-- "events": array of objects each with keys "date" (YYYY-MM-DD), "time" (HH:MM), "name" (string), "impact" ("high"|"medium"|"low"), "currency" ("USD"), "actual" (string or ""), "forecast" (string or ""), "previous" (string or "")
+    else if (type === "economic") {
+      maxTokens = 1500;
+      systemPrompt = "You are a financial calendar. Output ONLY raw JSON. No prose, no markdown.";
+      userPrompt = `Generate US economic calendar for ${dayStats.weekStart} to ${dayStats.weekEnd}. Output ONLY this JSON:
+{"events":[{"date":"YYYY-MM-DD","time":"HH:MM","name":"Event name","impact":"high","currency":"USD","actual":"","forecast":"100K","previous":"95K"}]}
 
-Include all major USD events. Today is ${dayStats.today}.`,
-    };
+Include all major USD events. Today: ${dayStats.today}`;
+    }
 
-    const system = systemPrompts[type];
-    const userMsg = userPrompts[type];
-    if (!system || !userMsg) return res.status(400).json({ error: "Invalid type: " + type });
-
-    const messages = type === "trade" && body.chartImage
-      ? [{ role:"user", content:[
-          { type:"image", source:{ type:"base64", media_type:"image/jpeg", data:body.chartImage }},
-          { type:"text", text:userMsg }
-        ]}]
-      : [{ role:"user", content:userMsg }];
+    else {
+      return res.status(400).json({ error: "Unknown type: " + type });
+    }
 
     const r = await fetch("https://api.anthropic.com/v1/messages", {
-      method:"POST",
-      headers:{"Content-Type":"application/json","x-api-key":process.env.ANTHROPIC_API_KEY,"anthropic-version":"2023-06-01"},
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-api-key": process.env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01" },
       body: JSON.stringify({
         model: MODEL,
-        max_tokens: type==="full"?2000 : type==="patterns"?1500 : type==="economic"?1500 : 800,
-        system,
-        messages,
+        max_tokens: maxTokens,
+        system: systemPrompt,
+        messages: [{ role: "user", content: userPrompt }],
       }),
     });
 
     if (!r.ok) {
-      const t = await r.text();
-      console.error("Anthropic error:", r.status, t.slice(0,200));
-      return res.status(200).json({ error:"API error "+r.status });
+      const errText = await r.text();
+      console.error("API error:", r.status, errText.slice(0, 200));
+      return res.status(200).json({ error: "API error " + r.status });
     }
 
     const d = await r.json();
-    const text = d.content?.[0]?.text || "";
-    console.log("Response (first 200):", text.slice(0,200));
+    const rawText = d.content?.[0]?.text || "";
+    console.log("Raw response (first 300):", rawText.slice(0, 300));
 
-    if (!text) return res.status(200).json({ error:"Empty response from model" });
+    if (!rawText) return res.status(200).json({ error: "Empty response from model" });
 
-    const parsed = repairJSON(text);
+    // Parse JSON - try progressively more aggressive cleanup
+    let parsed = null;
+    let attempts = [
+      // 1. As-is after stripping fences
+      rawText.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim(),
+      // 2. Extract just the JSON object
+      (() => { const s = rawText.replace(/```json\s*/gi,"").replace(/```\s*/g,"").trim(); const i=s.indexOf("{"); const j=s.lastIndexOf("}"); return i>-1&&j>-1?s.slice(i,j+1):""; })(),
+    ];
+
+    for (const attempt of attempts) {
+      if (!attempt) continue;
+      // Try direct
+      try { parsed = JSON.parse(attempt); break; } catch(e) {}
+      // Try fixing trailing commas
+      try { parsed = JSON.parse(attempt.replace(/,\s*([\]}])/g, "$1")); break; } catch(e) {}
+      // Try fixing control chars
+      try { parsed = JSON.parse(attempt.replace(/,\s*([\]}])/g, "$1").replace(/[\x00-\x1F\x7F]/g, " ")); break; } catch(e) {}
+    }
+
     if (!parsed) {
-      console.error("Could not parse response:", text.slice(0,400));
-      // Return error so frontend shows a retry message instead of blank data
-      return res.status(200).json({ error:"Could not parse AI response. Please try again." });
+      console.error("All parse attempts failed. Raw:", rawText.slice(0, 500));
+      return res.status(200).json({ error: "Parse failed. Raw response: " + rawText.slice(0, 300) });
     }
 
     return res.status(200).json(parsed);
 
   } catch (err) {
-    console.error("Coach error:", err.message);
-    if ((req.body||{}).type === "chat") {
-      return res.status(200).json({ content:[{type:"text",text:"Error: "+err.message}] });
+    console.error("Coach handler error:", err.message);
+    if ((req.body || {}).type === "chat") {
+      return res.status(200).json({ content: [{ type: "text", text: "Error: " + err.message }] });
     }
-    return res.status(200).json({ error:err.message });
+    return res.status(200).json({ error: err.message });
   }
 }
