@@ -3247,10 +3247,15 @@ function DayJournalModal({date, trades, onClose, onGradeUpdate}){
               <div
                 contentEditable
                 suppressContentEditableWarning
-                onInput={e=>{const html=e.currentTarget.innerHTML;setNotes(html);}}
+                dir="ltr"
+                onInput={e=>{
+                  // Strip bidi control characters that cause RTL
+                  const html=e.currentTarget.innerHTML.replace(/[‏‎‪-‮⁦-⁩]/g,"");
+                  setNotes(html);
+                }}
                 onBlur={e=>{save(e.currentTarget.innerHTML,undefined);}}
                 dangerouslySetInnerHTML={{__html:notes||""}}
-                style={{...iS,minHeight:220,resize:"none",lineHeight:1.8,fontSize:13,borderRadius:"0 0 8px 8px",direction:"ltr",unicodeBidi:"plaintext",textAlign:"left",overflowY:"auto",whiteSpace:"pre-wrap"}}
+                style={{...iS,minHeight:220,resize:"none",lineHeight:1.8,fontSize:13,borderRadius:"0 0 8px 8px",direction:"ltr",unicodeBidi:"embed",textAlign:"left",overflowY:"auto",whiteSpace:"pre-wrap",writingMode:"horizontal-tb"}}
               />
               <div style={{display:"flex",justifyContent:"flex-end",marginTop:10}}>
                 <button onClick={()=>save(notes,undefined)} style={{padding:"8px 20px",borderRadius:8,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:12,fontWeight:800}}>Save Notes</button>
@@ -7415,6 +7420,7 @@ export default function App(){
         <button onClick={()=>supabase.auth.signOut()} style={{marginTop:6,width:"100%",padding:"7px",borderRadius:8,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:11,fontWeight:600}}>Sign Out</button>
       </div>
     </div>
+    <style>{`[contenteditable]{direction:ltr!important;text-align:left!important;unicode-bidi:embed!important;}`}</style>
     <div style={{marginLeft:216,marginRight:chatOpen?380:0,padding:"28px 32px",minHeight:"100vh",transition:"margin-right 0.3s"}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
         <div><h1 style={{margin:0,fontSize:20,fontWeight:800,color:B.text,letterSpacing:-0.5}}>{NAV.find(n=>n.id===active)?.label}</h1></div>
