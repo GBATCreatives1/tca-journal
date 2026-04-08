@@ -1584,13 +1584,13 @@ function Overview({trades, onGradeUpdate, session, onEdit}){
       case "yearly":     return <YearlyCalendarWidget trades={trades}/>;
       case "progress":   return <ProgressTrackerWidget trades={trades}/>;
       case "report":     return <ReportWidget trades={trades}/>;
-      case "aicoach":    return <AICoachWidget trades={trades}/>;
+      case "aicoach":    return <AICoachWidget trades={trades} session={session}/>;
       case "dailygoals": return <DailyGoalsWidget trades={trades} session={session}/>;
       case "apex":       return <ApexTrackerWidget trades={trades} session={session}/>;
       case "ictags":     return <ICTTaggerWidget trades={trades} session={session}/>;
       case "emotions":   return <EmotionalTrackerWidget trades={trades} session={session}/>;
       case "achievements":return <AchievementsWidget trades={trades} session={session}/>;
-      case "patterns":   return <RecurringPatternsWidget trades={trades}/>;
+      case "patterns":   return <RecurringPatternsWidget trades={trades} session={session}/>;
       default: return null;
     }
   };
@@ -3916,10 +3916,11 @@ function SetupLeaderboardWidget({trades}){
 }
 
 // ── AI Trade Coach ───────────────────────────────────────────────────────────
-function AICoachWidget({trades}){
-  const CACHE_KEY = "tca_aicoach_cache";
+function AICoachWidget({trades, session}){
+  const userId = session?.user?.id||"guest";
+  const CACHE_KEY = "tca_aicoach_"+userId;
   const [analysis,setAnalysis]=useState(()=>{
-    try{const c=localStorage.getItem("tca_aicoach_cache");if(c)return JSON.parse(c).data;}catch(e){}
+    try{const c=localStorage.getItem("tca_aicoach_"+userId);if(c)return JSON.parse(c).data;}catch(e){}
     return null;
   });
   const [loading,setLoading]=useState(false);
@@ -3956,7 +3957,7 @@ function AICoachWidget({trades}){
       // Accept any response that has at least some useful data
       if(!data.score && !data.summary && !data.patterns) throw new Error("Invalid response format");
       setAnalysis(data);
-      try{localStorage.setItem("tca_aicoach_cache",JSON.stringify({data,date:new Date().toISOString().slice(0,10)}));}catch(e){}
+      try{localStorage.setItem(CACHE_KEY,JSON.stringify({data,date:new Date().toISOString().slice(0,10)}));}catch(e){}
     }catch(e){
       setError("Analysis failed: "+e.message+". Please try again.");
       console.error("AI Coach error:", e.message);
@@ -5428,14 +5429,16 @@ function PlaybookLibrary({session}){
 
 
 // ── Recurring Patterns AI ─────────────────────────────────────────────────────
-function RecurringPatternsWidget({trades}){
+function RecurringPatternsWidget({trades, session}){
+  const userId = session?.user?.id||"guest";
+  const RP_CACHE = "tca_patterns_"+userId;
   const [analysis,setAnalysis]=useState(()=>{
-    try{const c=localStorage.getItem("tca_patterns_cache");if(c)return JSON.parse(c).data;}catch(e){}
+    try{const c=localStorage.getItem("tca_patterns_"+userId);if(c)return JSON.parse(c).data;}catch(e){}
     return null;
   });
   const [loading,setLoading]=useState(false);
   const [lastRun,setLastRun]=useState(()=>{
-    try{const c=localStorage.getItem("tca_patterns_cache");if(c)return JSON.parse(c).date;}catch(e){}
+    try{const c=localStorage.getItem("tca_patterns_"+userId);if(c)return JSON.parse(c).date;}catch(e){}
     return null;
   });
 
@@ -5514,7 +5517,7 @@ function RecurringPatternsWidget({trades}){
       setAnalysis(parsed);
       const today=new Date().toISOString().slice(0,10);
       setLastRun(today);
-      localStorage.setItem("tca_patterns_cache",JSON.stringify({data:parsed,date:today}));
+      localStorage.setItem(RP_CACHE,JSON.stringify({data:parsed,date:today}));
     }catch(e){
       console.error("Patterns AI error:",e);
       setAnalysis({
@@ -7187,7 +7190,8 @@ export default function App(){
     if(!session){setLoading(false);return;}
     (async()=>{
       try{
-        const{data,error}=await supabase.from("trades").select("*").order("date",{ascending:false});
+        const{data:{user}}=await supabase.auth.getUser();
+        const{data,error}=await supabase.from("trades").select("*").eq("user_id",user.id).order("date",{ascending:false});
         if(error)console.error("Load error:",error);
         setTrades(data||[]);
         // Load saved accounts config
@@ -7394,7 +7398,15 @@ export default function App(){
         <button onClick={()=>setShowProfile(true)} style={{marginTop:6,width:"100%",padding:"7px",borderRadius:8,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:11,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
           👤 {session?.user?.user_metadata?.full_name||session?.user?.email?.split("@")[0]||"Profile"}
         </button>
-        <button onClick={()=>supabase.auth.signOut()} style={{marginTop:6,width:"100%",padding:"7px",borderRadius:8,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:11,fontWeight:600}}>Sign Out</button>
+        <button onClick={()=>{
+              // Clear user-specific caches on sign out
+              const uid = session?.user?.id;
+              if(uid){
+                localStorage.removeItem("tca_aicoach_"+uid);
+                localStorage.removeItem("tca_patterns_"+uid);
+              }
+              supabase.auth.signOut();
+            }} style={{marginTop:6,width:"100%",padding:"7px",borderRadius:8,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:11,fontWeight:600}}>Sign Out</button>
       </div>
     </div>
     <style>{`[contenteditable]{direction:ltr!important;text-align:left!important;unicode-bidi:embed!important;}`}</style>
