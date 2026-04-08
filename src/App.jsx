@@ -1,9 +1,5 @@
-import { useState, useEffect, useRef, useCallback } 
+import { useState, useEffect, useRef, useCallback } from "react";
 
-  // Persist accounts config (including starting balances) to localStorage
-  useEffect(()=>{
-    try{localStorage.setItem("pref_tca_accounts_v1",JSON.stringify(accounts));}catch(e){}
-  },[accounts]);from "react";
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, ComposedChart, Line, Cell } from "recharts";
 import { createClient } from "@supabase/supabase-js";
 
@@ -7262,6 +7258,11 @@ export default function App(){
       setLoading(false);
     })();
   },[session]);
+
+  // Persist accounts (including starting balances) to localStorage
+  useEffect(()=>{
+    try{localStorage.setItem("pref_tca_accounts_v1",JSON.stringify(accounts));}catch(e){}
+  },[accounts]);
 
   // ── Tradovate Auto Sync ────────────────────────────────────────────────────
   const syncTradovate = useCallback(async (fromDate=null, toDate=null, accountId="main") => {
