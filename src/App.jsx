@@ -294,7 +294,7 @@ function GradeBadge({grade, tradeId, onSave, size="normal"}){
 }
 
 function buildCalendar(trades){const m={};trades.forEach(t=>{if(!m[t.date])m[t.date]={pnl:0,count:0};m[t.date].pnl+=t.pnl;m[t.date].count++;});return m;}
-function buildEquity(trades, startBal=0){const s=[...trades].sort((a,b)=>a.date.localeCompare(b.date));let c=startBal;return [{date:"Start",equity:startBal},...s.map(t=>{c+=t.pnl;return{date:t.date.slice(5),equity:Math.round(c*100)/100};})];}
+function buildEquity(trades, startBal=0){const s=[...trades].sort((a,b)=>a.date.localeCompare(b.date));let c=startBal;return s.map(t=>{c+=t.pnl;return{date:t.date.slice(5),equity:Math.round(c*100)/100};});}
 
 function parseTradovateCSV(text){
   // Detect if this is a Performance CSV (has buyPrice, sellPrice, pnl columns)
@@ -1339,7 +1339,7 @@ function StreakBadge({trades}){
   );
 }
 
-function Overview({trades, onGradeUpdate, session, onEdit}){
+function Overview({trades, onGradeUpdate, session, onEdit, accounts=[], activeAccount="all", setAccounts}){
   const wins=trades.filter(t=>t.result==="Win"),losses=trades.filter(t=>t.result==="Loss");
   const totalPnl=trades.reduce((a,t)=>a+t.pnl,0);
   const winRate=trades.length?Math.round((wins.length/trades.length)*100):0;
