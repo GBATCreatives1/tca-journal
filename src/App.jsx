@@ -1,4 +1,9 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback } 
+
+  // Persist accounts config (including starting balances) to localStorage
+  useEffect(()=>{
+    try{localStorage.setItem("pref_tca_accounts_v1",JSON.stringify(accounts));}catch(e){}
+  },[accounts]);from "react";
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, ComposedChart, Line, Cell } from "recharts";
 import { createClient } from "@supabase/supabase-js";
 
@@ -293,7 +298,7 @@ function GradeBadge({grade, tradeId, onSave, size="normal"}){
 }
 
 function buildCalendar(trades){const m={};trades.forEach(t=>{if(!m[t.date])m[t.date]={pnl:0,count:0};m[t.date].pnl+=t.pnl;m[t.date].count++;});return m;}
-function buildEquity(trades){const s=[...trades].sort((a,b)=>a.date.localeCompare(b.date));let c=0;return s.map(t=>{c+=t.pnl;return{date:t.date.slice(5),equity:c};});}
+function buildEquity(trades, startBal=0){const s=[...trades].sort((a,b)=>a.date.localeCompare(b.date));let c=startBal;return [{date:"Start",equity:startBal},...s.map(t=>{c+=t.pnl;return{date:t.date.slice(5),equity:Math.round(c*100)/100};})];}
 
 function parseTradovateCSV(text){
   // Detect if this is a Performance CSV (has buyPrice, sellPrice, pnl columns)
@@ -542,22 +547,27 @@ function TCAIcon({size=34}){
       <defs>
         <linearGradient id="tcaG" x1="0" y1="0" x2="1" y2="1">
           <stop offset="0%" stopColor="#00D4A8"/>
-          <stop offset="50%" stopColor="#4F8EF7"/>
           <stop offset="100%" stopColor="#8B5CF6"/>
         </linearGradient>
+        <linearGradient id="tcaG2" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#4F8EF7"/>
+          <stop offset="100%" stopColor="#00D4A8"/>
+        </linearGradient>
       </defs>
-      {/* Candlestick body */}
-      <rect x="38" y="20" width="24" height="40" rx="4" fill="url(#tcaG)"/>
-      {/* Wicks */}
-      <line x1="50" y1="8" x2="50" y2="20" stroke="url(#tcaG)" strokeWidth="4" strokeLinecap="round"/>
-      <line x1="50" y1="60" x2="50" y2="78" stroke="url(#tcaG)" strokeWidth="4" strokeLinecap="round"/>
-      {/* Small accent candles */}
-      <rect x="18" y="35" width="12" height="22" rx="3" fill="#00D4A8" opacity="0.6"/>
-      <line x1="24" y1="26" x2="24" y2="35" stroke="#00D4A8" strokeWidth="3" strokeLinecap="round" opacity="0.6"/>
-      <line x1="24" y1="57" x2="24" y2="66" stroke="#00D4A8" strokeWidth="3" strokeLinecap="round" opacity="0.6"/>
-      <rect x="70" y="30" width="12" height="28" rx="3" fill="#8B5CF6" opacity="0.6"/>
-      <line x1="76" y1="20" x2="76" y2="30" stroke="#8B5CF6" strokeWidth="3" strokeLinecap="round" opacity="0.6"/>
-      <line x1="76" y1="58" x2="76" y2="68" stroke="#8B5CF6" strokeWidth="3" strokeLinecap="round" opacity="0.6"/>
+      {/* Left candle - bearish (red/loss) */}
+      <line x1="22" y1="10" x2="22" y2="22" stroke="#F05A7E" strokeWidth="2.5" strokeLinecap="round"/>
+      <rect x="16" y="22" width="12" height="30" rx="3" fill="#F05A7E" opacity="0.85"/>
+      <line x1="22" y1="52" x2="22" y2="64" stroke="#F05A7E" strokeWidth="2.5" strokeLinecap="round"/>
+      {/* Center candle - bullish (main, gradient) */}
+      <line x1="50" y1="6" x2="50" y2="18" stroke="url(#tcaG)" strokeWidth="3" strokeLinecap="round"/>
+      <rect x="43" y="18" width="14" height="44" rx="3.5" fill="url(#tcaG)"/>
+      <line x1="50" y1="62" x2="50" y2="76" stroke="url(#tcaG)" strokeWidth="3" strokeLinecap="round"/>
+      {/* Right candle - bullish (blue) */}
+      <line x1="78" y1="14" x2="78" y2="26" stroke="#4F8EF7" strokeWidth="2.5" strokeLinecap="round"/>
+      <rect x="72" y="26" width="12" height="28" rx="3" fill="#4F8EF7" opacity="0.85"/>
+      <line x1="78" y1="54" x2="78" y2="66" stroke="#4F8EF7" strokeWidth="2.5" strokeLinecap="round"/>
+      {/* TCA text */}
+      <text x="50" y="92" textAnchor="middle" fill="url(#tcaG)" fontSize="13" fontWeight="800" fontFamily="monospace" letterSpacing="3">TCA</text>
     </svg>
   );
 }
@@ -610,9 +620,14 @@ function LoginScreen(){
 
         {/* Logo */}
         <div style={{textAlign:"center",marginBottom:36}}>
-          <div style={{width:64,height:64,borderRadius:18,background:"linear-gradient(135deg,#00D4A8,#8B5CF6)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,margin:"0 auto 16px"}}>📈</div>
-          <div style={{fontSize:26,fontWeight:800,color:"#F0EEF8",letterSpacing:-0.5}}>TCA Journal</div>
-          <div style={{fontSize:13,color:"#6B6880",marginTop:4}}>The Candlestick Academy · Trade Smarter</div>
+          <div style={{display:"flex",justifyContent:"center",marginBottom:16}}>
+            <div style={{width:80,height:80,borderRadius:24,background:"linear-gradient(135deg,rgba(0,212,168,0.15),rgba(139,92,246,0.15))",border:"1px solid rgba(0,212,168,0.3)",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 0 40px rgba(0,212,168,0.15)"}}>
+              <TCAIcon size={52}/>
+            </div>
+          </div>
+          <div style={{fontSize:11,color:"#00D4A8",letterSpacing:3,textTransform:"uppercase",fontWeight:700,marginBottom:6}}>The Candlestick Academy</div>
+          <div style={{fontSize:28,fontWeight:900,color:"#F0EEF8",letterSpacing:-1,lineHeight:1.1}}>Trade Journal</div>
+          <div style={{fontSize:12,color:"#6B6880",marginTop:6,letterSpacing:0.5}}>Track · Analyze · Improve</div>
         </div>
 
         {/* Card */}
@@ -1345,8 +1360,13 @@ function Overview({trades, onGradeUpdate, session, onEdit}){
   const wins=trades.filter(t=>t.result==="Win"),losses=trades.filter(t=>t.result==="Loss");
   const totalPnl=trades.reduce((a,t)=>a+t.pnl,0);
   const winRate=trades.length?Math.round((wins.length/trades.length)*100):0;
+  // Starting balance - sum of selected account(s) starting balance
+  const startingBalance = activeAccount==="all"
+    ? accounts.reduce((a,acc)=>a+(acc.startingBalance||0),0)
+    : (accounts.find(a=>a.id===activeAccount)?.startingBalance||0);
+  const currentBalance = startingBalance + totalPnl;
   const profitFactor=losses.length?parseFloat(Math.abs(wins.reduce((a,t)=>a+t.pnl,0)/(losses.reduce((a,t)=>a+t.pnl,0)||1)).toFixed(2)):0;
-  const equity=buildEquity(trades);
+  const equity=buildEquity(trades, startingBalance);
 
   const [selectedDay,setSelectedDay]=useState(null);
   const [editMode,setEditMode]=useState(false);
@@ -1635,13 +1655,46 @@ function Overview({trades, onGradeUpdate, session, onEdit}){
 
       {/* ── PINNED STAT ROW — always visible ── */}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr 1fr",gap:12}}>
-        {/* Account P&L */}
-        <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:"18px 20px",position:"relative",overflow:"hidden"}}>
+        {/* Account Balance */}
+        <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:"14px 18px",position:"relative",overflow:"hidden"}}>
           <div style={{position:"absolute",top:0,left:0,right:0,height:2,background:GTB}}/>
-          <div style={{fontSize:10,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:6}}>Account P&L</div>
-          <div style={{fontSize:26,fontWeight:800,color:pnlColor(totalPnl),fontFamily:"monospace",letterSpacing:-1}}>{fmt(totalPnl)}</div>
-          <div style={{fontSize:11,color:B.textMuted,marginTop:3}}>{trades.length} trades total</div>
+          <div style={{fontSize:10,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:8}}>Account Balance</div>
+          {/* Current balance = starting + P&L */}
+          {startingBalance>0&&(
+            <div style={{fontSize:22,fontWeight:800,color:pnlColor(currentBalance),fontFamily:"monospace",letterSpacing:-1,marginBottom:2}}>
+              {fmt(currentBalance)}
+            </div>
+          )}
+          {/* Net P&L */}
+          <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
+            <div style={{fontSize:startingBalance>0?13:24,fontWeight:startingBalance>0?600:800,color:pnlColor(totalPnl),fontFamily:"monospace"}}>
+              {startingBalance>0?"P&L: ":""}{fmt(totalPnl)}
+            </div>
+          </div>
+          {/* Starting balance editor */}
+          <div style={{display:"flex",alignItems:"center",gap:6,marginTop:4}}>
+            <div style={{fontSize:9,color:B.textDim,flexShrink:0}}>Start:</div>
+            <input
+              type="number"
+              value={(()=>{
+                if(activeAccount==="all") return "";
+                return accounts.find(a=>a.id===activeAccount)?.startingBalance||"";
+              })()}
+              onChange={e=>{
+                if(activeAccount==="all") return;
+                const val = parseFloat(e.target.value)||0;
+                setAccounts(prev=>prev.map(a=>a.id===activeAccount?{...a,startingBalance:val}:a));
+              }}
+              placeholder={activeAccount==="all"?"Select account":"e.g. 50000"}
+              disabled={activeAccount==="all"}
+              style={{flex:1,background:"rgba(0,0,0,0.3)",border:`1px solid ${B.border}`,borderRadius:6,
+                padding:"3px 8px",color:B.text,fontSize:11,outline:"none",
+                opacity:activeAccount==="all"?0.4:1}}
+            />
+          </div>
+          <div style={{fontSize:10,color:B.textMuted,marginTop:4}}>{trades.length} trades total</div>
         </div>
+
         {/* Win % gauge */}
         <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"center"}}>
           <GaugeChart value={winRate} label="Trade Win %" color={winRate>=50?B.profit:B.loss}/>
@@ -1857,7 +1910,7 @@ function Analytics({trades}){
   const grossWin=wins.reduce((a,t)=>a+t.pnl,0);
   const grossLoss=Math.abs(losses.reduce((a,t)=>a+t.pnl,0));
   const pf=grossLoss?Math.abs(grossWin/grossLoss).toFixed(2):"N/A";
-  const equity=buildEquity(trades);
+  const equity=buildEquity(trades, startingBalance);
   const maxDD=(()=>{let pk=0,dd=0,r=0;equity.forEach(e=>{r=e.equity;if(r>pk)pk=r;const d=pk-r;if(d>dd)dd=d;});return Math.round(dd);})();
   const exp=Math.round(trades.reduce((a,t)=>a+t.pnl,0)/trades.length);
   const avgWin=wins.length?Math.round(grossWin/wins.length):0;
@@ -3441,9 +3494,9 @@ function PlaybookView({trades=[]}){
   const STORAGE_KEY="tca_strategies_v1";
   const [strategies,setStrategies]=useState([]);
   const [accounts,setAccounts]=useState([
-    {id:"main",label:"Live Account",type:"live",color:"#00D4A8"},
-    {id:"apex_eval",label:"Apex Eval",type:"eval",color:"#4F8EF7"},
-    {id:"apex_demo",label:"Apex Demo",type:"demo",color:"#8B5CF6"},
+    {id:"main",label:"Live Account",type:"live",color:"#00D4A8",startingBalance:0},
+    {id:"apex_eval",label:"Apex Eval",type:"eval",color:"#4F8EF7",startingBalance:0},
+    {id:"apex_demo",label:"Apex Demo",type:"demo",color:"#8B5CF6",startingBalance:0},
   ]);
   const [activeAccount,setActiveAccount]=useState("all");
   const [sel,setSel]=useState(null);
@@ -7172,9 +7225,9 @@ export default function App(){
   const [lastImport,setLastImport]=useState(null);
   const [strategies,setStrategies]=useState([]);
   const [accounts,setAccounts]=useState([
-    {id:"main",label:"Live Account",type:"live",color:"#00D4A8"},
-    {id:"apex_eval",label:"Apex Eval",type:"eval",color:"#4F8EF7"},
-    {id:"apex_demo",label:"Apex Demo",type:"demo",color:"#8B5CF6"},
+    {id:"main",label:"Live Account",type:"live",color:"#00D4A8",startingBalance:0},
+    {id:"apex_eval",label:"Apex Eval",type:"eval",color:"#4F8EF7",startingBalance:0},
+    {id:"apex_demo",label:"Apex Demo",type:"demo",color:"#8B5CF6",startingBalance:0},
   ]);
   const [activeAccount,setActiveAccount]=useState("all"); // idle | syncing | connected | error
   const [showSyncModal,setShowSyncModal]=useState(false);
@@ -7433,7 +7486,7 @@ export default function App(){
         </div>
       </div>
       {hasSample&&(<div style={{marginBottom:18,padding:"10px 16px",borderRadius:10,background:"rgba(79,142,247,0.07)",border:"1px solid rgba(79,142,247,0.2)",fontSize:12,color:B.blue,display:"flex",alignItems:"center",justifyContent:"space-between"}}><span>Viewing sample data. Import your Tradovate CSV or log a real trade to get started.</span><button onClick={()=>setTrades([])} style={{background:"none",border:"none",color:B.blue,cursor:"pointer",fontWeight:700,fontSize:12,textDecoration:"underline"}}>Clear it</button></div>)}
-      {active==="overview"&&<Overview trades={activeAccount==="all"?trades:trades.filter(t=>t.account_id===activeAccount)} onGradeUpdate={handleGradeUpdate} session={session}/>}
+      {active==="overview"&&<Overview trades={activeAccount==="all"?trades:trades.filter(t=>t.account_id===activeAccount)} onGradeUpdate={handleGradeUpdate} session={session} accounts={accounts} activeAccount={activeAccount} setAccounts={setAccounts}/>}
       {active==="journal"&&<Journal trades={activeAccount==="all"?trades:trades.filter(t=>t.account_id===activeAccount)} onEdit={handleEdit} onDelete={setDelTrade} onGradeUpdate={handleGradeUpdate}/>}
       {active==="analytics"&&<Analytics trades={activeAccount==="all"?trades:trades.filter(t=>t.account_id===activeAccount)}/>}
       {active==="calendar"&&<CalendarView trades={activeAccount==="all"?trades:trades.filter(t=>t.account_id===activeAccount)} onGradeUpdate={handleGradeUpdate} onEdit={handleEdit}/>}
