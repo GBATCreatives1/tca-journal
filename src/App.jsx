@@ -543,27 +543,19 @@ function TCAIcon({size=34}){
       <defs>
         <linearGradient id="tcaG" x1="0" y1="0" x2="1" y2="1">
           <stop offset="0%" stopColor="#00D4A8"/>
+          <stop offset="50%" stopColor="#4F8EF7"/>
           <stop offset="100%" stopColor="#8B5CF6"/>
         </linearGradient>
-        <linearGradient id="tcaG2" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#4F8EF7"/>
-          <stop offset="100%" stopColor="#00D4A8"/>
-        </linearGradient>
       </defs>
-      {/* Left candle - bearish (red/loss) */}
-      <line x1="22" y1="10" x2="22" y2="22" stroke="#F05A7E" strokeWidth="2.5" strokeLinecap="round"/>
-      <rect x="16" y="22" width="12" height="30" rx="3" fill="#F05A7E" opacity="0.85"/>
-      <line x1="22" y1="52" x2="22" y2="64" stroke="#F05A7E" strokeWidth="2.5" strokeLinecap="round"/>
-      {/* Center candle - bullish (main, gradient) */}
-      <line x1="50" y1="6" x2="50" y2="18" stroke="url(#tcaG)" strokeWidth="3" strokeLinecap="round"/>
-      <rect x="43" y="18" width="14" height="44" rx="3.5" fill="url(#tcaG)"/>
-      <line x1="50" y1="62" x2="50" y2="76" stroke="url(#tcaG)" strokeWidth="3" strokeLinecap="round"/>
-      {/* Right candle - bullish (blue) */}
-      <line x1="78" y1="14" x2="78" y2="26" stroke="#4F8EF7" strokeWidth="2.5" strokeLinecap="round"/>
-      <rect x="72" y="26" width="12" height="28" rx="3" fill="#4F8EF7" opacity="0.85"/>
-      <line x1="78" y1="54" x2="78" y2="66" stroke="#4F8EF7" strokeWidth="2.5" strokeLinecap="round"/>
-      {/* TCA text */}
-      <text x="50" y="92" textAnchor="middle" fill="url(#tcaG)" fontSize="13" fontWeight="800" fontFamily="monospace" letterSpacing="3">TCA</text>
+      <rect x="38" y="20" width="24" height="40" rx="4" fill="url(#tcaG)"/>
+      <line x1="50" y1="8" x2="50" y2="20" stroke="url(#tcaG)" strokeWidth="4" strokeLinecap="round"/>
+      <line x1="50" y1="60" x2="50" y2="78" stroke="url(#tcaG)" strokeWidth="4" strokeLinecap="round"/>
+      <rect x="18" y="35" width="12" height="22" rx="3" fill="#00D4A8" opacity="0.6"/>
+      <line x1="24" y1="26" x2="24" y2="35" stroke="#00D4A8" strokeWidth="3" strokeLinecap="round" opacity="0.6"/>
+      <line x1="24" y1="57" x2="24" y2="66" stroke="#00D4A8" strokeWidth="3" strokeLinecap="round" opacity="0.6"/>
+      <rect x="70" y="30" width="12" height="28" rx="3" fill="#8B5CF6" opacity="0.6"/>
+      <line x1="76" y1="20" x2="76" y2="30" stroke="#8B5CF6" strokeWidth="3" strokeLinecap="round" opacity="0.6"/>
+      <line x1="76" y1="58" x2="76" y2="68" stroke="#8B5CF6" strokeWidth="3" strokeLinecap="round" opacity="0.6"/>
     </svg>
   );
 }
@@ -616,14 +608,9 @@ function LoginScreen(){
 
         {/* Logo */}
         <div style={{textAlign:"center",marginBottom:36}}>
-          <div style={{display:"flex",justifyContent:"center",marginBottom:16}}>
-            <div style={{width:80,height:80,borderRadius:24,background:"linear-gradient(135deg,rgba(0,212,168,0.15),rgba(139,92,246,0.15))",border:"1px solid rgba(0,212,168,0.3)",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 0 40px rgba(0,212,168,0.15)"}}>
-              <TCAIcon size={52}/>
-            </div>
-          </div>
-          <div style={{fontSize:11,color:"#00D4A8",letterSpacing:3,textTransform:"uppercase",fontWeight:700,marginBottom:6}}>The Candlestick Academy</div>
-          <div style={{fontSize:28,fontWeight:900,color:"#F0EEF8",letterSpacing:-1,lineHeight:1.1}}>Trade Journal</div>
-          <div style={{fontSize:12,color:"#6B6880",marginTop:6,letterSpacing:0.5}}>Track · Analyze · Improve</div>
+          <div style={{width:64,height:64,borderRadius:18,background:"linear-gradient(135deg,#00D4A8,#8B5CF6)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,margin:"0 auto 16px"}}>📈</div>
+          <div style={{fontSize:26,fontWeight:800,color:"#F0EEF8",letterSpacing:-0.5}}>TCA Journal</div>
+          <div style={{fontSize:13,color:"#6B6880",marginTop:4}}>The Candlestick Academy · Trade Smarter</div>
         </div>
 
         {/* Card */}
