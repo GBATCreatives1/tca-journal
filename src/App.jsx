@@ -3061,6 +3061,10 @@ function DayJournalModal({date, trades, onClose, onGradeUpdate}){
   const [loaded,setLoaded]=useState(false);
   const [saving,setSaving]=useState(false);
   const [tab,setTab]=useState("notes");
+  const [chartScreenshots,setChartScreenshots]=useState([]);
+  const [chartAI,setChartAI]=useState(null);
+  const [chartAILoading,setChartAILoading]=useState(false);
+  const [chartAIError,setChartAIError]=useState("");
 
   const dayTrades=trades.filter(t=>t.date===date);
   const dayPnl=dayTrades.reduce((a,t)=>a+t.pnl,0);
@@ -3083,7 +3087,7 @@ function DayJournalModal({date, trades, onClose, onGradeUpdate}){
       // Load from localStorage instantly
       try{
         const l=localStorage.getItem("pref_"+STORAGE_KEY);
-        if(l){const s=JSON.parse(l);setNotes(s.notes||"");setChecklist(s.checklist||DEFAULT_CHECKLIST.map(i=>({text:i,checked:false})));}
+        if(l){const s=JSON.parse(l);setNotes(s.notes||"");setChecklist(s.checklist||DEFAULT_CHECKLIST.map(i=>({text:i,checked:false})));if(s.chartScreenshots)setChartScreenshots(s.chartScreenshots);}
       }catch(e){}
       // Sync latest from Supabase
       try{
@@ -3105,7 +3109,7 @@ function DayJournalModal({date, trades, onClose, onGradeUpdate}){
 
   const save=async(newNotes,newChecklist)=>{
     setSaving(true);
-    const val=JSON.stringify({notes:newNotes??notes,checklist:newChecklist??checklist});
+    const val=JSON.stringify({notes:newNotes??notes,checklist:newChecklist??checklist,chartScreenshots});
     localStorage.setItem("pref_"+STORAGE_KEY,val);
     try{await (async()=>{const{data:{user}}=await supabase.auth.getUser();await supabase.from("user_preferences").upsert({user_id:user?.id,key:STORAGE_KEY,value:val,updated_at:new Date().toISOString()},{onConflict:"user_id,key"});})();}catch(e){}
     setSaving(false);  };
@@ -3163,7 +3167,8 @@ function DayJournalModal({date, trades, onClose, onGradeUpdate}){
             {id:"checklist",label:"Pre-Market Checklist"+(checklist.length?" ("+completed+"/"+checklist.length+")":"") },
             {id:"notes",label:"Trading Notes"},
             {id:"templates",label:"Templates"},
-            {id:"trades",label:`Trades (${dayTrades.length})`},
+            {id:"trades",label:"Trades ("+dayTrades.length+")"},
+            {id:"analysis",label:"Chart Analysis"},
           ].map(t=>(
             <button key={t.id} onClick={()=>setTab(t.id)} style={{
               padding:"8px 16px",borderRadius:9,border:"1px solid",cursor:"pointer",fontSize:12,fontWeight:700,
@@ -3369,6 +3374,129 @@ function DayJournalModal({date, trades, onClose, onGradeUpdate}){
                 </>
               )}
             </div>
+          {tab==="analysis"&&(
+            <div style={{display:"flex",flexDirection:"column",gap:16}}>
+              <div style={{fontSize:12,color:B.textMuted,lineHeight:1.6}}>
+                Upload chart screenshots for this day — works even on non-trade days. Add your bias, key levels, or setups you identified.
+              </div>
+
+              {/* Screenshot upload area */}
+              <div>
+                <label style={{display:"block",cursor:"pointer"}}>
+                  <div style={{border:`2px dashed ${B.border}`,borderRadius:12,padding:"20px",textAlign:"center",
+                    background:"rgba(255,255,255,0.02)",transition:"all 0.2s"}}
+                    onDragOver={e=>{e.preventDefault();e.currentTarget.style.borderColor=B.teal;}}
+                    onDragLeave={e=>{e.currentTarget.style.borderColor=B.border;}}
+                    onDrop={e=>{
+                      e.preventDefault();
+                      e.currentTarget.style.borderColor=B.border;
+                      const files=Array.from(e.dataTransfer.files).filter(f=>f.type.startsWith("image/"));
+                      files.forEach(file=>{
+                        const reader=new FileReader();
+                        reader.onload=ev=>{
+                          const img={id:Date.now()+Math.random(),url:ev.target.result,note:"",file:file.name,ts:new Date().toLocaleTimeString()};
+                          setChartScreenshots(prev=>[...prev,img]);
+                        };
+                        reader.readAsDataURL(file);
+                      });
+                    }}>
+                    <div style={{fontSize:24,marginBottom:8}}>📸</div>
+                    <div style={{fontSize:13,color:B.text,fontWeight:600}}>Drop chart screenshots here</div>
+                    <div style={{fontSize:11,color:B.textMuted,marginTop:4}}>or click to browse — PNG, JPG, WebP</div>
+                  </div>
+                  <input type="file" accept="image/*" multiple style={{display:"none"}}
+                    onChange={e=>{
+                      Array.from(e.target.files).forEach(file=>{
+                        const reader=new FileReader();
+                        reader.onload=ev=>{
+                          const img={id:Date.now()+Math.random(),url:ev.target.result,note:"",file:file.name,ts:new Date().toLocaleTimeString()};
+                          setChartScreenshots(prev=>[...prev,img]);
+                        };
+                        reader.readAsDataURL(file);
+                      });
+                      e.target.value="";
+                    }}/>
+                </label>
+              </div>
+
+              {/* Screenshot grid */}
+              {chartScreenshots.length>0&&(
+                <div style={{display:"flex",flexDirection:"column",gap:12}}>
+                  {chartScreenshots.map((img,idx)=>(
+                    <div key={img.id} style={{borderRadius:12,overflow:"hidden",border:`1px solid ${B.border}`,background:B.surface}}>
+                      <div style={{position:"relative"}}>
+                        <img src={img.url} alt="chart" style={{width:"100%",maxHeight:320,objectFit:"contain",background:"#000",display:"block"}}/>
+                        <button onClick={()=>setChartScreenshots(prev=>prev.filter(s=>s.id!==img.id))}
+                          style={{position:"absolute",top:8,right:8,width:26,height:26,borderRadius:"50%",background:"rgba(0,0,0,0.7)",border:"none",color:"#fff",cursor:"pointer",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                          ×
+                        </button>
+                      </div>
+                      <div style={{padding:"10px 12px"}}>
+                        <input
+                          value={img.note}
+                          onChange={e=>setChartScreenshots(prev=>prev.map(s=>s.id===img.id?{...s,note:e.target.value}:s))}
+                          placeholder="Add a note — setup, bias, key level..."
+                          style={{width:"100%",background:"rgba(0,0,0,0.3)",border:`1px solid ${B.border}`,borderRadius:7,padding:"7px 10px",color:B.text,fontSize:12,outline:"none",boxSizing:"border-box"}}
+                        />
+                      </div>
+                    </div>
+                  ))}
+
+                  {/* AI Analysis button */}
+                  <div style={{padding:"14px 16px",borderRadius:12,background:"rgba(139,92,246,0.06)",border:`1px solid rgba(139,92,246,0.2)`}}>
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:chartAI?12:0}}>
+                      <div>
+                        <div style={{fontSize:12,fontWeight:700,color:B.text}}>AI Chart Analysis</div>
+                        <div style={{fontSize:11,color:B.textMuted}}>Get feedback on your chart screenshots</div>
+                      </div>
+                      <button onClick={async()=>{
+                        setChartAILoading(true);setChartAIError("");
+                        try{
+                          const notes=chartScreenshots.map((s,i)=>"Chart "+(i+1)+(s.note?": "+s.note:"")).join(" | ");
+                          const res=await fetch("/api/coach",{
+                            method:"POST",headers:{"Content-Type":"application/json"},
+                            body:JSON.stringify({
+                              type:"chat",
+                              chatContext:"You are TCA Coach, an expert ICT methodology trading analyst. Analyze the trader's chart notes and provide specific, actionable feedback. Be direct and specific. Return plain text, not JSON.",
+                              chatHistory:[{role:"user",content:"Date: "+date+"
+Charts uploaded: "+chartScreenshots.length+"
+Notes: "+notes+"
+
+Based on these chart notes, provide:
+1. What setups or patterns were present
+2. Key bias assessment for the day
+3. What to watch for next time
+4. One specific improvement tip"}]
+                            })
+                          });
+                          const data=await res.json();
+                          const text=data.content?.[0]?.text||"";
+                          if(!text)throw new Error("No response");
+                          setChartAI(text);
+                        }catch(e){setChartAIError("Analysis failed: "+e.message);}
+                        setChartAILoading(false);
+                      }} disabled={chartAILoading}
+                        style={{padding:"8px 16px",borderRadius:9,border:"none",background:chartAILoading?"rgba(255,255,255,0.05)":GL,
+                          color:chartAILoading?"#666":"#0E0E10",cursor:chartAILoading?"not-allowed":"pointer",fontSize:12,fontWeight:700,whiteSpace:"nowrap"}}>
+                        {chartAILoading?"Analyzing...":"Analyze Charts"}
+                      </button>
+                    </div>
+                    {chartAIError&&<div style={{fontSize:11,color:B.loss,marginTop:8}}>{chartAIError}</div>}
+                    {chartAI&&(
+                      <div style={{fontSize:12,color:B.text,lineHeight:1.8,whiteSpace:"pre-wrap",borderTop:`1px solid rgba(139,92,246,0.2)`,paddingTop:12}}>
+                        {chartAI}
+                      </div>
+                    )}
+                  </div>
+
+                  <button onClick={()=>{save(undefined,undefined);}}
+                    style={{padding:"9px",borderRadius:9,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:12,fontWeight:700}}>
+                    Save Screenshots & Notes
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
           )}
         </div>
       </div>
