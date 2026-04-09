@@ -1349,7 +1349,7 @@ function Overview({trades, onGradeUpdate, session, onEdit, accounts=[], activeAc
     : (accounts.find(a=>a.id===activeAccount)?.startingBalance||0);
   const currentBalance = startingBalance + totalPnl;
   const profitFactor=losses.length?parseFloat(Math.abs(wins.reduce((a,t)=>a+t.pnl,0)/(losses.reduce((a,t)=>a+t.pnl,0)||1)).toFixed(2)):0;
-  const equity=buildEquity(trades, startingBalance);
+  const equity=buildEquity(trades);
 
   const [selectedDay,setSelectedDay]=useState(null);
   const [editMode,setEditMode]=useState(false);
@@ -1669,11 +1669,18 @@ function Overview({trades, onGradeUpdate, session, onEdit, accounts=[], activeAc
                 {activeAccount!=="all"&&(
                   <input
                     type="number"
-                    onChange={e=>{
+                    defaultValue=""
+                    onBlur={e=>{
                       const val=parseFloat(e.target.value);
                       if(val>0) setAccounts(prev=>prev.map(a=>a.id===activeAccount?{...a,startingBalance:val}:a));
                     }}
-                    placeholder="Set starting balance..."
+                    onKeyDown={e=>{
+                      if(e.key==="Enter"){
+                        const val=parseFloat(e.target.value);
+                        if(val>0){setAccounts(prev=>prev.map(a=>a.id===activeAccount?{...a,startingBalance:val}:a));e.target.blur();}
+                      }
+                    }}
+                    placeholder="Set starting balance, press Enter..."
                     style={{marginTop:10,width:"100%",background:"rgba(255,255,255,0.04)",border:`1px solid ${B.border}`,borderRadius:7,padding:"6px 10px",color:B.textMuted,fontSize:11,outline:"none",boxSizing:"border-box"}}
                   />
                 )}
@@ -1897,7 +1904,7 @@ function Analytics({trades}){
   const grossWin=wins.reduce((a,t)=>a+t.pnl,0);
   const grossLoss=Math.abs(losses.reduce((a,t)=>a+t.pnl,0));
   const pf=grossLoss?Math.abs(grossWin/grossLoss).toFixed(2):"N/A";
-  const equity=buildEquity(trades, startingBalance);
+  const equity=buildEquity(trades);
   const maxDD=(()=>{let pk=0,dd=0,r=0;equity.forEach(e=>{r=e.equity;if(r>pk)pk=r;const d=pk-r;if(d>dd)dd=d;});return Math.round(dd);})();
   const exp=Math.round(trades.reduce((a,t)=>a+t.pnl,0)/trades.length);
   const avgWin=wins.length?Math.round(grossWin/wins.length):0;
