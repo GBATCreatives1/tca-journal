@@ -1339,6 +1339,68 @@ function StreakBadge({trades}){
   );
 }
 
+function BalanceCard({totalPnl, trades, accounts, activeAccount, setAccounts, currentBalance, startingBalance}){
+  const [inputVal, setInputVal] = React.useState("");
+  const acct = activeAccount==="all" ? null : accounts.find(a=>a.id===activeAccount);
+  const bal = acct?.startingBalance||0;
+
+  const save = ()=>{
+    const val = parseFloat(inputVal);
+    if(val>0 && activeAccount!=="all"){
+      setAccounts(prev=>prev.map(a=>a.id===activeAccount?{...a,startingBalance:val}:a));
+      setInputVal("");
+    }
+  };
+
+  if(bal>0){
+    return(
+      <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:"16px 20px",position:"relative",overflow:"hidden"}}>
+        <div style={{position:"absolute",top:0,left:0,right:0,height:2,background:GTB}}/>
+        <div style={{fontSize:10,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:4}}>Account Balance</div>
+        <div style={{fontSize:26,fontWeight:800,color:pnlColor(currentBalance),fontFamily:"monospace",letterSpacing:-1}}>
+          {fmt(currentBalance)}
+        </div>
+        <div style={{marginTop:6,display:"flex",alignItems:"center",gap:8}}>
+          <span style={{fontSize:13,fontFamily:"monospace",fontWeight:700,color:pnlColor(totalPnl)}}>
+            {totalPnl>=0?"+":""}{fmt(totalPnl)}
+          </span>
+          <span style={{fontSize:11,color:B.textDim}}>P&L · {trades.length} trades</span>
+        </div>
+        <button onClick={()=>setAccounts(prev=>prev.map(a=>a.id===activeAccount?{...a,startingBalance:0}:a))}
+          style={{marginTop:8,fontSize:9,color:B.textDim,background:"none",border:"none",cursor:"pointer",padding:0,textDecoration:"underline"}}>
+          reset balance
+        </button>
+      </div>
+    );
+  }
+
+  return(
+    <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:"16px 20px",position:"relative",overflow:"hidden"}}>
+      <div style={{position:"absolute",top:0,left:0,right:0,height:2,background:GTB}}/>
+      <div style={{fontSize:10,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:6}}>Account P&L</div>
+      <div style={{fontSize:26,fontWeight:800,color:pnlColor(totalPnl),fontFamily:"monospace",letterSpacing:-1}}>{fmt(totalPnl)}</div>
+      <div style={{fontSize:11,color:B.textMuted,marginTop:3}}>{trades.length} trades</div>
+      {activeAccount!=="all"&&(
+        <div style={{marginTop:10,display:"flex",gap:6}}>
+          <input
+            type="number"
+            value={inputVal}
+            onChange={e=>setInputVal(e.target.value)}
+            onKeyDown={e=>e.key==="Enter"&&save()}
+            placeholder="Starting balance..."
+            style={{flex:1,background:"rgba(255,255,255,0.04)",border:`1px solid ${B.border}`,borderRadius:7,padding:"6px 10px",color:B.text,fontSize:11,outline:"none"}}
+          />
+          <button onClick={save}
+            style={{padding:"6px 12px",borderRadius:7,border:"none",background:GL,color:"#0E0E10",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
+            Set
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 function Overview({trades, onGradeUpdate, session, onEdit, accounts=[], activeAccount="all", setAccounts}){
   const wins=trades.filter(t=>t.result==="Win"),losses=trades.filter(t=>t.result==="Loss");
   const totalPnl=trades.reduce((a,t)=>a+t.pnl,0);
@@ -1639,55 +1701,15 @@ function Overview({trades, onGradeUpdate, session, onEdit, accounts=[], activeAc
       {/* ── PINNED STAT ROW — always visible ── */}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr 1fr",gap:12}}>
         {/* Account Balance */}
-        <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:"16px 20px",position:"relative",overflow:"hidden"}}>
-          <div style={{position:"absolute",top:0,left:0,right:0,height:2,background:GTB}}/>
-          {(()=>{
-            const acct = activeAccount==="all" ? null : accounts.find(a=>a.id===activeAccount);
-            const bal = acct?.startingBalance||0;
-            if(bal>0){
-              return(
-                <>
-                  <div style={{fontSize:10,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:4}}>Account Balance</div>
-                  <div style={{fontSize:26,fontWeight:800,color:pnlColor(currentBalance),fontFamily:"monospace",letterSpacing:-1}}>
-                    {fmt(currentBalance)}
-                  </div>
-                  <div style={{marginTop:6,display:"flex",alignItems:"center",gap:8}}>
-                    <span style={{fontSize:12,fontFamily:"monospace",fontWeight:700,color:pnlColor(totalPnl)}}>
-                      {totalPnl>=0?"+":""}{fmt(totalPnl)}
-                    </span>
-                    <span style={{fontSize:11,color:B.textDim}}>P&L</span>
-                    <span style={{fontSize:10,color:B.textDim}}>· {trades.length} trades</span>
-                  </div>
-                </>
-              );
-            }
-            return(
-              <>
-                <div style={{fontSize:10,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:6}}>Account P&L</div>
-                <div style={{fontSize:26,fontWeight:800,color:pnlColor(totalPnl),fontFamily:"monospace",letterSpacing:-1}}>{fmt(totalPnl)}</div>
-                <div style={{fontSize:11,color:B.textMuted,marginTop:3}}>{trades.length} trades</div>
-                {activeAccount!=="all"&&(
-                  <input
-                    type="number"
-                    defaultValue=""
-                    onBlur={e=>{
-                      const val=parseFloat(e.target.value);
-                      if(val>0) setAccounts(prev=>prev.map(a=>a.id===activeAccount?{...a,startingBalance:val}:a));
-                    }}
-                    onKeyDown={e=>{
-                      if(e.key==="Enter"){
-                        const val=parseFloat(e.target.value);
-                        if(val>0){setAccounts(prev=>prev.map(a=>a.id===activeAccount?{...a,startingBalance:val}:a));e.target.blur();}
-                      }
-                    }}
-                    placeholder="Set starting balance, press Enter..."
-                    style={{marginTop:10,width:"100%",background:"rgba(255,255,255,0.04)",border:`1px solid ${B.border}`,borderRadius:7,padding:"6px 10px",color:B.textMuted,fontSize:11,outline:"none",boxSizing:"border-box"}}
-                  />
-                )}
-              </>
-            );
-          })()}
-        </div>
+        <BalanceCard
+          totalPnl={totalPnl}
+          trades={trades}
+          accounts={accounts}
+          activeAccount={activeAccount}
+          setAccounts={setAccounts}
+          currentBalance={currentBalance}
+          startingBalance={startingBalance}
+        />
 
         {/* Win % gauge */}
         <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"center"}}>
@@ -3499,7 +3521,7 @@ function PlaybookView({trades=[]}){
     }catch(e){}
     return [{id:"main",label:"Live Account",type:"live",color:"#00D4A8",startingBalance:0}];
   });
-  const [activeAccount,setActiveAccount]=useState("all");
+  const [activeAccount,setActiveAccount]=useState("main");
   const [sel,setSel]=useState(null);
   const [showForm,setShowForm]=useState(false);
   const [editStrat,setEditStrat]=useState(null);
@@ -7237,7 +7259,7 @@ export default function App(){
     }catch(e){}
     return [{id:"main",label:"Live Account",type:"live",color:"#00D4A8",startingBalance:0}];
   });
-  const [activeAccount,setActiveAccount]=useState("all"); // idle | syncing | connected | error
+  const [activeAccount,setActiveAccount]=useState("main"); // idle | syncing | connected | error
   const [showSyncModal,setShowSyncModal]=useState(false);
   const [syncRange,setSyncRange]=useState({from:"",to:""});
 
