@@ -3459,15 +3459,7 @@ function DayJournalModal({date, trades, onClose, onGradeUpdate}){
                             body:JSON.stringify({
                               type:"chat",
                               chatContext:"You are TCA Coach, an expert ICT methodology trading analyst. Analyze the trader's chart notes and provide specific, actionable feedback. Be direct and specific. Return plain text, not JSON.",
-                              chatHistory:[{role:"user",content:"Date: "+date+"
-Charts uploaded: "+chartScreenshots.length+"
-Notes: "+notes+"
-
-Based on these chart notes, provide:
-1. What setups or patterns were present
-2. Key bias assessment for the day
-3. What to watch for next time
-4. One specific improvement tip"}]
+                              chatHistory:[{role:"user",content:"Date: "+date+"\nCharts: "+chartScreenshots.length+"\nNotes: "+notes+"\n\nProvide: 1) Setups/patterns present 2) Bias assessment 3) What to watch next time 4) One improvement tip"}]
                             })
                           });
                           const data=await res.json();
