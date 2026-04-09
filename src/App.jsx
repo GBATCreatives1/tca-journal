@@ -3094,7 +3094,17 @@ function DayJournalModal({date, trades, onClose, onGradeUpdate}){
       // Load from localStorage instantly
       try{
         const l=localStorage.getItem("pref_"+STORAGE_KEY);
-        if(l){const s=JSON.parse(l);setNotes(s.notes||"");setChecklist(s.checklist||DEFAULT_CHECKLIST.map(i=>({text:i,checked:false})));if(s.chartScreenshots)setChartScreenshots(s.chartScreenshots);if(s.chartAI)setChartAI(s.chartAI);}
+        if(l){const s=JSON.parse(l);setNotes(s.notes||"");setChecklist(s.checklist||DEFAULT_CHECKLIST.map(i=>({text:i,checked:false})));if(s.chartAI)setChartAI(s.chartAI);
+        // Try to load full screenshots from device localStorage first
+        try{
+          const localImgs=localStorage.getItem("pref_"+STORAGE_KEY+"_screenshots");
+          if(localImgs){setChartScreenshots(JSON.parse(localImgs));}
+          else if(s.screenshotsForCloud?.length){
+            // On a different device - show notes only, no images
+            setChartScreenshots(s.screenshotsForCloud.map(s=>({...s,url:""})));
+          }
+        }catch(e){}
+      }
       }catch(e){}
       // Sync latest from Supabase
       try{
@@ -3116,16 +3126,20 @@ function DayJournalModal({date, trades, onClose, onGradeUpdate}){
 
   const save=async(newNotes,newChecklist)=>{
     setSaving(true);
-    const val=JSON.stringify({notes:newNotes??notes,checklist:newChecklist??checklist,chartScreenshots,chartAI});
+    // Strip large base64 data before saving to Supabase - only save notes + AI text
+    const screenshotsForCloud=chartScreenshots.map(s=>({
+      id:s.id,
+      note:s.note,
+      url:s.url?.startsWith("http")?s.url:"[local]", // keep cloud URLs, mark local ones
+      ts:s.ts,
+      file:s.file,
+    }));
+    const val=JSON.stringify({notes:newNotes??notes,checklist:newChecklist??checklist,screenshotsForCloud,chartAI});
     localStorage.setItem("pref_"+STORAGE_KEY,val);
+    // Also save full screenshots (with base64) to localStorage for this device
+    localStorage.setItem("pref_"+STORAGE_KEY+"_screenshots",JSON.stringify(chartScreenshots));
     try{await (async()=>{const{data:{user}}=await supabase.auth.getUser();await supabase.from("user_preferences").upsert({user_id:user?.id,key:STORAGE_KEY,value:val,updated_at:new Date().toISOString()},{onConflict:"user_id,key"});})();}catch(e){}
-    setSaving(false);  };
-
-  const toggleCheck=(i)=>{
-    const updated=checklist.map((item,idx)=>idx===i?{...item,checked:!item.checked}:item);
-    setChecklist(updated);
-    save(undefined,updated);
-  };
+    setSaving(false);  };;
 
   const addItem=()=>{
     if(!newItem.trim())return;
@@ -3401,9 +3415,23 @@ function DayJournalModal({date, trades, onClose, onGradeUpdate}){
                       const files=Array.from(e.dataTransfer.files).filter(f=>f.type.startsWith("image/"));
                       files.forEach(file=>{
                         const reader=new FileReader();
-                        reader.onload=ev=>{
-                          const img={id:Date.now()+Math.random(),url:ev.target.result,note:"",file:file.name,ts:new Date().toLocaleTimeString()};
-                          setChartScreenshots(prev=>[...prev,img]);
+                        reader.onload=async ev=>{
+                          const localUrl=ev.target.result;
+                          const imgId=Date.now()+Math.random();
+                          // Add locally first for instant preview
+                          setChartScreenshots(prev=>[...prev,{id:imgId,url:localUrl,note:"",file:file.name,ts:new Date().toLocaleTimeString()}]);
+                          // Upload to Supabase Storage for cross-device access
+                          try{
+                            const{data:{user}}=await supabase.auth.getUser();
+                            const ext=file.name.split(".").pop()||"jpg";
+                            const path=user.id+"/"+date+"/"+imgId+"."+ext;
+                            const blob=await (await fetch(localUrl)).blob();
+                            const{data,error}=await supabase.storage.from("chart-screenshots").upload(path,blob,{upsert:true,contentType:file.type});
+                            if(!error){
+                              const{data:{publicUrl}}=supabase.storage.from("chart-screenshots").getPublicUrl(path);
+                              setChartScreenshots(prev=>prev.map(s=>s.id===imgId?{...s,url:publicUrl}:s));
+                            }
+                          }catch(e){console.log("Storage upload failed, using local only:",e.message);}
                         };
                         reader.readAsDataURL(file);
                       });
@@ -3416,11 +3444,22 @@ function DayJournalModal({date, trades, onClose, onGradeUpdate}){
                     onChange={e=>{
                       Array.from(e.target.files).forEach(file=>{
                         const reader=new FileReader();
-                        reader.onload=ev=>{
-                          const img={id:Date.now()+Math.random(),url:ev.target.result,note:"",file:file.name,ts:new Date().toLocaleTimeString()};
-                          setChartScreenshots(prev=>[...prev,img]);
+                        reader.onload=async ev=>{
+                          const localUrl=ev.target.result;
+                          const imgId=Date.now()+Math.random();
+                          setChartScreenshots(prev=>[...prev,{id:imgId,url:localUrl,note:"",file:file.name,ts:new Date().toLocaleTimeString()}]);
+                          try{
+                            const{data:{user}}=await supabase.auth.getUser();
+                            const ext=file.name.split(".").pop()||"jpg";
+                            const path=user.id+"/"+date+"/"+imgId+"."+ext;
+                            const blob=await (await fetch(localUrl)).blob();
+                            const{data,error}=await supabase.storage.from("chart-screenshots").upload(path,blob,{upsert:true,contentType:file.type});
+                            if(!error){
+                              const{data:{publicUrl}}=supabase.storage.from("chart-screenshots").getPublicUrl(path);
+                              setChartScreenshots(prev=>prev.map(s=>s.id===imgId?{...s,url:publicUrl}:s));
+                            }
+                          }catch(e){console.log("Storage upload failed:",e.message);}
                         };
-                        reader.readAsDataURL(file);
                       });
                       e.target.value="";
                     }}/>
