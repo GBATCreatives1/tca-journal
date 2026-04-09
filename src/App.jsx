@@ -1249,7 +1249,7 @@ function DayModal({date, trades, onClose}){
                     background:`${B.blue}15`,border:`1px solid ${B.blue}30`,color:B.blue}}>R:R {t.rr}</span>}
                   <span style={{fontSize:10,padding:"2px 10px",borderRadius:20,fontWeight:700,
                     background:t.result==="Win"?`${B.profit}15`:`${B.loss}15`,
-                    border:`1px solid ${t.result==="Win"?`${B.profit}30`:`${B.loss}30`}`,
+                    border:"1px solid "+(t.result==="Win"?B.profit+"30":B.loss+"30"),
                     color:t.result==="Win"?B.profit:B.loss}}>{t.result}</span>
                 </div>
               </div>
@@ -1519,7 +1519,7 @@ function Overview({trades, onGradeUpdate, session, onEdit, accounts=[], activeAc
                     <div key={di} onClick={()=>setSelectedDay(ds)} style={{
                       flex:1,minHeight:60,borderRadius:8,padding:"6px 8px",
                       background:data?(data.pnl>0?`${B.teal}12`:`${B.loss}12`):"rgba(255,255,255,0.015)",
-                      border:`1px solid ${data?(data.pnl>0?`${B.teal}35`:`${B.loss}35`):B.border}`,
+                      border:"1px solid "+(data?(data.pnl>0?B.teal+"35":B.loss+"35"):B.border),
                       outline:isToday?`2px solid ${B.blue}50`:"none",
                       cursor:"pointer",transition:"all 0.15s",
                     }}>
@@ -1542,7 +1542,7 @@ function Overview({trades, onGradeUpdate, session, onEdit, accounts=[], activeAc
           {weeklyPnl.map(w=>(
             <div key={w.week} style={{
               flex:1,background:"rgba(0,0,0,0.3)",
-              border:`1px solid ${w.pnl>0?`${B.teal}30`:w.pnl<0?`${B.loss}30`:B.border}`,
+              border:"1px solid "+(w.pnl>0?B.teal+"30":w.pnl<0?B.loss+"30":B.border),
               borderRadius:8,padding:"10px 12px",
               borderLeft:`3px solid ${w.pnl>0?B.teal:w.pnl<0?B.loss:B.border}`
             }}>
@@ -1639,51 +1639,47 @@ function Overview({trades, onGradeUpdate, session, onEdit, accounts=[], activeAc
       {/* ── PINNED STAT ROW — always visible ── */}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr 1fr",gap:12}}>
         {/* Account Balance */}
-        <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:"14px 18px",position:"relative",overflow:"hidden"}}>
+        <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:"16px 20px",position:"relative",overflow:"hidden"}}>
           <div style={{position:"absolute",top:0,left:0,right:0,height:2,background:GTB}}/>
-          {startingBalance>0?(
-            <>
-              <div style={{fontSize:10,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:4}}>Account Balance</div>
-              <div style={{fontSize:24,fontWeight:800,color:pnlColor(currentBalance),fontFamily:"monospace",letterSpacing:-1,marginBottom:6}}>
-                {fmt(currentBalance)}
-              </div>
-              <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
-                <div style={{fontSize:11,color:pnlColor(totalPnl),fontFamily:"monospace",fontWeight:700}}>
-                  {totalPnl>=0?"+":""}{fmt(totalPnl)} P&L
-                </div>
-                <div style={{fontSize:10,color:B.textDim}}>({trades.length} trades)</div>
-              </div>
-              <div style={{display:"flex",alignItems:"center",gap:6,borderTop:`1px solid ${B.border}`,paddingTop:6,marginTop:2}}>
-                <div style={{fontSize:9,color:B.textDim}}>Starting balance:</div>
-                <input type="number"
-                  value={accounts.find(a=>a.id===activeAccount)?.startingBalance||""}
-                  onChange={e=>{
-                    if(activeAccount==="all") return;
-                    const val=parseFloat(e.target.value)||0;
-                    setAccounts(prev=>prev.map(a=>a.id===activeAccount?{...a,startingBalance:val}:a));
-                  }}
-                  style={{flex:1,background:"transparent",border:"none",color:B.textMuted,fontSize:9,outline:"none",fontFamily:"monospace"}}
-                  placeholder="Set starting balance..."
-                />
-              </div>
-            </>
-          ):(
-            <>
-              <div style={{fontSize:10,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:8}}>Account P&L</div>
-              <div style={{fontSize:26,fontWeight:800,color:pnlColor(totalPnl),fontFamily:"monospace",letterSpacing:-1}}>{fmt(totalPnl)}</div>
-              <div style={{fontSize:11,color:B.textMuted,marginTop:3}}>{trades.length} trades total</div>
-              <input type="number"
-                value=""
-                onChange={e=>{
-                  if(activeAccount==="all") return;
-                  const val=parseFloat(e.target.value)||0;
-                  setAccounts(prev=>prev.map(a=>a.id===activeAccount?{...a,startingBalance:val}:a));
-                }}
-                placeholder="+ Set starting balance"
-                style={{marginTop:8,width:"100%",background:"rgba(0,0,0,0.2)",border:`1px solid ${B.border}`,borderRadius:6,padding:"4px 8px",color:B.textMuted,fontSize:10,outline:"none",boxSizing:"border-box"}}
-              />
-            </>
-          )}
+          {(()=>{
+            const acct = activeAccount==="all" ? null : accounts.find(a=>a.id===activeAccount);
+            const bal = acct?.startingBalance||0;
+            if(bal>0){
+              return(
+                <>
+                  <div style={{fontSize:10,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:4}}>Account Balance</div>
+                  <div style={{fontSize:26,fontWeight:800,color:pnlColor(currentBalance),fontFamily:"monospace",letterSpacing:-1}}>
+                    {fmt(currentBalance)}
+                  </div>
+                  <div style={{marginTop:6,display:"flex",alignItems:"center",gap:8}}>
+                    <span style={{fontSize:12,fontFamily:"monospace",fontWeight:700,color:pnlColor(totalPnl)}}>
+                      {totalPnl>=0?"+":""}{fmt(totalPnl)}
+                    </span>
+                    <span style={{fontSize:11,color:B.textDim}}>P&L</span>
+                    <span style={{fontSize:10,color:B.textDim}}>· {trades.length} trades</span>
+                  </div>
+                </>
+              );
+            }
+            return(
+              <>
+                <div style={{fontSize:10,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:6}}>Account P&L</div>
+                <div style={{fontSize:26,fontWeight:800,color:pnlColor(totalPnl),fontFamily:"monospace",letterSpacing:-1}}>{fmt(totalPnl)}</div>
+                <div style={{fontSize:11,color:B.textMuted,marginTop:3}}>{trades.length} trades</div>
+                {activeAccount!=="all"&&(
+                  <input
+                    type="number"
+                    onChange={e=>{
+                      const val=parseFloat(e.target.value);
+                      if(val>0) setAccounts(prev=>prev.map(a=>a.id===activeAccount?{...a,startingBalance:val}:a));
+                    }}
+                    placeholder="Set starting balance..."
+                    style={{marginTop:10,width:"100%",background:"rgba(255,255,255,0.04)",border:`1px solid ${B.border}`,borderRadius:7,padding:"6px 10px",color:B.textMuted,fontSize:11,outline:"none",boxSizing:"border-box"}}
+                  />
+                )}
+              </>
+            );
+          })()}
         </div>
 
         {/* Win % gauge */}
@@ -2202,7 +2198,7 @@ function Analytics({trades}){
           <div style={{fontSize:11,color:B.textMuted,marginBottom:16}}>How your performance changes as you scale</div>
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))",gap:10}}>
             {contractData.map(c=>(
-              <div key={c.contracts} style={{padding:"14px 16px",borderRadius:12,background:"rgba(0,0,0,0.3)",border:`1px solid ${c.pnl>=0?`${B.teal}25`:B.border}`,position:"relative",overflow:"hidden"}}>
+              <div key={c.contracts} style={{padding:"14px 16px",borderRadius:12,background:"rgba(0,0,0,0.3)",border:"1px solid "+(c.pnl>=0?B.teal+"25":B.border),position:"relative",overflow:"hidden"}}>
                 <div style={{position:"absolute",top:0,left:0,right:0,height:2,background:c.pnl>=0?GTB:GBP}}/>
                 <div style={{fontSize:22,fontWeight:800,color:B.textMuted,marginBottom:4}}>{c.contracts}<span style={{fontSize:12}}> ct</span></div>
                 <div style={{fontSize:14,fontWeight:800,fontFamily:"monospace",color:pnlColor(c.pnl),marginBottom:2}}>{fmt(c.pnl)}</div>
@@ -3135,7 +3131,7 @@ function DayJournalModal({date, trades, onClose, onGradeUpdate}){
         {/* Tabs */}
         <div style={{padding:"0 28px",display:"flex",gap:6,marginBottom:20}}>
           {[
-            {id:"checklist",label:`Pre-Market Checklist ${checklist.length?`(${completed}/${checklist.length})`:""}` },
+            {id:"checklist",label:"Pre-Market Checklist"+(checklist.length?" ("+completed+"/"+checklist.length+")":"") },
             {id:"notes",label:"Trading Notes"},
             {id:"templates",label:"Templates"},
             {id:"trades",label:`Trades (${dayTrades.length})`},
@@ -3172,7 +3168,7 @@ function DayJournalModal({date, trades, onClose, onGradeUpdate}){
                   <div key={i} style={{
                     display:"flex",alignItems:"center",gap:10,padding:"10px 14px",borderRadius:10,
                     background:item.checked?"rgba(0,212,168,0.06)":"rgba(255,255,255,0.02)",
-                    border:`1px solid ${item.checked?`${B.teal}30`:B.border}`,
+                    border:"1px solid "+(item.checked?B.teal+"30":B.border),
                     transition:"all 0.2s"
                   }}>
                     {/* Checkbox */}
@@ -3309,7 +3305,7 @@ function DayJournalModal({date, trades, onClose, onGradeUpdate}){
                     {dayTrades.map((t,i)=>(
                       <div key={t.id} onClick={()=>setSelectedTrade(t)} style={{
                         padding:"14px 16px",borderRadius:12,background:"rgba(0,0,0,0.3)",
-                        border:`1px solid ${t.result==="Win"?`${B.teal}30`:`${B.loss}30`}`,
+                        border:"1px solid "+(t.result==="Win"?B.teal+"30":B.loss+"30"),
                         borderLeft:`4px solid ${t.result==="Win"?B.teal:B.loss}`,
                         cursor:"pointer",transition:"all 0.15s"
                       }}>
@@ -3443,7 +3439,7 @@ function CalendarView({trades, onGradeUpdate, onEdit}){
                 <div key={di} onClick={()=>setSelectedDay(ds)} style={{
                   minHeight:72,borderRadius:10,padding:"8px 10px",
                   background:data?(data.pnl>0?`${B.teal}10`:`${B.loss}10`):isWeekend?"rgba(255,255,255,0.005)":"rgba(255,255,255,0.015)",
-                  border:`1px solid ${data?(data.pnl>0?`${B.teal}35`:`${B.loss}35`):B.border}`,
+                  border:"1px solid "+(data?(data.pnl>0?B.teal+"35":B.loss+"35"):B.border),
                   outline:isToday?`2px solid ${B.blue}60`:"none",
                   cursor:"pointer",transition:"all 0.15s",
                   opacity:isWeekend&&!data?0.4:1,
@@ -3465,7 +3461,7 @@ function CalendarView({trades, onGradeUpdate, onEdit}){
             <div style={{
               borderRadius:10,padding:"8px 10px",
               background:weeklyPnl[wi]?.pnl>0?`${B.teal}08`:weeklyPnl[wi]?.pnl<0?`${B.loss}08`:"rgba(255,255,255,0.01)",
-              border:`1px solid ${weeklyPnl[wi]?.pnl>0?`${B.teal}30`:weeklyPnl[wi]?.pnl<0?`${B.loss}30`:B.border}`,
+              border:"1px solid "+(weeklyPnl[wi]?.pnl>0?B.teal+"30":weeklyPnl[wi]?.pnl<0?B.loss+"30":B.border),
               display:"flex",flexDirection:"column",justifyContent:"center",alignItems:"center",minHeight:72,
             }}>
               <div style={{fontSize:9,color:B.textMuted,letterSpacing:1,marginBottom:3}}>WK {wi+1}</div>
@@ -3489,8 +3485,9 @@ function PlaybookView({trades=[]}){
       const saved=localStorage.getItem("pref_tca_accounts_v1");
       if(saved){
         const parsed=JSON.parse(saved);
-        // Ensure main account always exists
-        if(Array.isArray(parsed)&&parsed.length) return parsed;
+        // Filter out old apex eval/demo accounts, keep only user-created ones
+        const filtered=Array.isArray(parsed)?parsed.filter(a=>a.id!=="apex_eval"&&a.id!=="apex_demo"):[];
+        if(filtered.length) return filtered;
       }
     }catch(e){}
     return [{id:"main",label:"Live Account",type:"live",color:"#00D4A8",startingBalance:0}];
@@ -3608,7 +3605,7 @@ function PlaybookView({trades=[]}){
                 <div key={s.id} onClick={()=>setSel(s)} style={{
                   padding:"14px 16px",borderRadius:12,cursor:"pointer",
                   background:sel?.id===s.id?`${B.teal}07`:B.surface,
-                  border:`1px solid ${sel?.id===s.id?`${B.teal}40`:B.border}`,
+                  border:"1px solid "+(sel?.id===s.id?B.teal+"40":B.border),
                   borderLeft:`3px solid ${sel?.id===s.id?B.teal:"transparent"}`,
                   transition:"all 0.15s"
                 }}>
@@ -3912,7 +3909,7 @@ function SessionHeatmapWidget({trades}){
                 display:"grid",gridTemplateColumns:"80px 55px 1fr 75px",gap:8,
                 padding:"8px 10px",borderRadius:8,
                 background:t.result==="Win"?`${B.teal}08`:`${B.loss}08`,
-                border:`1px solid ${t.result==="Win"?`${B.teal}20`:`${B.loss}20`}`,
+                border:"1px solid "+(t.result==="Win"?B.teal+"20":B.loss+"20"),
                 alignItems:"center",
               }}>
                 <div style={{fontSize:10,color:B.textMuted,fontFamily:"monospace"}}>{t.date.slice(5)}</div>
@@ -3950,7 +3947,7 @@ function SetupLeaderboardWidget({trades}){
           <div key={s.name} style={{
             display:"flex",alignItems:"center",gap:12,padding:"10px 14px",borderRadius:10,
             background:i===0?"rgba(0,212,168,0.07)":i===ranked.length-1?"rgba(240,90,126,0.05)":"rgba(255,255,255,0.02)",
-            border:`1px solid ${i===0?B.borderTeal:i===ranked.length-1?`${B.loss}20`:B.border}`
+            border:"1px solid "+(i===0?B.borderTeal:i===ranked.length-1?B.loss+"20":B.border)
           }}>
             <div style={{fontSize:18,width:24,textAlign:"center"}}>{medals[i]||`#${i+1}`}</div>
             <div style={{flex:1,minWidth:0}}>
@@ -4849,7 +4846,7 @@ function ApexTrackerWidget({trades, session}){
       ))}
 
       {/* Consistency rule */}
-      <div style={{padding:"10px 14px",borderRadius:10,background:consistencyOk?`${B.teal}08`:`${B.loss}08`,border:`1px solid ${consistencyOk?B.borderTeal:`${B.loss}30`}`}}>
+      <div style={{padding:"10px 14px",borderRadius:10,background:consistencyOk?B.teal+"08":B.loss+"08",border:"1px solid "+(consistencyOk?B.borderTeal:B.loss+"30")}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
           <div>
             <div style={{fontSize:10,color:B.textMuted,letterSpacing:1}}>CONSISTENCY RULE</div>
@@ -4916,7 +4913,7 @@ function ICTTaggerWidget({trades, session}){
       ):(
         <div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",gap:6}}>
           {ranked.slice(0,8).map(([concept,s])=>(
-            <div key={concept} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",borderRadius:8,background:"rgba(0,0,0,0.3)",border:`1px solid ${s.pnl>0?`${B.teal}25`:`${B.loss}25`}`}}>
+            <div key={concept} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",borderRadius:8,background:"rgba(0,0,0,0.3)",border:"1px solid "+(s.pnl>0?B.teal+"25":B.loss+"25")}}>
               <div style={{flex:1}}>
                 <div style={{fontSize:12,fontWeight:700,color:B.text}}>{concept}</div>
                 <div style={{fontSize:10,color:B.textMuted}}>{s.total} trades · {Math.round((s.wins/s.total)*100)}% WR</div>
@@ -5014,7 +5011,7 @@ function EmotionalTrackerWidget({trades, session}){
               const s=moodStats[m.id];
               const avgPnl=s.days?Math.round(s.pnl/s.days):0;
               return(
-                <div key={m.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",borderRadius:8,background:"rgba(0,0,0,0.3)",border:`1px solid ${s.pnl>0?`${m.color}30`:B.border}`}}>
+                <div key={m.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",borderRadius:8,background:"rgba(0,0,0,0.3)",border:"1px solid "+(s.pnl>0?m.color+"30":"B.border")}}>
                   <span style={{fontSize:16}}>{m.emoji}</span>
                   <div style={{flex:1}}>
                     <div style={{fontSize:12,fontWeight:700,color:B.text}}>{m.label}</div>
@@ -6246,7 +6243,7 @@ function PDFReportModal({trades, session, onClose}){
       <td class="${t.pnl>=0?"win":"loss-c"}" style="font-family:monospace;font-weight:700">${t.pnl>=0?"+":""}$${t.pnl?.toFixed(2)||"0"}</td>
     </tr>`).join("")}
   </table>
-  ${ft.length>40?`<div style="text-align:center;padding:10px;font-size:10px;color:#aaa;">Showing 40 of ${ft.length} trades</div>`:""}
+  ${ft.length>40?"<div style=\"text-align:center;padding:10px;font-size:10px;color:#aaa;\">Showing 40 of "+ft.length+" trades</div>":""}
 
   <div class="footer">
     <span>TCA Journal · The Candlestick Academy</span>
@@ -7226,8 +7223,9 @@ export default function App(){
       const saved=localStorage.getItem("pref_tca_accounts_v1");
       if(saved){
         const parsed=JSON.parse(saved);
-        // Ensure main account always exists
-        if(Array.isArray(parsed)&&parsed.length) return parsed;
+        // Filter out old apex eval/demo accounts, keep only user-created ones
+        const filtered=Array.isArray(parsed)?parsed.filter(a=>a.id!=="apex_eval"&&a.id!=="apex_demo"):[];
+        if(filtered.length) return filtered;
       }
     }catch(e){}
     return [{id:"main",label:"Live Account",type:"live",color:"#00D4A8",startingBalance:0}];
@@ -7366,7 +7364,7 @@ export default function App(){
       ?trades.filter(t=>t.account_id===accountId)
       :trades.filter(t=>!t.tradovate_id||String(t.id).startsWith("perf_")||String(t.id).startsWith("imp_"));
     if(!toDelete.length){showT("No imported trades found.");return;}
-    const msg=`Delete ${toDelete.length} imported trade${toDelete.length!==1?"s":""}${accountId?` from "${accountId}"`:""}? This cannot be undone.`;
+    const msg="Delete "+toDelete.length+" imported trade"+(toDelete.length!==1?"s":"")+(accountId?` from "${accountId}"`:"")+"? This cannot be undone.";
     if(!confirm(msg))return;
     const ids=toDelete.map(t=>t.id).filter(Boolean);
     if(ids.length)await supabase.from("trades").delete().in("id",ids);
@@ -7433,7 +7431,7 @@ export default function App(){
   if(loading)return(<div style={{minHeight:"100vh",background:B.bg,display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{fontSize:14,color:B.textMuted}}>Loading your trades...</div></div>);
 
   return(<div style={{minHeight:"100vh",background:B.bg,fontFamily:"'DM Sans','Segoe UI',sans-serif",color:B.text,transition:"background 0.3s,color 0.3s"}}><style>{`@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,600;0,9..40,700;0,9..40,800&family=Space+Mono:wght@400;700&display=swap');*{box-sizing:border-box;}body{margin:0;}::-webkit-scrollbar{width:4px;}::-webkit-scrollbar-track{background:transparent;}::-webkit-scrollbar-thumb{background:rgba(0,212,168,0.2);border-radius:2px;}input[type=date]::-webkit-calendar-picker-indicator{filter:invert(0.5);}select option{background:#13121A;color:#F0EEF8;}`}</style>
-    {toast&&(<div style={{position:"fixed",top:20,right:24,zIndex:200,padding:"12px 20px",borderRadius:10,background:toast.type==="error"?`${B.loss}18`:`${B.teal}15`,border:`1px solid ${toast.type==="error"?`${B.loss}40`:`${B.teal}40`}`,color:toast.type==="error"?B.loss:B.teal,fontWeight:700,fontSize:13,boxShadow:"0 8px 32px rgba(0,0,0,0.5)"}}>{toast.msg}</div>)}
+    {toast&&(<div style={{position:"fixed",top:20,right:24,zIndex:200,padding:"12px 20px",borderRadius:10,background:toast.type==="error"?B.loss+"18":B.teal+"15",border:"1px solid "+(toast.type==="error"?B.loss+"40":B.teal+"40"),color:toast.type==="error"?B.loss:B.teal,fontWeight:700,fontSize:13,boxShadow:"0 8px 32px rgba(0,0,0,0.5)"}}>{toast.msg}</div>)}
     {showSyncModal&&<TradovateSyncModal onClose={()=>setShowSyncModal(false)} onSync={handleManualSync} syncing={syncStatus==="syncing"} accounts={accounts}/>}
     {showForm&&<TradeFormModal onClose={()=>{setShowForm(false);setEditTrade(null);}} onSave={handleSave} editTrade={editTrade}/>}
     {showImport&&<ImportModal onClose={()=>setShowImport(false)} onImport={handleImport} existingTrades={trades}/>}
