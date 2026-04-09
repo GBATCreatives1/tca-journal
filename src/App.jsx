@@ -1441,7 +1441,9 @@ function Overview({trades, onGradeUpdate, session, onEdit, accounts=[], activeAc
       if(local){
         const parsed=JSON.parse(local);
         if(Array.isArray(parsed)){
-          const padded=[...parsed];
+          // Remove deprecated widgets from saved layout
+          const cleaned=parsed.map(w=>w==="dailypnl"?null:w);
+          const padded=[...cleaned];
           while(padded.length<6)padded.push(null);
           setLayout(padded.slice(0,6));
         }
@@ -1502,7 +1504,7 @@ function Overview({trades, onGradeUpdate, session, onEdit, accounts=[], activeAc
 
   const ALL_WIDGETS=[
     {id:"equity",     label:"Equity Curve",        icon:"📈"},
-    {id:"dailypnl",   label:"Daily P&L",            icon:"📊"},
+
     {id:"setups",     label:"Setup Performance",    icon:"🏆"},
     {id:"session",    label:"Session Heatmap",      icon:"🌡️"},
     {id:"timeof",     label:"Time of Day",          icon:"🕐"},
@@ -1686,7 +1688,7 @@ function Overview({trades, onGradeUpdate, session, onEdit, accounts=[], activeAc
             <div style={{height:3,background:GL,borderRadius:"20px 20px 0 0",flexShrink:0}}/>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"16px 22px",borderBottom:`1px solid ${B.border}`,flexShrink:0}}>
               <div style={{fontSize:15,fontWeight:700,color:B.text}}>
-                {{"gauges":"🎯 Performance Gauges","calendar":"[ ] Calendar","equity":"📈 Equity Curve","dailypnl":"📊 Daily P&L","setups":"🏆 Setup Performance","session":"🌡️ Session Heatmap","timeof":"🕐 Time of Day","cumulative":"📉 Daily & Cumulative","drawdown":"⚠️ Drawdown","winAvg":"💹 Win% / Avg Win / Loss","duration":"⏱️ Trade Duration","leaderboard":"🥇 Setup Leaderboard","yearly":"🗓️ Yearly Calendar","progress":"✅ Progress Tracker","report":"📋 Report","aicoach":"🧠 AI Trade Coach"}[expandedWidget]||expandedWidget}
+                {{"gauges":"🎯 Performance Gauges","calendar":"[ ] Calendar","equity":"📈 Equity Curve","setups":"🏆 Setup Performance","session":"🌡️ Session Heatmap","timeof":"🕐 Time of Day","cumulative":"📉 Daily & Cumulative","drawdown":"⚠️ Drawdown","winAvg":"💹 Win% / Avg Win / Loss","duration":"⏱️ Trade Duration","leaderboard":"🥇 Setup Leaderboard","yearly":"🗓️ Yearly Calendar","progress":"✅ Progress Tracker","report":"📋 Report","aicoach":"🧠 AI Trade Coach"}[expandedWidget]||expandedWidget}
               </div>
               <button onClick={()=>setExpandedWidget(null)} style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${B.border}`,borderRadius:8,color:B.textMuted,cursor:"pointer",fontSize:18,width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
             </div>
@@ -3087,7 +3089,7 @@ function DayJournalModal({date, trades, onClose, onGradeUpdate}){
       // Load from localStorage instantly
       try{
         const l=localStorage.getItem("pref_"+STORAGE_KEY);
-        if(l){const s=JSON.parse(l);setNotes(s.notes||"");setChecklist(s.checklist||DEFAULT_CHECKLIST.map(i=>({text:i,checked:false})));if(s.chartScreenshots)setChartScreenshots(s.chartScreenshots);}
+        if(l){const s=JSON.parse(l);setNotes(s.notes||"");setChecklist(s.checklist||DEFAULT_CHECKLIST.map(i=>({text:i,checked:false})));if(s.chartScreenshots)setChartScreenshots(s.chartScreenshots);if(s.chartAI)setChartAI(s.chartAI);}
       }catch(e){}
       // Sync latest from Supabase
       try{
@@ -3109,7 +3111,7 @@ function DayJournalModal({date, trades, onClose, onGradeUpdate}){
 
   const save=async(newNotes,newChecklist)=>{
     setSaving(true);
-    const val=JSON.stringify({notes:newNotes??notes,checklist:newChecklist??checklist,chartScreenshots});
+    const val=JSON.stringify({notes:newNotes??notes,checklist:newChecklist??checklist,chartScreenshots,chartAI});
     localStorage.setItem("pref_"+STORAGE_KEY,val);
     try{await (async()=>{const{data:{user}}=await supabase.auth.getUser();await supabase.from("user_preferences").upsert({user_id:user?.id,key:STORAGE_KEY,value:val,updated_at:new Date().toISOString()},{onConflict:"user_id,key"});})();}catch(e){}
     setSaving(false);  };
@@ -3466,6 +3468,10 @@ function DayJournalModal({date, trades, onClose, onGradeUpdate}){
                           const text=data.content?.[0]?.text||"";
                           if(!text)throw new Error("No response");
                           setChartAI(text);
+                          // Auto-save AI result with screenshots
+                          const s=JSON.stringify({notes,checklist,chartScreenshots,chartAI:text});
+                          localStorage.setItem("pref_"+STORAGE_KEY,s);
+                          try{(async()=>{const{data:{user}}=await supabase.auth.getUser();await supabase.from("user_preferences").upsert({user_id:user?.id,key:STORAGE_KEY,value:s,updated_at:new Date().toISOString()},{onConflict:"user_id,key"});})();}catch(_){}
                         }catch(e){setChartAIError("Analysis failed: "+e.message);}
                         setChartAILoading(false);
                       }} disabled={chartAILoading}
