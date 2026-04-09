@@ -7608,7 +7608,6 @@ export default function App(){
           <div style={{fontSize:10,color:syncStatus==="connected"?B.teal:B.textMuted,fontWeight:600}}>Tradovate {syncLabel}</div>
           <button onClick={()=>setShowSyncModal(true)} style={{marginLeft:"auto",background:"none",border:"none",color:B.textMuted,cursor:"pointer",fontSize:10,padding:0}} title="Sync with date range">↻</button>
         </div>
-        <div style={{marginTop:10,padding:"12px 14px",borderRadius:10,background:`${B.teal}08`,border:`1px solid ${B.teal}22`,position:"relative",overflow:"hidden"}}><div style={{position:"absolute",top:0,left:0,right:0,height:2,background:GTB}}/><div style={{fontSize:9,color:B.textMuted,marginBottom:3,letterSpacing:1}}>MONTH P&L</div><div style={{fontSize:20,fontWeight:800,fontFamily:"monospace",color:pnlColor(totalPnl)}}>{fmt(totalPnl)}</div></div>
         <div style={{marginTop:10,fontSize:10,color:B.textMuted,textAlign:"center"}}>{trades.filter(t=>!t.id?.startsWith("s")).length} trades logged</div>
         {lastImport&&<div style={{fontSize:9,color:B.textDim,textAlign:"center",marginTop:3}}>Last import: {lastImport}</div>}
         <button onClick={()=>setChatOpen(c=>!c)} style={{marginTop:8,width:"100%",padding:"9px",borderRadius:8,border:`1px solid ${chatOpen?"#8B5CF6":"rgba(139,92,246,0.3)"}`,background:chatOpen?"rgba(139,92,246,0.12)":"rgba(139,92,246,0.05)",color:"#8B5CF6",cursor:"pointer",fontSize:11,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>🧠 {chatOpen?"Close Coach":"TCA Coach"}</button>
