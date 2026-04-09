@@ -1340,7 +1340,7 @@ function StreakBadge({trades}){
 }
 
 function BalanceCard({totalPnl, trades, accounts, activeAccount, setAccounts, currentBalance, startingBalance}){
-  const [inputVal, setInputVal] = React.useState("");
+  const [inputVal, setInputVal] = useState("");
   const acct = activeAccount==="all" ? null : accounts.find(a=>a.id===activeAccount);
   const bal = acct?.startingBalance||0;
 
