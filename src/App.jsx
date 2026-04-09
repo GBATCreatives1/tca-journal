@@ -3490,7 +3490,6 @@ function DayJournalModal({date, trades, onClose, onGradeUpdate}){
               )}
             </div>
           )}
-          )}
         </div>
       </div>
     </div>
