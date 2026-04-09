@@ -3374,6 +3374,7 @@ function DayJournalModal({date, trades, onClose, onGradeUpdate}){
                 </>
               )}
             </div>
+          )}
           {tab==="analysis"&&(
             <div style={{display:"flex",flexDirection:"column",gap:16}}>
               <div style={{fontSize:12,color:B.textMuted,lineHeight:1.6}}>
