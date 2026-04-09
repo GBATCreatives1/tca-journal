@@ -1641,41 +1641,49 @@ function Overview({trades, onGradeUpdate, session, onEdit, accounts=[], activeAc
         {/* Account Balance */}
         <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:"14px 18px",position:"relative",overflow:"hidden"}}>
           <div style={{position:"absolute",top:0,left:0,right:0,height:2,background:GTB}}/>
-          <div style={{fontSize:10,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:8}}>Account Balance</div>
-          {/* Current balance = starting + P&L */}
-          {startingBalance>0&&(
-            <div style={{fontSize:22,fontWeight:800,color:pnlColor(currentBalance),fontFamily:"monospace",letterSpacing:-1,marginBottom:2}}>
-              {fmt(currentBalance)}
-            </div>
+          {startingBalance>0?(
+            <>
+              <div style={{fontSize:10,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:4}}>Account Balance</div>
+              <div style={{fontSize:24,fontWeight:800,color:pnlColor(currentBalance),fontFamily:"monospace",letterSpacing:-1,marginBottom:6}}>
+                {fmt(currentBalance)}
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
+                <div style={{fontSize:11,color:pnlColor(totalPnl),fontFamily:"monospace",fontWeight:700}}>
+                  {totalPnl>=0?"+":""}{fmt(totalPnl)} P&L
+                </div>
+                <div style={{fontSize:10,color:B.textDim}}>({trades.length} trades)</div>
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:6,borderTop:`1px solid ${B.border}`,paddingTop:6,marginTop:2}}>
+                <div style={{fontSize:9,color:B.textDim}}>Starting balance:</div>
+                <input type="number"
+                  value={accounts.find(a=>a.id===activeAccount)?.startingBalance||""}
+                  onChange={e=>{
+                    if(activeAccount==="all") return;
+                    const val=parseFloat(e.target.value)||0;
+                    setAccounts(prev=>prev.map(a=>a.id===activeAccount?{...a,startingBalance:val}:a));
+                  }}
+                  style={{flex:1,background:"transparent",border:"none",color:B.textMuted,fontSize:9,outline:"none",fontFamily:"monospace"}}
+                  placeholder="Set starting balance..."
+                />
+              </div>
+            </>
+          ):(
+            <>
+              <div style={{fontSize:10,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:8}}>Account P&L</div>
+              <div style={{fontSize:26,fontWeight:800,color:pnlColor(totalPnl),fontFamily:"monospace",letterSpacing:-1}}>{fmt(totalPnl)}</div>
+              <div style={{fontSize:11,color:B.textMuted,marginTop:3}}>{trades.length} trades total</div>
+              <input type="number"
+                value=""
+                onChange={e=>{
+                  if(activeAccount==="all") return;
+                  const val=parseFloat(e.target.value)||0;
+                  setAccounts(prev=>prev.map(a=>a.id===activeAccount?{...a,startingBalance:val}:a));
+                }}
+                placeholder="+ Set starting balance"
+                style={{marginTop:8,width:"100%",background:"rgba(0,0,0,0.2)",border:`1px solid ${B.border}`,borderRadius:6,padding:"4px 8px",color:B.textMuted,fontSize:10,outline:"none",boxSizing:"border-box"}}
+              />
+            </>
           )}
-          {/* Net P&L */}
-          <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
-            <div style={{fontSize:startingBalance>0?13:24,fontWeight:startingBalance>0?600:800,color:pnlColor(totalPnl),fontFamily:"monospace"}}>
-              {startingBalance>0?"P&L: ":""}{fmt(totalPnl)}
-            </div>
-          </div>
-          {/* Starting balance editor */}
-          <div style={{display:"flex",alignItems:"center",gap:6,marginTop:4}}>
-            <div style={{fontSize:9,color:B.textDim,flexShrink:0}}>Start:</div>
-            <input
-              type="number"
-              value={(()=>{
-                if(activeAccount==="all") return "";
-                return accounts.find(a=>a.id===activeAccount)?.startingBalance||"";
-              })()}
-              onChange={e=>{
-                if(activeAccount==="all") return;
-                const val = parseFloat(e.target.value)||0;
-                setAccounts(prev=>prev.map(a=>a.id===activeAccount?{...a,startingBalance:val}:a));
-              }}
-              placeholder={activeAccount==="all"?"Select account":"e.g. 50000"}
-              disabled={activeAccount==="all"}
-              style={{flex:1,background:"rgba(0,0,0,0.3)",border:`1px solid ${B.border}`,borderRadius:6,
-                padding:"3px 8px",color:B.text,fontSize:11,outline:"none",
-                opacity:activeAccount==="all"?0.4:1}}
-            />
-          </div>
-          <div style={{fontSize:10,color:B.textMuted,marginTop:4}}>{trades.length} trades total</div>
         </div>
 
         {/* Win % gauge */}
@@ -2028,7 +2036,7 @@ function Analytics({trades}){
             </div>
           </div>
           {/* Break-even analysis */}
-          <div style={{padding:"12px 14px",borderRadius:10,background:`${winRate>=breakEvenWR?B.teal:B.loss}08`,border:`1px solid ${winRate>=breakEvenWR?B.borderTeal:`${B.loss}30`}`}}>
+          <div style={{padding:"12px 14px",borderRadius:10,background:(winRate>=breakEvenWR?B.teal:B.loss)+"08",border:"1px solid "+(winRate>=breakEvenWR?B.borderTeal:B.loss+"30")}}>
             <div style={{fontSize:11,color:B.textMuted,marginBottom:4}}>Break-even win rate at your R:R</div>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
               <div>
@@ -2122,7 +2130,7 @@ function Analytics({trades}){
             ))}
           </div>
           {afterLossWR!==null&&(
-            <div style={{padding:"10px 14px",borderRadius:8,background:`${afterLossWR>=50?B.teal:B.loss}08`,border:`1px solid ${afterLossWR>=50?B.borderTeal:`${B.loss}30`}`}}>
+            <div style={{padding:"10px 14px",borderRadius:8,background:(afterLossWR>=50?B.teal:B.loss)+"08",border:"1px solid "+(afterLossWR>=50?B.borderTeal:B.loss+"30")}}>
               <div style={{fontSize:11,color:afterLossWR>=50?B.teal:B.loss}}>
                 {afterLossWR>=50
                   ?`✅ You bounce back well — ${afterLossWR}% win rate after a loss`
@@ -3476,11 +3484,17 @@ function CalendarView({trades, onGradeUpdate, onEdit}){
 function PlaybookView({trades=[]}){
   const STORAGE_KEY="tca_strategies_v1";
   const [strategies,setStrategies]=useState([]);
-  const [accounts,setAccounts]=useState([
-    {id:"main",label:"Live Account",type:"live",color:"#00D4A8",startingBalance:0},
-    {id:"apex_eval",label:"Apex Eval",type:"eval",color:"#4F8EF7",startingBalance:0},
-    {id:"apex_demo",label:"Apex Demo",type:"demo",color:"#8B5CF6",startingBalance:0},
-  ]);
+  const [accounts,setAccounts]=useState(()=>{
+    try{
+      const saved=localStorage.getItem("pref_tca_accounts_v1");
+      if(saved){
+        const parsed=JSON.parse(saved);
+        // Ensure main account always exists
+        if(Array.isArray(parsed)&&parsed.length) return parsed;
+      }
+    }catch(e){}
+    return [{id:"main",label:"Live Account",type:"live",color:"#00D4A8",startingBalance:0}];
+  });
   const [activeAccount,setActiveAccount]=useState("all");
   const [sel,setSel]=useState(null);
   const [showForm,setShowForm]=useState(false);
@@ -7207,11 +7221,17 @@ export default function App(){
   const [syncStatus,setSyncStatus]=useState("idle");
   const [lastImport,setLastImport]=useState(null);
   const [strategies,setStrategies]=useState([]);
-  const [accounts,setAccounts]=useState([
-    {id:"main",label:"Live Account",type:"live",color:"#00D4A8",startingBalance:0},
-    {id:"apex_eval",label:"Apex Eval",type:"eval",color:"#4F8EF7",startingBalance:0},
-    {id:"apex_demo",label:"Apex Demo",type:"demo",color:"#8B5CF6",startingBalance:0},
-  ]);
+  const [accounts,setAccounts]=useState(()=>{
+    try{
+      const saved=localStorage.getItem("pref_tca_accounts_v1");
+      if(saved){
+        const parsed=JSON.parse(saved);
+        // Ensure main account always exists
+        if(Array.isArray(parsed)&&parsed.length) return parsed;
+      }
+    }catch(e){}
+    return [{id:"main",label:"Live Account",type:"live",color:"#00D4A8",startingBalance:0}];
+  });
   const [activeAccount,setActiveAccount]=useState("all"); // idle | syncing | connected | error
   const [showSyncModal,setShowSyncModal]=useState(false);
   const [syncRange,setSyncRange]=useState({from:"",to:""});
@@ -7230,8 +7250,7 @@ export default function App(){
         const{data,error}=await supabase.from("trades").select("*").eq("user_id",user.id).order("date",{ascending:false});
         if(error)console.error("Load error:",error);
         setTrades(data||[]);
-        // Load saved accounts config
-        try{const l=localStorage.getItem("pref_tca_accounts_v1");if(l)setAccounts(JSON.parse(l));}catch(e){}
+        // Accounts loaded from localStorage via useState initializer
       }catch(e){
         console.error("Failed to load trades:",e);
         setTrades([]);
