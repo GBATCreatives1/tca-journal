@@ -1456,9 +1456,14 @@ function Overview({trades, onGradeUpdate, session, onEdit, accounts=[], activeAc
         if(val){
           const parsed=JSON.parse(val);
           if(Array.isArray(parsed)){
-            const padded=[...parsed];
+            const cleaned=parsed.map(w=>w==="dailypnl"?null:w);
+            const padded=[...cleaned];
             while(padded.length<6)padded.push(null);
             setLayout(padded.slice(0,6));
+            // Re-persist cleaned layout back to Supabase so it sticks
+            if(cleaned.some((w,i)=>w!==parsed[i])){
+              persist(padded.slice(0,6));
+            }
           }
         }
       }catch(e){}
