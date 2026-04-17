@@ -3139,7 +3139,8 @@ function DayJournalModal({date, trades, onClose, onGradeUpdate}){
     // Also save full screenshots (with base64) to localStorage for this device
     localStorage.setItem("pref_"+STORAGE_KEY+"_screenshots",JSON.stringify(chartScreenshots));
     try{await (async()=>{const{data:{user}}=await supabase.auth.getUser();await supabase.from("user_preferences").upsert({user_id:user?.id,key:STORAGE_KEY,value:val,updated_at:new Date().toISOString()},{onConflict:"user_id,key"});})();}catch(e){}
-    setSaving(false);  };;
+    setSaving(false);
+  };
 
   const addItem=()=>{
     if(!newItem.trim())return;
@@ -3513,7 +3514,9 @@ function DayJournalModal({date, trades, onClose, onGradeUpdate}){
                           if(!text)throw new Error("No response");
                           setChartAI(text);
                           // Auto-save AI result with screenshots
-                          const s=JSON.stringify({notes,checklist,chartScreenshots,chartAI:text});
+                          // Strip base64 from screenshots before saving to Supabase
+                          const screenshotsForCloud2=chartScreenshots.map(s=>({id:s.id,note:s.note,url:s.url?.startsWith("http")?s.url:"[local]",ts:s.ts,file:s.file}));
+                          const s=JSON.stringify({notes,checklist,screenshotsForCloud:screenshotsForCloud2,chartAI:text});
                           localStorage.setItem("pref_"+STORAGE_KEY,s);
                           try{(async()=>{const{data:{user}}=await supabase.auth.getUser();await supabase.from("user_preferences").upsert({user_id:user?.id,key:STORAGE_KEY,value:s,updated_at:new Date().toISOString()},{onConflict:"user_id,key"});})();}catch(_){}
                         }catch(e){setChartAIError("Analysis failed: "+e.message);}
