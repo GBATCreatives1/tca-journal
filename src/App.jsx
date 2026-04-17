@@ -2298,7 +2298,10 @@ function StrategyChecklist({trade}){
 
 function TradeDetailModal({trade, onClose, onEdit, onGradeUpdate}){
   const isWin = trade.result === "Win";
-  const [aiAnalysis, setAiAnalysis] = useState(null);
+  const [aiAnalysis, setAiAnalysis] = useState(()=>{
+    try{const c=localStorage.getItem("tca_ai_"+trade.id);if(c)return JSON.parse(c);}catch(e){}
+    return null;
+  });
   const [aiLoading, setAiLoading] = useState(false);
   const [screenshot, setScreenshot] = useState(null);
   const [screenshotUrl, setScreenshotUrl] = useState(null);
@@ -2308,10 +2311,19 @@ function TradeDetailModal({trade, onClose, onEdit, onGradeUpdate}){
   const SCREENSHOT_KEY = `tca_screenshot_${trade.id}`;
   const [tradeTags, setTradeTags] = useState({});
 
-  // Load ICT tags
+  // Load ICT tags + AI analysis from Supabase (cross-device)
   useEffect(()=>{
     try{const l=localStorage.getItem("pref_tca_ict_tags_v1");if(l)setTradeTags(JSON.parse(l));}catch(e){}
-    (async()=>{try{const{data}=await supabase.from("user_preferences").select("value").eq("key","tca_ict_tags_v1").single();if(data?.value){setTradeTags(JSON.parse(data.value));localStorage.setItem("pref_tca_ict_tags_v1",data.value);}}catch(e){}})();
+    (async()=>{
+      try{const{data}=await supabase.from("user_preferences").select("value").eq("key","tca_ict_tags_v1").single();if(data?.value){setTradeTags(JSON.parse(data.value));localStorage.setItem("pref_tca_ict_tags_v1",data.value);}}catch(e){}
+      // Load AI analysis if not already in localStorage
+      try{
+        if(!localStorage.getItem("tca_ai_"+trade.id)){
+          const{data}=await supabase.from("user_preferences").select("value").eq("key","tca_ai_"+trade.id).single();
+          if(data?.value){const parsed=JSON.parse(data.value);setAiAnalysis(parsed);localStorage.setItem("tca_ai_"+trade.id,data.value);}
+        }
+      }catch(e){}
+    })();
   },[]);
 
   // Load existing screenshot from user_preferences (base64)
@@ -2430,9 +2442,14 @@ function TradeDetailModal({trade, onClose, onEdit, onGradeUpdate}){
       // coach.js returns parsed JSON directly for trade type
       if(data.score !== undefined) {
         setAiAnalysis(data);
+        try{localStorage.setItem("tca_ai_"+trade.id,JSON.stringify(data));}catch(e){}
+        try{(async()=>{const{data:{user}}=await supabase.auth.getUser();await supabase.from("user_preferences").upsert({user_id:user?.id,key:"tca_ai_"+trade.id,value:JSON.stringify(data),updated_at:new Date().toISOString()},{onConflict:"user_id,key"});})();}catch(e){}
       } else if(data.content?.[0]?.text) {
         const clean = data.content[0].text.split("```json").join("").split("```").join("").trim();
-        setAiAnalysis(JSON.parse(clean));
+        const parsed = JSON.parse(clean);
+        setAiAnalysis(parsed);
+        try{localStorage.setItem("tca_ai_"+trade.id,JSON.stringify(parsed));}catch(e){}
+        try{(async()=>{const{data:{user}}=await supabase.auth.getUser();await supabase.from("user_preferences").upsert({user_id:user?.id,key:"tca_ai_"+trade.id,value:JSON.stringify(parsed),updated_at:new Date().toISOString()},{onConflict:"user_id,key"});})();}catch(e){}
       } else {
         throw new Error(data.error || "Invalid response");
       }
@@ -3450,7 +3467,13 @@ function DayJournalModal({date, trades, onClose, onGradeUpdate}){
                             const{data:{user}}=await supabase.auth.getUser();
                             const ext=file.name.split(".").pop()||"jpg";
                             const path=user.id+"/"+date+"/"+imgId+"."+ext;
-                            const blob=await (await fetch(localUrl)).blob();
+                            // Convert base64 to blob without fetch (more reliable)
+                            const b64=localUrl.split(",")[1];
+                            const mime=localUrl.split(";")[0].split(":")[1]||file.type||"image/jpeg";
+                            const bytes=atob(b64);
+                            const arr=new Uint8Array(bytes.length);
+                            for(let k=0;k<bytes.length;k++)arr[k]=bytes.charCodeAt(k);
+                            const blob=new Blob([arr],{type:mime});
                             const{data,error}=await supabase.storage.from("chart-screenshots").upload(path,blob,{upsert:true,contentType:file.type});
                             if(!error){
                               const{data:{publicUrl}}=supabase.storage.from("chart-screenshots").getPublicUrl(path);
@@ -3477,7 +3500,13 @@ function DayJournalModal({date, trades, onClose, onGradeUpdate}){
                             const{data:{user}}=await supabase.auth.getUser();
                             const ext=file.name.split(".").pop()||"jpg";
                             const path=user.id+"/"+date+"/"+imgId+"."+ext;
-                            const blob=await (await fetch(localUrl)).blob();
+                            // Convert base64 to blob without fetch (more reliable)
+                            const b64=localUrl.split(",")[1];
+                            const mime=localUrl.split(";")[0].split(":")[1]||file.type||"image/jpeg";
+                            const bytes=atob(b64);
+                            const arr=new Uint8Array(bytes.length);
+                            for(let k=0;k<bytes.length;k++)arr[k]=bytes.charCodeAt(k);
+                            const blob=new Blob([arr],{type:mime});
                             const{data,error}=await supabase.storage.from("chart-screenshots").upload(path,blob,{upsert:true,contentType:file.type});
                             if(!error){
                               const{data:{publicUrl}}=supabase.storage.from("chart-screenshots").getPublicUrl(path);
