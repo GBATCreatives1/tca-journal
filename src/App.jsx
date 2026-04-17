@@ -3088,13 +3088,33 @@ function DayJournalModal({date, trades, onClose, onGradeUpdate}){
     "Reviewed yesterday's trades",
     "Mental state check — ready to trade?",
   ];
+  const CK_DEFAULT_KEY="tca_checklist_default";
+  const getUserDefault=()=>{
+    try{const s=localStorage.getItem(CK_DEFAULT_KEY);if(s)return JSON.parse(s);}catch(e){}
+    return DEFAULT_CHECKLIST.map(t=>({text:t,checked:false}));
+  };
+  const saveAsDefault=async()=>{
+    const items=checklist.map(it=>({text:it.text,checked:false}));
+    localStorage.setItem(CK_DEFAULT_KEY,JSON.stringify(items));
+    try{
+      const{data:{user}}=await supabase.auth.getUser();
+      await supabase.from("user_preferences").upsert({user_id:user?.id,key:CK_DEFAULT_KEY,value:JSON.stringify(items),updated_at:new Date().toISOString()},{onConflict:"user_id,key"});
+    }catch(e){}
+    alert("Saved as your default checklist!");
+  };
 
   useEffect(()=>{
     (async()=>{
       // Load from localStorage instantly
       try{
-        const l=localStorage.getItem("pref_"+STORAGE_KEY);
-        if(l){const s=JSON.parse(l);setNotes(s.notes||"");setChecklist(s.checklist||DEFAULT_CHECKLIST.map(i=>({text:i,checked:false})));if(s.chartAI)setChartAI(s.chartAI);
+        // Load user's custom default checklist from Supabase
+      try{
+        const{data:{user}}=await supabase.auth.getUser();
+        const{data:ckd}=await supabase.from("user_preferences").select("value").eq("user_id",user?.id).eq("key",CK_DEFAULT_KEY).single();
+        if(ckd?.value){localStorage.setItem(CK_DEFAULT_KEY,ckd.value);}
+      }catch(e){}
+      const l=localStorage.getItem("pref_"+STORAGE_KEY);
+        if(l){const s=JSON.parse(l);setNotes(s.notes||"");setChecklist(s.checklist||getUserDefault());if(s.chartAI)setChartAI(s.chartAI);
         // Try to load full screenshots from device localStorage first
         try{
           const localImgs=localStorage.getItem("pref_"+STORAGE_KEY+"_screenshots");
@@ -3280,6 +3300,10 @@ function DayJournalModal({date, trades, onClose, onGradeUpdate}){
                   onKeyDown={e=>e.key==="Enter"&&addItem()}
                   style={{...iS,flex:1}} placeholder="Add a checklist item..."/>
                 <button onClick={addItem} style={{padding:"9px 18px",borderRadius:8,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:12,fontWeight:800,whiteSpace:"nowrap"}}>+ Add</button>
+                <button onClick={saveAsDefault} title="Save current list as your default for all future days"
+                  style={{padding:"9px 14px",borderRadius:8,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:11,fontWeight:600,whiteSpace:"nowrap"}}>
+                  ⭐ Set as Default
+                </button>
                 <button onClick={()=>setShowCkTemplates(p=>!p)} title="Templates" style={{padding:"9px 12px",borderRadius:8,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:13}}>📋</button>
               </div>
               {showCkTemplates&&(
