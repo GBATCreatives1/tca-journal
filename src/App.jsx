@@ -2308,6 +2308,7 @@ function TradeDetailModal({trade, onClose, onEdit, onGradeUpdate}){
   const [uploadLoading, setUploadLoading] = useState(false);
   const [uploadError, setUploadError] = useState(null);
   const fileInputRef = useRef(null);
+  const chartFileInputRef = useRef(null);
   const SCREENSHOT_KEY = `tca_screenshot_${trade.id}`;
   const [tradeTags, setTradeTags] = useState({});
 
@@ -3196,6 +3197,34 @@ function DayJournalModal({date, trades, onClose, onGradeUpdate}){
   const completed=checklist.filter(i=>i.checked).length;
   const pct=checklist.length?Math.round((completed/checklist.length)*100):0;
 
+
+  const processChartFile = async (file) => {
+    const reader = new FileReader();
+    reader.onload = async (ev) => {
+      const localUrl = ev.target.result;
+      const imgId = Date.now() + Math.random();
+      setChartScreenshots(prev => [...prev, {id:imgId, url:localUrl, note:"", file:file.name, ts:new Date().toLocaleTimeString()}]);
+      // Try upload to Supabase Storage
+      try {
+        const {data:{user}} = await supabase.auth.getUser();
+        const ext = file.name.split(".").pop() || "jpg";
+        const path = user.id + "/" + date + "/" + imgId + "." + ext;
+        const b64 = localUrl.split(",")[1];
+        const mime = localUrl.split(";")[0].split(":")[1] || file.type || "image/jpeg";
+        const bytes = atob(b64);
+        const arr = new Uint8Array(bytes.length);
+        for(let k=0;k<bytes.length;k++) arr[k] = bytes.charCodeAt(k);
+        const blob = new Blob([arr], {type:mime});
+        const {error} = await supabase.storage.from("chart-screenshots").upload(path, blob, {upsert:true, contentType:mime});
+        if(!error){
+          const {data:{publicUrl}} = supabase.storage.from("chart-screenshots").getPublicUrl(path);
+          setChartScreenshots(prev => prev.map(s => s.id===imgId ? {...s, url:publicUrl} : s));
+        }
+      } catch(e) { console.log("Storage upload failed, image saved locally:", e.message); }
+    };
+    reader.readAsDataURL(file);
+  };
+
   return(
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",zIndex:150,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(8px)"}}
       onClick={onClose}>
@@ -3446,78 +3475,25 @@ function DayJournalModal({date, trades, onClose, onGradeUpdate}){
 
               {/* Screenshot upload area */}
               <div>
-                <label style={{display:"block",cursor:"pointer"}}>
-                  <div style={{border:`2px dashed ${B.border}`,borderRadius:12,padding:"20px",textAlign:"center",
-                    background:"rgba(255,255,255,0.02)",transition:"all 0.2s"}}
-                    onDragOver={e=>{e.preventDefault();e.currentTarget.style.borderColor=B.teal;}}
-                    onDragLeave={e=>{e.currentTarget.style.borderColor=B.border;}}
-                    onDrop={e=>{
-                      e.preventDefault();
-                      e.currentTarget.style.borderColor=B.border;
-                      const files=Array.from(e.dataTransfer.files).filter(f=>f.type.startsWith("image/"));
-                      files.forEach(file=>{
-                        const reader=new FileReader();
-                        reader.onload=async ev=>{
-                          const localUrl=ev.target.result;
-                          const imgId=Date.now()+Math.random();
-                          // Add locally first for instant preview
-                          setChartScreenshots(prev=>[...prev,{id:imgId,url:localUrl,note:"",file:file.name,ts:new Date().toLocaleTimeString()}]);
-                          // Upload to Supabase Storage for cross-device access
-                          try{
-                            const{data:{user}}=await supabase.auth.getUser();
-                            const ext=file.name.split(".").pop()||"jpg";
-                            const path=user.id+"/"+date+"/"+imgId+"."+ext;
-                            // Convert base64 to blob without fetch (more reliable)
-                            const b64=localUrl.split(",")[1];
-                            const mime=localUrl.split(";")[0].split(":")[1]||file.type||"image/jpeg";
-                            const bytes=atob(b64);
-                            const arr=new Uint8Array(bytes.length);
-                            for(let k=0;k<bytes.length;k++)arr[k]=bytes.charCodeAt(k);
-                            const blob=new Blob([arr],{type:mime});
-                            const{data,error}=await supabase.storage.from("chart-screenshots").upload(path,blob,{upsert:true,contentType:file.type});
-                            if(!error){
-                              const{data:{publicUrl}}=supabase.storage.from("chart-screenshots").getPublicUrl(path);
-                              setChartScreenshots(prev=>prev.map(s=>s.id===imgId?{...s,url:publicUrl}:s));
-                            }
-                          }catch(e){console.log("Storage upload failed, using local only:",e.message);}
-                        };
-                        reader.readAsDataURL(file);
-                      });
-                    }}>
-                    <div style={{fontSize:24,marginBottom:8}}>📸</div>
-                    <div style={{fontSize:13,color:B.text,fontWeight:600}}>Drop chart screenshots here</div>
-                    <div style={{fontSize:11,color:B.textMuted,marginTop:4}}>or click to browse — PNG, JPG, WebP</div>
-                  </div>
-                  <input type="file" accept="image/*" multiple style={{display:"none"}}
-                    onChange={e=>{
-                      Array.from(e.target.files).forEach(file=>{
-                        const reader=new FileReader();
-                        reader.onload=async ev=>{
-                          const localUrl=ev.target.result;
-                          const imgId=Date.now()+Math.random();
-                          setChartScreenshots(prev=>[...prev,{id:imgId,url:localUrl,note:"",file:file.name,ts:new Date().toLocaleTimeString()}]);
-                          try{
-                            const{data:{user}}=await supabase.auth.getUser();
-                            const ext=file.name.split(".").pop()||"jpg";
-                            const path=user.id+"/"+date+"/"+imgId+"."+ext;
-                            // Convert base64 to blob without fetch (more reliable)
-                            const b64=localUrl.split(",")[1];
-                            const mime=localUrl.split(";")[0].split(":")[1]||file.type||"image/jpeg";
-                            const bytes=atob(b64);
-                            const arr=new Uint8Array(bytes.length);
-                            for(let k=0;k<bytes.length;k++)arr[k]=bytes.charCodeAt(k);
-                            const blob=new Blob([arr],{type:mime});
-                            const{data,error}=await supabase.storage.from("chart-screenshots").upload(path,blob,{upsert:true,contentType:file.type});
-                            if(!error){
-                              const{data:{publicUrl}}=supabase.storage.from("chart-screenshots").getPublicUrl(path);
-                              setChartScreenshots(prev=>prev.map(s=>s.id===imgId?{...s,url:publicUrl}:s));
-                            }
-                          }catch(e){console.log("Storage upload failed:",e.message);}
-                        };
-                      });
-                      e.target.value="";
-                    }}/>
-                </label>
+                <div
+                  onDragOver={e=>{e.preventDefault();e.currentTarget.style.borderColor=B.teal;e.currentTarget.style.background="rgba(0,212,168,0.04)";}}
+                  onDragLeave={e=>{e.currentTarget.style.borderColor=B.border;e.currentTarget.style.background="rgba(255,255,255,0.02)";}}
+                  onDrop={e=>{
+                    e.preventDefault();
+                    e.currentTarget.style.borderColor=B.border;
+                    e.currentTarget.style.background="rgba(255,255,255,0.02)";
+                    const files=Array.from(e.dataTransfer.files).filter(f=>f.type.startsWith("image/"));
+                    files.forEach(file=>processChartFile(file));
+                  }}
+                  onClick={()=>chartFileInputRef.current?.click()}
+                  style={{border:`2px dashed ${B.border}`,borderRadius:12,padding:"28px 20px",textAlign:"center",
+                    background:"rgba(255,255,255,0.02)",transition:"all 0.2s",cursor:"pointer"}}>
+                  <div style={{fontSize:28,marginBottom:8}}>📸</div>
+                  <div style={{fontSize:13,color:B.text,fontWeight:600}}>Drop screenshots here or click to browse</div>
+                  <div style={{fontSize:11,color:B.textMuted,marginTop:4}}>PNG, JPG, WebP — multiple files OK</div>
+                </div>
+                <input ref={chartFileInputRef} type="file" accept="image/*" multiple style={{display:"none"}}
+                  onChange={e=>{Array.from(e.target.files).forEach(file=>processChartFile(file));e.target.value="";}}/>
               </div>
 
               {/* Screenshot grid */}
