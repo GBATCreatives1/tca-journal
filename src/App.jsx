@@ -2308,7 +2308,6 @@ function TradeDetailModal({trade, onClose, onEdit, onGradeUpdate}){
   const [uploadLoading, setUploadLoading] = useState(false);
   const [uploadError, setUploadError] = useState(null);
   const fileInputRef = useRef(null);
-  const chartFileInputRef = useRef(null);
   const SCREENSHOT_KEY = `tca_screenshot_${trade.id}`;
   const [tradeTags, setTradeTags] = useState({});
 
@@ -3090,6 +3089,7 @@ function DayJournalModal({date, trades, onClose, onGradeUpdate}){
   const [chartAI,setChartAI]=useState(null);
   const [chartAILoading,setChartAILoading]=useState(false);
   const [chartAIError,setChartAIError]=useState("");
+  const chartFileInputRef=useRef(null);
 
   const dayTrades=trades.filter(t=>t.date===date);
   const dayPnl=dayTrades.reduce((a,t)=>a+t.pnl,0);
