@@ -162,7 +162,7 @@ const TAG_COLOR={ICT:B.purple,Strat:B.blue,Confluence:B.teal,CISD:"#f97316",OB:B
 const SETUPS=["AM Session CISD","10AM Triple TF","FVG Fill + OTE","PDH Rejection","PDL Bounce","0930 Rejection","Auto-synced","Other"];
 const SESSIONS=["AM","Mid","Open","PM"];
 const GRADES=["A+","A","B","C","D"];
-const INSTRUMENTS=["MES","ES","SPY","SPX","NQ","MNQ"];
+const INSTRUMENTS=["MES","ES","MGC","GC","SPY","SPX","NQ","MNQ","CL","MCL"];
 const fmt=n=>n>=0?`+$${n.toLocaleString()}`:`-$${Math.abs(n).toLocaleString()}`;
 const pnlColor=n=>n>=0?B.profit:B.loss;
 const dayName=d=>["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][new Date(d+"T12:00:00").getDay()];
