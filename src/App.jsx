@@ -6842,6 +6842,250 @@ function AdminPanel({onClose}){
 
 
 // ── Weekly Review Page ────────────────────────────────────────────────────────
+// ── Earnings Calendar ─────────────────────────────────────────────────────────
+function EarningsCalendar({isDark}){
+  const [events, setEvents] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [showMajorOnly, setShowMajorOnly] = useState(false);
+  const [weekOffset, setWeekOffset] = useState(0);
+  const [selectedDay, setSelectedDay] = useState(null);
+
+  const getWeekRange = (offset=0)=>{
+    const today = new Date();
+    const dow = today.getDay();
+    const mon = new Date(today);
+    mon.setDate(today.getDate() - (dow===0?6:dow-1) + (offset*7));
+    const fri = new Date(mon);
+    fri.setDate(mon.getDate()+4);
+    const fmt = d=>d.toISOString().slice(0,10);
+    return {from:fmt(mon), to:fmt(fri), mon, fri};
+  };
+
+  const fetchEarnings = async (offset=0)=>{
+    setLoading(true); setError("");
+    try{
+      const {from,to} = getWeekRange(offset);
+      const r = await fetch("/api/earnings?from="+from+"&to="+to);
+      const data = await r.json();
+      if(data.error && !data.events?.length) throw new Error(data.error);
+      setEvents(data.events||[]);
+    }catch(e){
+      setError(e.message);
+    }
+    setLoading(false);
+  };
+
+  useEffect(()=>{ fetchEarnings(weekOffset); },[weekOffset]);
+
+  const {from,to,mon,fri} = getWeekRange(weekOffset);
+  const weekDays = ["Mon","Tue","Wed","Thu","Fri"];
+  const weekDates = Array.from({length:5},(_,i)=>{
+    const d = new Date(mon);
+    d.setDate(mon.getDate()+i);
+    return d.toISOString().slice(0,10);
+  });
+
+  const filtered = showMajorOnly ? events.filter(e=>e.isMajor) : events;
+  const byDate = weekDates.reduce((acc,d)=>{
+    acc[d] = filtered.filter(e=>e.date===d);
+    return acc;
+  },{});
+
+  const fmtRev = (v)=>{
+    if(!v) return "—";
+    if(v>=1e9) return "$"+(v/1e9).toFixed(1)+"B";
+    if(v>=1e6) return "$"+(v/1e6).toFixed(0)+"M";
+    return "$"+v.toFixed(0);
+  };
+
+  const fmtEps = (v)=>v!==null&&v!==undefined ? (v>=0?"+":"")+v.toFixed(2) : "—";
+
+  const epsColor = (est,act)=>{
+    if(act===null||act===undefined||est===null) return B.text;
+    return act>=est ? B.teal : B.loss;
+  };
+
+  return(
+    <div>
+      {/* Header */}
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:24}}>
+        <div style={{display:"flex",alignItems:"center",gap:12}}>
+          <button onClick={()=>setWeekOffset(w=>w-1)}
+            style={{width:32,height:32,borderRadius:8,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:16}}>&#8249;</button>
+          <div>
+            <div style={{fontSize:18,fontWeight:800,color:B.text}}>
+              {weekOffset===0?"This Week":weekOffset===1?"Next Week":weekOffset===-1?"Last Week":"Week of "+from}
+            </div>
+            <div style={{fontSize:11,color:B.textMuted}}>{from} to {to} · {filtered.length} earnings{events.filter(e=>e.isMajor).length>0?" · "+events.filter(e=>e.isMajor).length+" major":""}</div>
+          </div>
+          <button onClick={()=>setWeekOffset(w=>w+1)}
+            style={{width:32,height:32,borderRadius:8,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:16}}>&#8250;</button>
+          <button onClick={()=>setWeekOffset(0)}
+            style={{padding:"5px 12px",borderRadius:8,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:11}}>
+            This Week
+          </button>
+        </div>
+        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          <button onClick={()=>setShowMajorOnly(v=>!v)}
+            style={{padding:"6px 14px",borderRadius:8,border:`1px solid ${showMajorOnly?B.teal:B.border}`,
+              background:showMajorOnly?`${B.teal}15`:"transparent",color:showMajorOnly?B.teal:B.textMuted,
+              cursor:"pointer",fontSize:11,fontWeight:600}}>
+            ⭐ Major Only
+          </button>
+          <button onClick={()=>fetchEarnings(weekOffset)}
+            style={{padding:"6px 14px",borderRadius:8,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:11}}>
+            ↻ Refresh
+          </button>
+        </div>
+      </div>
+
+      {loading&&(
+        <div style={{textAlign:"center",padding:"60px",color:B.textMuted}}>
+          <div style={{fontSize:24,marginBottom:12}}>⏳</div>
+          <div>Loading earnings data...</div>
+        </div>
+      )}
+
+      {error&&(
+        <div style={{padding:"20px",borderRadius:12,background:`${B.loss}10`,border:`1px solid ${B.loss}30`,color:B.loss,marginBottom:16}}>
+          <div style={{fontWeight:700,marginBottom:4}}>Could not load earnings</div>
+          <div style={{fontSize:12}}>{error}</div>
+          {error.includes("not configured")&&(
+            <div style={{marginTop:8,fontSize:11,color:B.textMuted}}>
+              Add FINNHUB_API_KEY to your Vercel environment variables. Get a free key at finnhub.io
+            </div>
+          )}
+        </div>
+      )}
+
+      {!loading&&(
+        <>
+          {/* Day columns */}
+          <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:12,marginBottom:24}}>
+            {weekDates.map((date,di)=>{
+              const dayEvents = byDate[date]||[];
+              const isToday = date===new Date().toISOString().slice(0,10);
+              const hasMajor = dayEvents.some(e=>e.isMajor);
+              return(
+                <div key={date}
+                  onClick={()=>setSelectedDay(selectedDay===date?null:date)}
+                  style={{borderRadius:12,border:`1px solid ${isToday?B.teal:hasMajor?"rgba(255,183,0,0.4)":B.border}`,
+                    background:isToday?`${B.teal}06`:hasMajor?"rgba(255,183,0,0.04)":B.surface,
+                    cursor:"pointer",overflow:"hidden"}}>
+                  <div style={{padding:"10px 12px",borderBottom:`1px solid ${B.border}30`,
+                    background:isToday?`${B.teal}10`:"transparent"}}>
+                    <div style={{fontSize:11,fontWeight:700,color:isToday?B.teal:B.textMuted}}>{weekDays[di]}</div>
+                    <div style={{fontSize:10,color:B.textDim}}>{date.slice(5)}</div>
+                    {dayEvents.length>0&&(
+                      <div style={{marginTop:4,fontSize:10,color:hasMajor?"#FFB700":B.textMuted,fontWeight:600}}>
+                        {dayEvents.length} report{dayEvents.length!==1?"s":""}
+                        {hasMajor&&" ⭐"}
+                      </div>
+                    )}
+                  </div>
+                  <div style={{padding:"8px",display:"flex",flexDirection:"column",gap:4,maxHeight:180,overflowY:"auto"}}>
+                    {dayEvents.slice(0,8).map((e,i)=>(
+                      <div key={i} style={{display:"flex",alignItems:"center",gap:6,padding:"4px 6px",
+                        borderRadius:6,background:e.isMajor?"rgba(255,183,0,0.08)":"rgba(255,255,255,0.02)"}}>
+                        <div style={{width:6,height:6,borderRadius:"50%",flexShrink:0,
+                          background:e.hour==="bmo"?B.blue:B.purple,opacity:0.8}}/>
+                        <div style={{fontSize:10,fontWeight:e.isMajor?700:400,
+                          color:e.isMajor?"#FFB700":B.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                          {e.symbol}
+                        </div>
+                        {e.epsActual!==null&&e.epsActual!==undefined&&(
+                          <div style={{fontSize:9,color:epsColor(e.epsEstimate,e.epsActual),marginLeft:"auto",fontWeight:700}}>
+                            {fmtEps(e.epsActual)}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                    {dayEvents.length>8&&(
+                      <div style={{fontSize:9,color:B.textDim,textAlign:"center",padding:"2px"}}>
+                        +{dayEvents.length-8} more
+                      </div>
+                    )}
+                    {dayEvents.length===0&&(
+                      <div style={{fontSize:10,color:B.textDim,textAlign:"center",padding:"8px 0"}}>No reports</div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Legend */}
+          <div style={{display:"flex",gap:16,marginBottom:20,fontSize:10,color:B.textMuted}}>
+            <div style={{display:"flex",alignItems:"center",gap:4}}><div style={{width:6,height:6,borderRadius:"50%",background:B.blue}}/> BMO (Before Market Open)</div>
+            <div style={{display:"flex",alignItems:"center",gap:4}}><div style={{width:6,height:6,borderRadius:"50%",background:B.purple}}/> AMC (After Market Close)</div>
+            <div style={{display:"flex",alignItems:"center",gap:4}}>⭐ Market-moving company</div>
+          </div>
+
+          {/* Selected day detail */}
+          {selectedDay&&(byDate[selectedDay]||[]).length>0&&(
+            <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:20,marginBottom:20}}>
+              <div style={{fontSize:11,color:B.textMuted,letterSpacing:1.5,marginBottom:14}}>
+                {new Date(selectedDay+"T12:00:00").toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric"})} — {(byDate[selectedDay]||[]).length} EARNINGS
+              </div>
+              <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                {(byDate[selectedDay]||[]).map((e,i)=>(
+                  <div key={i} style={{display:"grid",gridTemplateColumns:"1fr auto auto auto",gap:12,
+                    padding:"12px 14px",borderRadius:10,alignItems:"center",
+                    background:e.isMajor?"rgba(255,183,0,0.05)":"rgba(255,255,255,0.02)",
+                    border:`1px solid ${e.isMajor?"rgba(255,183,0,0.2)":B.border}`}}>
+                    <div>
+                      <div style={{display:"flex",alignItems:"center",gap:8}}>
+                        <span style={{fontSize:13,fontWeight:800,color:e.isMajor?"#FFB700":B.text}}>{e.symbol}</span>
+                        {e.isMajor&&<span style={{fontSize:9,padding:"2px 6px",borderRadius:4,background:"rgba(255,183,0,0.15)",color:"#FFB700",fontWeight:700}}>MAJOR</span>}
+                        <span style={{fontSize:9,padding:"2px 6px",borderRadius:4,
+                          background:e.hour==="bmo"?`${B.blue}20`:`${B.purple}20`,
+                          color:e.hour==="bmo"?B.blue:B.purple,fontWeight:600}}>
+                          {e.hour==="bmo"?"BMO":"AMC"}
+                        </span>
+                      </div>
+                      <div style={{fontSize:11,color:B.textMuted,marginTop:2}}>{e.company}</div>
+                    </div>
+                    <div style={{textAlign:"right"}}>
+                      <div style={{fontSize:9,color:B.textDim,marginBottom:2}}>EPS Est / Act</div>
+                      <div style={{fontSize:12,fontFamily:"monospace",fontWeight:700}}>
+                        <span style={{color:B.textMuted}}>{fmtEps(e.epsEstimate)}</span>
+                        {e.epsActual!==null&&e.epsActual!==undefined&&(
+                          <span style={{color:epsColor(e.epsEstimate,e.epsActual)}}> / {fmtEps(e.epsActual)}</span>
+                        )}
+                      </div>
+                    </div>
+                    <div style={{textAlign:"right"}}>
+                      <div style={{fontSize:9,color:B.textDim,marginBottom:2}}>Rev Est / Act</div>
+                      <div style={{fontSize:12,fontFamily:"monospace",fontWeight:700}}>
+                        <span style={{color:B.textMuted}}>{fmtRev(e.revenueEstimate)}</span>
+                        {e.revenueActual&&<span style={{color:epsColor(e.revenueEstimate,e.revenueActual)}}> / {fmtRev(e.revenueActual)}</span>}
+                      </div>
+                    </div>
+                    <div style={{textAlign:"right"}}>
+                      <div style={{fontSize:9,color:B.textDim,marginBottom:2}}>Period</div>
+                      <div style={{fontSize:11,color:B.textMuted}}>Q{e.quarter||"?"} {e.year||""}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Full list */}
+          {filtered.length===0&&!loading&&(
+            <div style={{textAlign:"center",padding:"40px",color:B.textMuted}}>
+              <div style={{fontSize:24,marginBottom:8}}>📭</div>
+              <div>{error?"Could not load data":"No earnings reported this week"}</div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+
 function WeeklyReview({trades, session}){
   const [selectedWeek, setSelectedWeek] = useState(()=>{
     const d = new Date();
@@ -7520,7 +7764,8 @@ function TradovateSyncModal({onClose, onSync, syncing, accounts=[]}){
 }
 
 
-const NAV=[{id:"overview",label:"Overview",icon:"▦"},{id:"journal",label:"Journal",icon:"⊟"},{id:"analytics",label:"Analytics",icon:"◈"},{id:"calendar",label:"P&L Calendar",icon:"⊞"},{id:"playbooks",label:"Strategies",icon:"⊕"},{id:"weeklyreview",label:"Weekly Review",icon:"🧠"},{id:"economiccalendar",label:"Eco Calendar",icon:"📰"},{id:"library",label:"Playbook",icon:"📚"},{id:"resources",label:"Resources",icon:"◎"}];
+const NAV=[{id:"overview",label:"Overview",icon:"▦"},{id:"journal",label:"Journal",icon:"⊟"},{id:"analytics",label:"Analytics",icon:"◈"},{id:"calendar",label:"P&L Calendar",icon:"⊞"},{id:"playbooks",label:"Strategies",icon:"⊕"},{id:"weeklyreview",label:"Weekly Review",icon:"🧠"},
+  {id:"earnings",label:"Earnings",icon:"💰"},{id:"economiccalendar",label:"Eco Calendar",icon:"📰"},{id:"library",label:"Playbook",icon:"📚"},{id:"resources",label:"Resources",icon:"◎"}];
 
 export default function App(){
   const ADMIN_EMAIL = "admin@thecandlestickacademy.com";
@@ -7826,6 +8071,7 @@ export default function App(){
       {active==="calendar"&&<CalendarView trades={activeAccount==="all"?trades:trades.filter(t=>t.account_id===activeAccount)} onGradeUpdate={handleGradeUpdate} onEdit={handleEdit}/>}
       {active==="playbooks"&&<PlaybookView trades={activeAccount==="all"?trades:trades.filter(t=>t.account_id===activeAccount)}/>}
       {active==="resources"&&<ResourcesPage session={session}/>}
+      {active==="earnings"&&<EarningsCalendar isDark={isDark}/>}
       {active==="weeklyreview"&&<WeeklyReview trades={activeAccount==="all"?trades:trades.filter(t=>t.account_id===activeAccount)} session={session}/>}
       {active==="economiccalendar"&&<EconomicCalendar isDark={isDark}/>}
       {active==="library"&&<PlaybookLibrary session={session}/>}
