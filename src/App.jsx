@@ -6855,7 +6855,10 @@ function WeeklyReview({trades, session}){
   const [focusNext, setFocusNext] = useState("");
   const [rulesKept, setRulesKept] = useState([]);
   const [rulesBroken, setRulesBroken] = useState([]);
+  const [weekScreenshots, setWeekScreenshots] = useState([]);
+  const weekFileInputRef = useRef(null);
   const SKEY = `tca_weekly_review_${selectedWeek}`;
+  const SKEY_IMGS = `tca_weekly_review_imgs_${selectedWeek}`;
 
   // Build week dates
   const weekDates = Array.from({length:5}, (_,i)=>{
@@ -6875,13 +6878,54 @@ function WeeklyReview({trades, session}){
       if(saved.rulesKept)setRulesKept(saved.rulesKept);
       if(saved.rulesBroken)setRulesBroken(saved.rulesBroken);
     }catch(e){}
+    try{
+      const imgs=localStorage.getItem(SKEY_IMGS);
+      if(imgs)setWeekScreenshots(JSON.parse(imgs));
+      else setWeekScreenshots([]);
+    }catch(e){setWeekScreenshots([]);}
   },[selectedWeek]);
 
   const saveReview = ()=>{
     const data = {notes,focusNext,rulesKept,rulesBroken,savedAt:new Date().toISOString()};
     localStorage.setItem(SKEY, JSON.stringify(data));
+    // Save screenshots separately (full base64 for local, notes only for cloud)
+    localStorage.setItem(SKEY_IMGS, JSON.stringify(weekScreenshots));
     setSaved(s=>({...s,[selectedWeek]:true}));
     setTimeout(()=>setSaved(s=>({...s,[selectedWeek]:false})),2000);
+  };
+
+  const processWeekFile = (file)=>{
+    const reader = new FileReader();
+    reader.onload = async (ev)=>{
+      const localUrl = ev.target.result;
+      const imgId = Date.now()+Math.random();
+      setWeekScreenshots(prev=>{
+        const updated=[...prev,{id:imgId,url:localUrl,note:"",file:file.name}];
+        localStorage.setItem(SKEY_IMGS, JSON.stringify(updated));
+        return updated;
+      });
+      // Try Supabase Storage upload
+      try{
+        const{data:{user}}=await supabase.auth.getUser();
+        const ext=file.name.split(".").pop()||"jpg";
+        const path=user.id+"/weekly/"+selectedWeek+"/"+imgId+"."+ext;
+        const b64=localUrl.split(",")[1];
+        const mime=localUrl.split(";")[0].split(":")[1]||file.type||"image/jpeg";
+        const bytes=atob(b64);const arr=new Uint8Array(bytes.length);
+        for(let k=0;k<bytes.length;k++)arr[k]=bytes.charCodeAt(k);
+        const blob=new Blob([arr],{type:mime});
+        const{error}=await supabase.storage.from("chart-screenshots").upload(path,blob,{upsert:true,contentType:mime});
+        if(!error){
+          const{data:{publicUrl}}=supabase.storage.from("chart-screenshots").getPublicUrl(path);
+          setWeekScreenshots(prev=>{
+            const updated=prev.map(s=>s.id===imgId?{...s,url:publicUrl}:s);
+            localStorage.setItem(SKEY_IMGS, JSON.stringify(updated));
+            return updated;
+          });
+        }
+      }catch(e){console.log("Weekly screenshot upload failed:",e.message);}
+    };
+    reader.readAsDataURL(file);
   };
 
   const navWeek = (dir)=>{
@@ -7011,6 +7055,61 @@ function WeeklyReview({trades, session}){
           <input value={focusNext} onChange={e=>setFocusNext(e.target.value)}
             placeholder="One thing I will improve next week..."
             style={{width:"100%",background:"rgba(0,0,0,0.3)",border:`1px solid ${B.border}`,borderRadius:10,padding:"11px 14px",color:B.text,fontSize:13,outline:"none"}}/>
+        </div>
+
+        {/* Weekly Screenshots */}
+        <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:16,padding:20,marginBottom:16}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+            <div style={{fontSize:11,color:B.textMuted,letterSpacing:1.5}}>WEEKLY CHART SCREENSHOTS</div>
+            <button onClick={()=>weekFileInputRef.current?.click()}
+              style={{padding:"6px 14px",borderRadius:8,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:11,fontWeight:600}}>
+              + Add Screenshot
+            </button>
+          </div>
+          <input ref={weekFileInputRef} type="file" accept="image/*" multiple style={{display:"none"}}
+            onChange={e=>{Array.from(e.target.files).forEach(f=>processWeekFile(f));e.target.value="";}}/>
+          {weekScreenshots.length===0?(
+            <div
+              onDragOver={e=>{e.preventDefault();e.currentTarget.style.borderColor=B.teal;}}
+              onDragLeave={e=>{e.currentTarget.style.borderColor=B.border;}}
+              onDrop={e=>{e.preventDefault();e.currentTarget.style.borderColor=B.border;Array.from(e.dataTransfer.files).filter(f=>f.type.startsWith("image/")).forEach(f=>processWeekFile(f));}}
+              onClick={()=>weekFileInputRef.current?.click()}
+              style={{border:`2px dashed ${B.border}`,borderRadius:10,padding:"24px",textAlign:"center",cursor:"pointer"}}>
+              <div style={{fontSize:24,marginBottom:6}}>📸</div>
+              <div style={{fontSize:12,color:B.textMuted}}>Drop charts here or click to browse</div>
+              <div style={{fontSize:10,color:B.textDim,marginTop:3}}>Bias setups, key levels, missed trades — anything from this week</div>
+            </div>
+          ):(
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              {weekScreenshots.map((img,idx)=>(
+                <div key={img.id} style={{borderRadius:10,overflow:"hidden",border:`1px solid ${B.border}`,background:"rgba(0,0,0,0.2)"}}>
+                  {img.url&&<img src={img.url} alt="chart" style={{width:"100%",maxHeight:280,objectFit:"contain",background:"#000",display:"block"}}/>}
+                  <div style={{padding:"8px 10px",display:"flex",gap:8,alignItems:"center"}}>
+                    <input value={img.note} onChange={e=>{
+                        const updated=weekScreenshots.map(s=>s.id===img.id?{...s,note:e.target.value}:s);
+                        setWeekScreenshots(updated);
+                        localStorage.setItem(SKEY_IMGS,JSON.stringify(updated));
+                      }}
+                      placeholder="Add a note — setup, bias, missed trade..."
+                      style={{flex:1,background:"transparent",border:"none",color:B.text,fontSize:11,outline:"none"}}/>
+                    <button onClick={()=>{
+                        const updated=weekScreenshots.filter(s=>s.id!==img.id);
+                        setWeekScreenshots(updated);
+                        localStorage.setItem(SKEY_IMGS,JSON.stringify(updated));
+                      }}
+                      style={{background:"none",border:"none",color:B.loss,cursor:"pointer",fontSize:14,padding:"2px 6px"}}>×</button>
+                  </div>
+                </div>
+              ))}
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:4}}>
+                <button onClick={()=>weekFileInputRef.current?.click()}
+                  style={{fontSize:11,color:B.textMuted,background:"none",border:`1px solid ${B.border}`,borderRadius:7,padding:"5px 12px",cursor:"pointer"}}>
+                  + Add More
+                </button>
+                <div style={{fontSize:10,color:B.textDim}}>{weekScreenshots.length} screenshot{weekScreenshots.length!==1?"s":""} · auto-saved</div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Trade list */}
