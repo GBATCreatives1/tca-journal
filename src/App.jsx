@@ -7145,7 +7145,11 @@ function WeeklyReview({trades, session}){
       const imgId = Date.now()+Math.random();
       setWeekScreenshots(prev=>{
         const updated=[...prev,{id:imgId,url:localUrl,note:"",file:file.name}];
-        localStorage.setItem(SKEY_IMGS, JSON.stringify(updated));
+        // Save without base64 to localStorage (too large), save full in memory only
+        try{
+          const forStorage=updated.map(s=>({...s,url:s.url?.startsWith("http")?s.url:"[local]"}));
+          localStorage.setItem(SKEY_IMGS,JSON.stringify(forStorage));
+        }catch(e){}
         return updated;
       });
       // Try Supabase Storage upload
@@ -7163,7 +7167,10 @@ function WeeklyReview({trades, session}){
           const{data:{publicUrl}}=supabase.storage.from("chart-screenshots").getPublicUrl(path);
           setWeekScreenshots(prev=>{
             const updated=prev.map(s=>s.id===imgId?{...s,url:publicUrl}:s);
-            localStorage.setItem(SKEY_IMGS, JSON.stringify(updated));
+            try{
+              const forStorage=updated.map(s=>({...s,url:s.url?.startsWith("http")?s.url:"[local]"}));
+              localStorage.setItem(SKEY_IMGS,JSON.stringify(forStorage));
+            }catch(e){}
             return updated;
           });
         }
@@ -7332,14 +7339,20 @@ function WeeklyReview({trades, session}){
                     <input value={img.note} onChange={e=>{
                         const updated=weekScreenshots.map(s=>s.id===img.id?{...s,note:e.target.value}:s);
                         setWeekScreenshots(updated);
-                        localStorage.setItem(SKEY_IMGS,JSON.stringify(updated));
+                        try{
+                          const forStorage=updated.map(s=>({...s,url:s.url?.startsWith("http")?s.url:"[local]"}));
+                          localStorage.setItem(SKEY_IMGS,JSON.stringify(forStorage));
+                        }catch(e){}
                       }}
                       placeholder="Add a note — setup, bias, missed trade..."
                       style={{flex:1,background:"transparent",border:"none",color:B.text,fontSize:11,outline:"none"}}/>
                     <button onClick={()=>{
                         const updated=weekScreenshots.filter(s=>s.id!==img.id);
                         setWeekScreenshots(updated);
-                        localStorage.setItem(SKEY_IMGS,JSON.stringify(updated));
+                        try{
+                          const forStorage=updated.map(s=>({...s,url:s.url?.startsWith("http")?s.url:"[local]"}));
+                          localStorage.setItem(SKEY_IMGS,JSON.stringify(forStorage));
+                        }catch(e){}
                       }}
                       style={{background:"none",border:"none",color:B.loss,cursor:"pointer",fontSize:14,padding:"2px 6px"}}>×</button>
                   </div>
