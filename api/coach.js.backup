@@ -1,0 +1,232 @@
+export default async function handler(req, res) {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  if (req.method === "OPTIONS") return res.status(200).end();
+  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
+
+  const repairJSON = (text) => {
+    let s = text.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
+    const start = s.indexOf("{");
+    if (start === -1) return null;
+    s = s.slice(start);
+
+    // Try direct parse first
+    try { return JSON.parse(s); } catch(e) {}
+
+    // Fix trailing commas
+    const s2 = s.replace(/,\s*([\]}])/g, "$1");
+    try { return JSON.parse(s2); } catch(e) {}
+
+    // Try to close truncated JSON by counting open brackets
+    let fixed = s2;
+    let opens = [];
+    let inStr = false;
+    let escape = false;
+    for (let i = 0; i < fixed.length; i++) {
+      const ch = fixed[i];
+      if (escape) { escape = false; continue; }
+      if (ch === '\\' && inStr) { escape = true; continue; }
+      if (ch === '"') { inStr = !inStr; continue; }
+      if (inStr) continue;
+      if (ch === '{' || ch === '[') opens.push(ch);
+      if (ch === '}' || ch === ']') opens.pop();
+    }
+    // Close any open brackets in reverse
+    let closing = '';
+    for (let i = opens.length - 1; i >= 0; i--) {
+      closing += opens[i] === '{' ? '}' : ']';
+    }
+    // Remove trailing comma before closing
+    const truncated = (fixed + closing).replace(/,\s*([\]}])/g, "$1");
+    try { return JSON.parse(truncated); } catch(e) {}
+
+    console.error("repairJSON failed on:", s.slice(0, 200));
+    return null;
+  };
+
+  try {
+    const body = req.body || {};
+    const type = body.type || "";
+    const MODEL = "claude-sonnet-4-6";
+    console.log("Coach called, type:", type);
+
+    // CHAT
+    if (type === "chat") {
+      const r = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-api-key": process.env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01" },
+        body: JSON.stringify({ model: MODEL, max_tokens: 800, system: body.chatContext || "", messages: body.chatHistory || [] }),
+      });
+      if (!r.ok) return res.status(200).json({ content: [{ type: "text", text: "API error " + r.status }] });
+      return res.status(200).json(await r.json());
+    }
+
+    // CONFLUENCE GRADER (handles images + text, returns early)
+    if (type === "confluence") {
+      const maxTokens = 2000;
+      const systemPrompt = "You are the TCA Pre-Trade Confluence Scorer. Grade trade setups against a strict ICT-based rubric. Output ONLY raw JSON. No prose, no markdown, no code fences.\n\n" +
+        "THREE TEMPLATES:\n" +
+        "T1 Continuation: Asian sets bias -> London holds -> NY sweeps liquidity into HTF PD array. Trade direction = Asian bias.\n" +
+        "T2 Expansion-Retrace: Asian holds or ranges flat -> London expands and sweeps Asian extremes -> NY retraces to HTF PD array. Trade direction = London expansion direction. T2 allows flat Asian.\n" +
+        "T3 Trap Reversal: Asian + London BOTH expand same direction -> NY reverses by sweeping opposite-side liquidity -> price reacts off opposite-direction PD array (IFVG, or opposite FVG/OB). Trade direction = OPPOSITE of Asian/London expansion.\n\n" +
+        "DECISION TREE:\n" +
+        "1. What did Asian do? 2. What did London do? 3. What is dominant expansion direction? 4. Does trade AGREE (T1/T2) or OPPOSE (T3) the expansion?\n\n" +
+        "SPINE REQUIREMENTS (all MET for grade above SKIP):\n" +
+        "1. Session narrative template identified - single template fits with beats in correct order\n" +
+        "2. HTF PD array at entry - FVG/OB/IFVG/breaker on daily/4H/1H/30M. T3 requires opposite-direction PD array. LTF-only (15M or below) = NOT MET\n" +
+        "3. 0TE fib confluence - HTF PD array overlaps 50%-70.5% retracement zone (OTE sweet spot). Required for ALL templates. If no fib visible and user did not specify, mark UNVERIFIABLE\n" +
+        "4. Direction matches template\n\n" +
+        "SUPPORTING REQUIREMENTS:\n" +
+        "5. Liquidity sweep clean - named pool, correct session per template, clean wick-and-reject\n" +
+        "6. Killzone timing - NY AM (8:30-11:00 ET), 10AM window, or London (2:00-5:00 ET). If unclear, mark UNVERIFIABLE\n\n" +
+        "HARD DISQUALIFIERS (auto-SKIP): news within 15min, no HTF PD array, no 0TE fib confluence (outside 50-70.5%), entry outside killzone, direction contradicts template, beats out of order, no template fits.\n\n" +
+        "GRADING:\n" +
+        "A+ : all 6 MET, no disqualifiers, single template\n" +
+        "B  : all 4 spine MET plus at least one supporting MET, no disqualifiers. Also: ambiguous (two templates partially fit) auto-downgrades to B\n" +
+        "SKIP : any spine NOT MET, fewer than 4 total MET, any disqualifier, or any spine UNVERIFIABLE without confirmation\n" +
+        "PENDING : spine UNVERIFIABLE, awaiting user confirmation\n\n" +
+        "DO NOT recommend entry/stop/target/size. Return directional_bias only.\n\n" +
+        "Output EXACTLY this JSON structure:\n" +
+        '{"template_identified":"T1 - Continuation"|"T2 - Expansion-Retrace"|"T3 - Trap Reversal"|"NONE","directional_bias":"BULLISH"|"BEARISH"|"NONE","ambiguity_flag":false,"competing_templates":[],"spine_requirements":{"1_session_narrative":{"met":true,"evidence":""},"2_htf_pd_array":{"met":true,"evidence":""},"3_0te_fib_confluence":{"met":true,"evidence":""},"4_direction_matches_template":{"met":true,"evidence":""}},"supporting_requirements":{"5_liquidity_sweep_clean":{"met":true,"evidence":""},"6_killzone_timing":{"met":true,"evidence":""}},"disqualifiers":[],"needs_confirmation":[],"final_grade":"A+"|"B"|"SKIP"|"PENDING","reasoning":""}';
+
+      const images = body.images || [];
+      const description = body.description || "";
+
+      const userContent = [];
+      for (const img of images) {
+        userContent.push({
+          type: "image",
+          source: { type: "base64", media_type: img.mediaType, data: img.base64 }
+        });
+      }
+      userContent.push({
+        type: "text",
+        text: "Setup description:\n" + description + "\n\nGrade this setup. Return JSON only."
+      });
+
+      const r = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-api-key": process.env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01" },
+        body: JSON.stringify({
+          model: MODEL,
+          max_tokens: maxTokens,
+          system: systemPrompt,
+          messages: [{ role: "user", content: userContent }],
+        }),
+      });
+
+      if (!r.ok) {
+        const errText = await r.text();
+        console.error("Confluence API error:", r.status, errText.slice(0, 200));
+        return res.status(200).json({ error: "API error " + r.status });
+      }
+
+      const d = await r.json();
+      const rawText = d.content?.[0]?.text || "";
+      console.log("Confluence raw (first 300):", rawText.slice(0, 300));
+
+      if (!rawText) return res.status(200).json({ error: "Empty response" });
+
+      const parsed = repairJSON(rawText);
+      if (!parsed) {
+        return res.status(200).json({ error: "Parse failed. Raw: " + rawText.slice(0, 300) });
+      }
+
+      return res.status(200).json(parsed);
+    }
+
+    // STRUCTURED TYPES
+    const stats = body.stats || {};
+    const dayStats = body.dayStats || {};
+
+    let systemPrompt = "";
+    let userPrompt = "";
+    let maxTokens = 1000;
+
+    if (type === "full") {
+      maxTokens = 2500;
+      systemPrompt = "You are a trading coach. Output ONLY raw JSON. No prose, no markdown, no explanation before or after.";
+      userPrompt = "Analyze this trader's performance. Output ONLY this JSON structure with real values filled in:\n" +
+        '{"score":75,"summary":"2-3 sentence summary here","patterns":[{"title":"Pattern name","detail":"Specific detail with numbers","type":"positive"},{"title":"Pattern name","detail":"Specific detail","type":"negative"},{"title":"Pattern name","detail":"Specific detail","type":"neutral"}],"psychology":[{"title":"Psychology observation","detail":"Specific detail","type":"positive"},{"title":"Psychology observation","detail":"Detail","type":"negative"}],"actions":[{"priority":"high","action":"Specific action to take","reasoning":"Why this matters"},{"priority":"medium","action":"Another action","reasoning":"Why"}]}\n\n' +
+        "Trader stats: winRate=" + stats.winRate + "%, totalTrades=" + stats.totalTrades + ", totalPnl=$" + stats.totalPnl + ", avgWin=$" + stats.avgWin + ", avgLoss=$" + stats.avgLoss + "\n" +
+        "Sessions: " + JSON.stringify(stats.sessions) + "\n" +
+        "Setups: " + JSON.stringify(stats.setups?.slice(0,5)) + "\n" +
+        "Recent trades: " + JSON.stringify(stats.recentTrades?.slice(0,8));
+    }
+
+    else if (type === "trade") {
+      maxTokens = 800;
+      systemPrompt = "You are a trading coach. Output ONLY raw JSON. No prose, no markdown.";
+      userPrompt = "Analyze this trade. Output ONLY this JSON structure:\n" +
+        '{"score":75,"verdict":"One sentence verdict","strengths":["Strength 1","Strength 2"],"improvements":["Improvement 1","Improvement 2"],"lesson":"Key lesson learned"}\n\n' +
+        "Trade: " + JSON.stringify(stats);
+    }
+
+    else if (type === "patterns") {
+      maxTokens = 2500;
+      systemPrompt = "You are a trading psychologist. Output ONLY raw JSON. No prose, no markdown. Be concise - keep each description under 100 characters.";
+      userPrompt = "Find behavioral patterns. Output ONLY this JSON structure (keep descriptions SHORT):\n" +
+        '{"topIssue":"Main problem area","topStrength":"Main strength","patterns":[{"title":"Pattern name","description":"Brief description","type":"negative","frequency":"How often","suggestion":"Brief fix"},{"title":"Pattern name","description":"Brief description","type":"positive","frequency":"How often","suggestion":"Keep doing this"}],"actions":[{"priority":"high","action":"Specific action","reasoning":"Why"}]}\n\n' +
+        "Data: " + JSON.stringify(stats);
+    }
+
+    else if (type === "day") {
+      maxTokens = 800;
+      systemPrompt = "You are a trading coach. Output ONLY raw JSON. No prose, no markdown.";
+      userPrompt = "Review this trading day. Output ONLY this JSON:\n" +
+        '{"mood":"focused","summary":"Day summary","wins":["Win 1","Win 2"],"improvements":["Improve 1"],"tomorrowFocus":"Focus for tomorrow"}\n\n' +
+        "Day data: " + JSON.stringify(stats);
+    }
+
+    else if (type === "economic") {
+      maxTokens = 1500;
+      systemPrompt = "You are a financial calendar. Output ONLY raw JSON. No prose, no markdown.";
+      userPrompt = "Generate US economic calendar for " + dayStats.weekStart + " to " + dayStats.weekEnd + ". Output ONLY this JSON:\n" +
+        '{"events":[{"date":"YYYY-MM-DD","time":"HH:MM","name":"Event name","impact":"high","currency":"USD","actual":"","forecast":"100K","previous":"95K"}]}\n\n' +
+        "Include all major USD events. Today: " + dayStats.today;
+    }
+
+    else {
+      return res.status(400).json({ error: "Unknown type: " + type });
+    }
+
+    const r = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-api-key": process.env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01" },
+      body: JSON.stringify({
+        model: MODEL,
+        max_tokens: maxTokens,
+        system: systemPrompt,
+        messages: [{ role: "user", content: userPrompt }],
+      }),
+    });
+
+    if (!r.ok) {
+      const errText = await r.text();
+      console.error("API error:", r.status, errText.slice(0, 200));
+      return res.status(200).json({ error: "API error " + r.status });
+    }
+
+    const d = await r.json();
+    const rawText = d.content?.[0]?.text || "";
+    console.log("Raw response (first 300):", rawText.slice(0, 300));
+    console.log("Stop reason:", d.stop_reason);
+
+    if (!rawText) return res.status(200).json({ error: "Empty response from model" });
+
+    const parsed = repairJSON(rawText);
+    if (!parsed) {
+      return res.status(200).json({ error: "Parse failed. Raw response: " + rawText.slice(0, 300) });
+    }
+
+    return res.status(200).json(parsed);
+
+  } catch (err) {
+    console.error("Coach handler error:", err.message);
+    if ((req.body || {}).type === "chat") {
+      return res.status(200).json({ content: [{ type: "text", text: "Error: " + err.message }] });
+    }
+    return res.status(200).json({ error: err.message });
+  }
+}
