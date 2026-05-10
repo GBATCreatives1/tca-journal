@@ -162,7 +162,7 @@ const TAG_COLOR={ICT:B.purple,Strat:B.blue,Confluence:B.teal,CISD:"#f97316",OB:B
 const SETUPS=["AM Session CISD","10AM Triple TF","FVG Fill + OTE","PDH Rejection","PDL Bounce","0930 Rejection","Auto-synced","Other"];
 const SESSIONS=["AM","Mid","Open","PM"];
 const GRADES=["A+","A","B","C","D"];
-const INSTRUMENTS=["MES","ES","MGC","GC","SPY","SPX","NQ","MNQ","CL","MCL"];
+const INSTRUMENTS=["MES","ES","SPY","SPX","NQ","MNQ"];
 const fmt=n=>n>=0?`+$${n.toLocaleString()}`:`-$${Math.abs(n).toLocaleString()}`;
 const pnlColor=n=>n>=0?B.profit:B.loss;
 const dayName=d=>["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][new Date(d+"T12:00:00").getDay()];
@@ -2298,10 +2298,7 @@ function StrategyChecklist({trade}){
 
 function TradeDetailModal({trade, onClose, onEdit, onGradeUpdate}){
   const isWin = trade.result === "Win";
-  const [aiAnalysis, setAiAnalysis] = useState(()=>{
-    try{const c=localStorage.getItem("tca_ai_"+trade.id);if(c)return JSON.parse(c);}catch(e){}
-    return null;
-  });
+  const [aiAnalysis, setAiAnalysis] = useState(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [screenshot, setScreenshot] = useState(null);
   const [screenshotUrl, setScreenshotUrl] = useState(null);
@@ -2311,19 +2308,10 @@ function TradeDetailModal({trade, onClose, onEdit, onGradeUpdate}){
   const SCREENSHOT_KEY = `tca_screenshot_${trade.id}`;
   const [tradeTags, setTradeTags] = useState({});
 
-  // Load ICT tags + AI analysis from Supabase (cross-device)
+  // Load ICT tags
   useEffect(()=>{
     try{const l=localStorage.getItem("pref_tca_ict_tags_v1");if(l)setTradeTags(JSON.parse(l));}catch(e){}
-    (async()=>{
-      try{const{data}=await supabase.from("user_preferences").select("value").eq("key","tca_ict_tags_v1").single();if(data?.value){setTradeTags(JSON.parse(data.value));localStorage.setItem("pref_tca_ict_tags_v1",data.value);}}catch(e){}
-      // Load AI analysis if not already in localStorage
-      try{
-        if(!localStorage.getItem("tca_ai_"+trade.id)){
-          const{data}=await supabase.from("user_preferences").select("value").eq("key","tca_ai_"+trade.id).single();
-          if(data?.value){const parsed=JSON.parse(data.value);setAiAnalysis(parsed);localStorage.setItem("tca_ai_"+trade.id,data.value);}
-        }
-      }catch(e){}
-    })();
+    (async()=>{try{const{data}=await supabase.from("user_preferences").select("value").eq("key","tca_ict_tags_v1").single();if(data?.value){setTradeTags(JSON.parse(data.value));localStorage.setItem("pref_tca_ict_tags_v1",data.value);}}catch(e){}})();
   },[]);
 
   // Load existing screenshot from user_preferences (base64)
@@ -2442,14 +2430,9 @@ function TradeDetailModal({trade, onClose, onEdit, onGradeUpdate}){
       // coach.js returns parsed JSON directly for trade type
       if(data.score !== undefined) {
         setAiAnalysis(data);
-        try{localStorage.setItem("tca_ai_"+trade.id,JSON.stringify(data));}catch(e){}
-        try{(async()=>{const{data:{user}}=await supabase.auth.getUser();await supabase.from("user_preferences").upsert({user_id:user?.id,key:"tca_ai_"+trade.id,value:JSON.stringify(data),updated_at:new Date().toISOString()},{onConflict:"user_id,key"});})();}catch(e){}
       } else if(data.content?.[0]?.text) {
         const clean = data.content[0].text.split("```json").join("").split("```").join("").trim();
-        const parsed = JSON.parse(clean);
-        setAiAnalysis(parsed);
-        try{localStorage.setItem("tca_ai_"+trade.id,JSON.stringify(parsed));}catch(e){}
-        try{(async()=>{const{data:{user}}=await supabase.auth.getUser();await supabase.from("user_preferences").upsert({user_id:user?.id,key:"tca_ai_"+trade.id,value:JSON.stringify(parsed),updated_at:new Date().toISOString()},{onConflict:"user_id,key"});})();}catch(e){}
+        setAiAnalysis(JSON.parse(clean));
       } else {
         throw new Error(data.error || "Invalid response");
       }
@@ -3089,7 +3072,6 @@ function DayJournalModal({date, trades, onClose, onGradeUpdate}){
   const [chartAI,setChartAI]=useState(null);
   const [chartAILoading,setChartAILoading]=useState(false);
   const [chartAIError,setChartAIError]=useState("");
-  const chartFileInputRef=useRef(null);
 
   const dayTrades=trades.filter(t=>t.date===date);
   const dayPnl=dayTrades.reduce((a,t)=>a+t.pnl,0);
@@ -3106,33 +3088,13 @@ function DayJournalModal({date, trades, onClose, onGradeUpdate}){
     "Reviewed yesterday's trades",
     "Mental state check — ready to trade?",
   ];
-  const CK_DEFAULT_KEY="tca_checklist_default";
-  const getUserDefault=()=>{
-    try{const s=localStorage.getItem(CK_DEFAULT_KEY);if(s)return JSON.parse(s);}catch(e){}
-    return DEFAULT_CHECKLIST.map(t=>({text:t,checked:false}));
-  };
-  const saveAsDefault=async()=>{
-    const items=checklist.map(it=>({text:it.text,checked:false}));
-    localStorage.setItem(CK_DEFAULT_KEY,JSON.stringify(items));
-    try{
-      const{data:{user}}=await supabase.auth.getUser();
-      await supabase.from("user_preferences").upsert({user_id:user?.id,key:CK_DEFAULT_KEY,value:JSON.stringify(items),updated_at:new Date().toISOString()},{onConflict:"user_id,key"});
-    }catch(e){}
-    alert("Saved as your default checklist!");
-  };
 
   useEffect(()=>{
     (async()=>{
       // Load from localStorage instantly
       try{
-        // Load user's custom default checklist from Supabase
-      try{
-        const{data:{user}}=await supabase.auth.getUser();
-        const{data:ckd}=await supabase.from("user_preferences").select("value").eq("user_id",user?.id).eq("key",CK_DEFAULT_KEY).single();
-        if(ckd?.value){localStorage.setItem(CK_DEFAULT_KEY,ckd.value);}
-      }catch(e){}
-      const l=localStorage.getItem("pref_"+STORAGE_KEY);
-        if(l){const s=JSON.parse(l);setNotes(s.notes||"");setChecklist(s.checklist||getUserDefault());if(s.chartAI)setChartAI(s.chartAI);
+        const l=localStorage.getItem("pref_"+STORAGE_KEY);
+        if(l){const s=JSON.parse(l);setNotes(s.notes||"");setChecklist(s.checklist||DEFAULT_CHECKLIST.map(i=>({text:i,checked:false})));if(s.chartAI)setChartAI(s.chartAI);
         // Try to load full screenshots from device localStorage first
         try{
           const localImgs=localStorage.getItem("pref_"+STORAGE_KEY+"_screenshots");
@@ -3177,8 +3139,7 @@ function DayJournalModal({date, trades, onClose, onGradeUpdate}){
     // Also save full screenshots (with base64) to localStorage for this device
     localStorage.setItem("pref_"+STORAGE_KEY+"_screenshots",JSON.stringify(chartScreenshots));
     try{await (async()=>{const{data:{user}}=await supabase.auth.getUser();await supabase.from("user_preferences").upsert({user_id:user?.id,key:STORAGE_KEY,value:val,updated_at:new Date().toISOString()},{onConflict:"user_id,key"});})();}catch(e){}
-    setSaving(false);
-  };
+    setSaving(false);  };;
 
   const addItem=()=>{
     if(!newItem.trim())return;
@@ -3196,34 +3157,6 @@ function DayJournalModal({date, trades, onClose, onGradeUpdate}){
 
   const completed=checklist.filter(i=>i.checked).length;
   const pct=checklist.length?Math.round((completed/checklist.length)*100):0;
-
-
-  const processChartFile = async (file) => {
-    const reader = new FileReader();
-    reader.onload = async (ev) => {
-      const localUrl = ev.target.result;
-      const imgId = Date.now() + Math.random();
-      setChartScreenshots(prev => [...prev, {id:imgId, url:localUrl, note:"", file:file.name, ts:new Date().toLocaleTimeString()}]);
-      // Try upload to Supabase Storage
-      try {
-        const {data:{user}} = await supabase.auth.getUser();
-        const ext = file.name.split(".").pop() || "jpg";
-        const path = user.id + "/" + date + "/" + imgId + "." + ext;
-        const b64 = localUrl.split(",")[1];
-        const mime = localUrl.split(";")[0].split(":")[1] || file.type || "image/jpeg";
-        const bytes = atob(b64);
-        const arr = new Uint8Array(bytes.length);
-        for(let k=0;k<bytes.length;k++) arr[k] = bytes.charCodeAt(k);
-        const blob = new Blob([arr], {type:mime});
-        const {error} = await supabase.storage.from("chart-screenshots").upload(path, blob, {upsert:true, contentType:mime});
-        if(!error){
-          const {data:{publicUrl}} = supabase.storage.from("chart-screenshots").getPublicUrl(path);
-          setChartScreenshots(prev => prev.map(s => s.id===imgId ? {...s, url:publicUrl} : s));
-        }
-      } catch(e) { console.log("Storage upload failed, image saved locally:", e.message); }
-    };
-    reader.readAsDataURL(file);
-  };
 
   return(
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",zIndex:150,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(8px)"}}
@@ -3346,10 +3279,6 @@ function DayJournalModal({date, trades, onClose, onGradeUpdate}){
                   onKeyDown={e=>e.key==="Enter"&&addItem()}
                   style={{...iS,flex:1}} placeholder="Add a checklist item..."/>
                 <button onClick={addItem} style={{padding:"9px 18px",borderRadius:8,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:12,fontWeight:800,whiteSpace:"nowrap"}}>+ Add</button>
-                <button onClick={saveAsDefault} title="Save current list as your default for all future days"
-                  style={{padding:"9px 14px",borderRadius:8,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:11,fontWeight:600,whiteSpace:"nowrap"}}>
-                  ⭐ Set as Default
-                </button>
                 <button onClick={()=>setShowCkTemplates(p=>!p)} title="Templates" style={{padding:"9px 12px",borderRadius:8,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:13}}>📋</button>
               </div>
               {showCkTemplates&&(
@@ -3475,25 +3404,66 @@ function DayJournalModal({date, trades, onClose, onGradeUpdate}){
 
               {/* Screenshot upload area */}
               <div>
-                <div
-                  onDragOver={e=>{e.preventDefault();e.currentTarget.style.borderColor=B.teal;e.currentTarget.style.background="rgba(0,212,168,0.04)";}}
-                  onDragLeave={e=>{e.currentTarget.style.borderColor=B.border;e.currentTarget.style.background="rgba(255,255,255,0.02)";}}
-                  onDrop={e=>{
-                    e.preventDefault();
-                    e.currentTarget.style.borderColor=B.border;
-                    e.currentTarget.style.background="rgba(255,255,255,0.02)";
-                    const files=Array.from(e.dataTransfer.files).filter(f=>f.type.startsWith("image/"));
-                    files.forEach(file=>processChartFile(file));
-                  }}
-                  onClick={()=>chartFileInputRef.current?.click()}
-                  style={{border:`2px dashed ${B.border}`,borderRadius:12,padding:"28px 20px",textAlign:"center",
-                    background:"rgba(255,255,255,0.02)",transition:"all 0.2s",cursor:"pointer"}}>
-                  <div style={{fontSize:28,marginBottom:8}}>📸</div>
-                  <div style={{fontSize:13,color:B.text,fontWeight:600}}>Drop screenshots here or click to browse</div>
-                  <div style={{fontSize:11,color:B.textMuted,marginTop:4}}>PNG, JPG, WebP — multiple files OK</div>
-                </div>
-                <input ref={chartFileInputRef} type="file" accept="image/*" multiple style={{display:"none"}}
-                  onChange={e=>{Array.from(e.target.files).forEach(file=>processChartFile(file));e.target.value="";}}/>
+                <label style={{display:"block",cursor:"pointer"}}>
+                  <div style={{border:`2px dashed ${B.border}`,borderRadius:12,padding:"20px",textAlign:"center",
+                    background:"rgba(255,255,255,0.02)",transition:"all 0.2s"}}
+                    onDragOver={e=>{e.preventDefault();e.currentTarget.style.borderColor=B.teal;}}
+                    onDragLeave={e=>{e.currentTarget.style.borderColor=B.border;}}
+                    onDrop={e=>{
+                      e.preventDefault();
+                      e.currentTarget.style.borderColor=B.border;
+                      const files=Array.from(e.dataTransfer.files).filter(f=>f.type.startsWith("image/"));
+                      files.forEach(file=>{
+                        const reader=new FileReader();
+                        reader.onload=async ev=>{
+                          const localUrl=ev.target.result;
+                          const imgId=Date.now()+Math.random();
+                          // Add locally first for instant preview
+                          setChartScreenshots(prev=>[...prev,{id:imgId,url:localUrl,note:"",file:file.name,ts:new Date().toLocaleTimeString()}]);
+                          // Upload to Supabase Storage for cross-device access
+                          try{
+                            const{data:{user}}=await supabase.auth.getUser();
+                            const ext=file.name.split(".").pop()||"jpg";
+                            const path=user.id+"/"+date+"/"+imgId+"."+ext;
+                            const blob=await (await fetch(localUrl)).blob();
+                            const{data,error}=await supabase.storage.from("chart-screenshots").upload(path,blob,{upsert:true,contentType:file.type});
+                            if(!error){
+                              const{data:{publicUrl}}=supabase.storage.from("chart-screenshots").getPublicUrl(path);
+                              setChartScreenshots(prev=>prev.map(s=>s.id===imgId?{...s,url:publicUrl}:s));
+                            }
+                          }catch(e){console.log("Storage upload failed, using local only:",e.message);}
+                        };
+                        reader.readAsDataURL(file);
+                      });
+                    }}>
+                    <div style={{fontSize:24,marginBottom:8}}>📸</div>
+                    <div style={{fontSize:13,color:B.text,fontWeight:600}}>Drop chart screenshots here</div>
+                    <div style={{fontSize:11,color:B.textMuted,marginTop:4}}>or click to browse — PNG, JPG, WebP</div>
+                  </div>
+                  <input type="file" accept="image/*" multiple style={{display:"none"}}
+                    onChange={e=>{
+                      Array.from(e.target.files).forEach(file=>{
+                        const reader=new FileReader();
+                        reader.onload=async ev=>{
+                          const localUrl=ev.target.result;
+                          const imgId=Date.now()+Math.random();
+                          setChartScreenshots(prev=>[...prev,{id:imgId,url:localUrl,note:"",file:file.name,ts:new Date().toLocaleTimeString()}]);
+                          try{
+                            const{data:{user}}=await supabase.auth.getUser();
+                            const ext=file.name.split(".").pop()||"jpg";
+                            const path=user.id+"/"+date+"/"+imgId+"."+ext;
+                            const blob=await (await fetch(localUrl)).blob();
+                            const{data,error}=await supabase.storage.from("chart-screenshots").upload(path,blob,{upsert:true,contentType:file.type});
+                            if(!error){
+                              const{data:{publicUrl}}=supabase.storage.from("chart-screenshots").getPublicUrl(path);
+                              setChartScreenshots(prev=>prev.map(s=>s.id===imgId?{...s,url:publicUrl}:s));
+                            }
+                          }catch(e){console.log("Storage upload failed:",e.message);}
+                        };
+                      });
+                      e.target.value="";
+                    }}/>
+                </label>
               </div>
 
               {/* Screenshot grid */}
@@ -3543,9 +3513,7 @@ function DayJournalModal({date, trades, onClose, onGradeUpdate}){
                           if(!text)throw new Error("No response");
                           setChartAI(text);
                           // Auto-save AI result with screenshots
-                          // Strip base64 from screenshots before saving to Supabase
-                          const screenshotsForCloud2=chartScreenshots.map(s=>({id:s.id,note:s.note,url:s.url?.startsWith("http")?s.url:"[local]",ts:s.ts,file:s.file}));
-                          const s=JSON.stringify({notes,checklist,screenshotsForCloud:screenshotsForCloud2,chartAI:text});
+                          const s=JSON.stringify({notes,checklist,chartScreenshots,chartAI:text});
                           localStorage.setItem("pref_"+STORAGE_KEY,s);
                           try{(async()=>{const{data:{user}}=await supabase.auth.getUser();await supabase.from("user_preferences").upsert({user_id:user?.id,key:STORAGE_KEY,value:s,updated_at:new Date().toISOString()},{onConflict:"user_id,key"});})();}catch(_){}
                         }catch(e){setChartAIError("Analysis failed: "+e.message);}
@@ -6842,245 +6810,554 @@ function AdminPanel({onClose}){
 
 
 // ── Weekly Review Page ────────────────────────────────────────────────────────
-// ── Earnings Calendar ─────────────────────────────────────────────────────────
-function EarningsCalendar({isDark}){
-  const [events, setEvents] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [showMajorOnly, setShowMajorOnly] = useState(false);
-  const [weekOffset, setWeekOffset] = useState(0);
-  const [selectedDay, setSelectedDay] = useState(null);
+// ── Pre-Trade Checker ─────────────────────────────────────────────────────────
+function PreTradeChecker({trades, onClose}){
+  const [form, setForm] = useState({
+    instrument:"MES", direction:"Bullish", session:"NY AM", entryTime:"",
+    asianRange:"", londonAction:"", preNYAction:"",
+    htfFVG:false, priceAtFVG:false, fvgTimeframe:"1H",
+    fibAlignment:false, fibLevel:"0.618", fibFvgCoincide:false,
+    sweepConfirmed:false, sweepType:"wick",
+    obPresent:false, ifvgPresent:false,
+    entry:"", stop:"", target:"", notes:""
+  });
+  const [result, setResult] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [chartImage, setChartImage] = useState(null);
+  const [chartPreview, setChartPreview] = useState(null);
+  const chartInputRef = useRef(null);
 
-  const getWeekRange = (offset=0)=>{
-    const today = new Date();
-    const dow = today.getDay();
-    const mon = new Date(today);
-    mon.setDate(today.getDate() - (dow===0?6:dow-1) + (offset*7));
-    const fri = new Date(mon);
-    fri.setDate(mon.getDate()+4);
-    const fmt = d=>d.toISOString().slice(0,10);
-    return {from:fmt(mon), to:fmt(fri), mon, fri};
+  const handleChartUpload = (file) => {
+    if(!file || !file.type.startsWith("image/")) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      setChartPreview(ev.target.result);
+      // Extract base64 data only (strip data:image/...;base64, prefix)
+      const b64 = ev.target.result.split(",")[1];
+      setChartImage(b64);
+    };
+    reader.readAsDataURL(file);
   };
 
-  const fetchEarnings = async (offset=0)=>{
-    setLoading(true); setError("");
-    try{
-      const {from,to} = getWeekRange(offset);
-      const r = await fetch("/api/earnings?from="+from+"&to="+to);
-      const data = await r.json();
-      if(data.error && !data.events?.length) throw new Error(data.error);
-      setEvents(data.events||[]);
-    }catch(e){
-      setError(e.message);
+  const set = (k,v) => setForm(f=>({...f,[k]:v}));
+
+  // Calculate R:R
+  const rr = form.entry && form.stop && form.target
+    ? Math.abs(parseFloat(form.target)-parseFloat(form.entry)) /
+      Math.abs(parseFloat(form.stop)-parseFloat(form.entry))
+    : null;
+
+  // Today's P&L from trades
+  const today = new Date().toISOString().slice(0,10);
+  const todayPnl = trades.filter(t=>t.date===today).reduce((a,t)=>a+t.pnl,0);
+  const todayTrades = trades.filter(t=>t.date===today).length;
+  const recentLosses = trades.slice(0,5).filter(t=>t.result==="Loss").length;
+
+  const analyze = async () => {
+    setLoading(true);
+    try {
+      // Build context about trader's current state
+      const context = "You are TCA Coach, an expert ICT methodology trading analyst. Your job is to score pre-trade confluence quality for a liquidity sweep strategy on MES futures and SPX/SPY options."
+        +"\n\n=== CONFLUENCE RULES (apply these precisely) ==="
+        +"\n\nHTF FVG RULES:"
+        +"\n- Valid timeframes: Daily, 4H, 1H, or 30m"
+        +"\n- Price must be AT the edge of the FVG or INSIDE it (not just near it)"
+        +"\n- Mitigation status does not matter"
+        +"\n- FVG MUST coincide with FIB level - this is mandatory for A+"
+        +"\n\nFIB 0TE RULES:"
+        +"\n- Valid fib levels: 50% to 70.5% range (0.5, 0.618, 0.65, 0.705)"
+        +"\n- Drawn from last swing low to swing high (bullish) OR swing high to swing low (bearish)"
+        +"\n- FIB level MUST overlap with HTF FVG - if they do not coincide, maximum grade is B"
+        +"\n\nLIQUIDITY SWEEP RULES:"
+        +"\n- Either a wick through the level OR a candle close beyond it counts as confirmed sweep"
+        +"\n- No minimum number of sweeps required - quality matters more than quantity"
+        +"\n- Sweep must occur within the same session as the entry"
+        +"\n\nORDER BLOCK (OB) RULES:"
+        +"\n- Bullish OB: last down-candle before a bullish impulse move"
+        +"\n- Bearish OB: last up-candle before a bearish impulse move"
+        +"\n- OB is an ENTRY TRIGGER, not just confluence"
+        +"\n\nSESSION TIMING:"
+        +"\n- Valid NY AM entry window: 9:30 AM to 11:00 AM ET only"
+        +"\n- Entries outside this window cannot be A+"
+        +"\n\n=== THE 3 A+ SETUPS ==="
+        +"\n\nSETUP 1 - NY Open Bullish Double Sweep:"
+        +"\n1. Asian range: directional bullish overnight"
+        +"\n2. London: stays WITHIN the Asian range (no expansion)"
+        +"\n3. Pre-NY: sweeps London lows"
+        +"\n4. NY Open (9:30-11am): sweeps BOTH pre-NY lows AND Asian lows"
+        +"\n5. At sweep low: price is AT EDGE or INSIDE a Daily/4H/1H/30m FVG"
+        +"\n6. That FVG MUST coincide with a FIB level between 50%-70.5%"
+        +"\n7. Trade direction: BULLISH"
+        +"\n\nSETUP 2 - HTF FVG Support Continuation Bullish:"
+        +"\n1. Asian session: trades LOWER overnight but holds SUPPORT above a HTF FVG"
+        +"\n2. London: expands HIGHER, sweeps Asian highs, maintains bullish momentum"
+        +"\n3. NY AM (9:30-11am): retraces to test HTF FVG or OB"
+        +"\n4. That FVG or OB MUST align with FIB 50%-70.5%"
+        +"\n5. OB acts as entry trigger if present"
+        +"\n6. Trade direction: BULLISH"
+        +"\n\nSETUP 3 - PDH Sweep Reversal Bearish:"
+        +"\n1. Asian range: sweeps PDH with bullish direction"
+        +"\n2. London: expands the bullish direction, takes PDH + overnight highs"
+        +"\n3. NY Open (9:30-11am): sweeps BOTH London lows AND Asian lows"
+        +"\n4. After sweep: price retraces into a Bullish IFVG or Bearish FVG"
+        +"\n5. That IFVG or FVG MUST align with FIB 50%-70.5%"
+        +"\n6. IFVG or FVG is the entry trigger"
+        +"\n7. Trade direction: BEARISH"
+        +"\n\n=== GRADING RULES ==="
+        +"\nA+: Setup clearly matches one of the 3 patterns AND FVG/FIB coincide AND session timing is valid AND sweep is confirmed in same session"
+        +"\nB: Has most elements but one key condition is unclear, partially met, or timing is off — still a tradeable setup but not highest conviction"
+        +"\nNo-Go: FVG and FIB do NOT coincide, entry outside 9:30-11am, setup matches none of the 3 patterns, OR R:R below 1:2"
+        +"\n\n=== CHART ANALYSIS INSTRUCTIONS ==="+"\nA chart screenshot may be attached. If so: identify the FVG (gap between candle bodies) and check price is at edge or inside it. Look for FIB retracement lines and confirm a level between 50-70.5% coincides with the FVG. Verify the liquidity sweep via wick or close. Assess if the session structure matches the narrative described. If the chart contradicts any form input, flag it in your reasoning. If no chart, grade from form inputs only."+"\n\n=== TRADER STATE ==="
+        +"\nToday P&L: $"+todayPnl.toFixed(2)+" | Trades today: "+todayTrades+" | Recent losses (last 5): "+recentLosses
+        +"\nIf trader is down more than $500 today or has 3+ consecutive losses, add a warning regardless of setup grade.";
+
+      const userMsg = "Score this pre-trade setup against the confluence rules. Be precise and strict."
+        +"\n\n--- SETUP DETAILS ---"
+        +"\nInstrument: "+form.instrument+" | Intended Direction: "+form.direction+" | Session: "+form.session
+        +"\nEntry Time: "+(form.entryTime||"Not specified")
+        +"\n\n--- SESSION NARRATIVE ---"
+        +"\nAsian Range: "+form.asianRange
+        +"\nLondon Action: "+form.londonAction
+        +"\nPre-NY / NY Open Action: "+form.preNYAction
+        +"\n\n--- CONFLUENCE CHECKLIST ---"
+        +"\nHTF FVG present (Daily/4H/1H/30m): "+(form.htfFVG?"YES":"NO")
+        +"\nPrice at edge or inside FVG: "+(form.priceAtFVG?"YES":"NO")
+        +"\nFVG timeframe: "+form.fvgTimeframe
+        +"\nFIB level (50-70.5%): "+(form.fibAlignment?"YES - level: "+form.fibLevel:"NO")
+        +"\nFIB coincides with FVG: "+(form.fibFvgCoincide?"YES":"NO")
+        +"\nLiquidity sweep confirmed: "+(form.sweepConfirmed?"YES - "+form.sweepType:"NO")
+        +"\nOrder Block present: "+(form.obPresent?"YES":"NO")
+        +"\nIFVG present: "+(form.ifvgPresent?"YES":"NO")
+        +"\n\n--- RISK ---"
+        +"\nEntry: "+form.entry+" | Stop: "+form.stop+" | Target: "+form.target
+        +"\nR:R: "+(rr?("1:"+rr.toFixed(2)):"not provided")
+        +"\n\n--- NOTES ---"
+        +form.notes
+        +"\n\nReturn ONLY this JSON (no markdown):"
+        +'{"grade":"A+","verdict":"Go","setupMatch":"Setup 1 - NY Open Bullish Double Sweep",'
+        +'"score":95,'
+        +'"confluenceHit":["HTF 1H FVG at edge confirmed","FIB 0.618 coincides with FVG","Sweep confirmed via wick"],'
+        +'"missing":[],'
+        +'"warnings":[],'
+        +'"reasoning":"2-3 precise sentences explaining the grade based on the specific rules",'
+        +'"riskNote":"R:R 1:3.2 - excellent risk reward",'
+        +'"action":"Take the trade - full conviction A+ setup"}';
+
+      const messages = chartImage
+        ? [{role:"user", content:[
+            {type:"image", source:{type:"base64", media_type:"image/jpeg", data:chartImage}},
+            {type:"text", text:"Here is my chart screenshot. " + userMsg}
+          ]}]
+        : [{role:"user", content:userMsg}];
+
+      const res = await fetch("/api/coach", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({
+          type:"chat",
+          chatContext: context,
+          chatHistory: messages
+        })
+      });
+      const data = await res.json();
+      const text = data.content?.[0]?.text||"";
+      if(!text) throw new Error("No response");
+      const clean = text.split("```json").join("").split("```").join("").trim();
+      const start = clean.indexOf("{"); const end = clean.lastIndexOf("}");
+      const parsed = JSON.parse(clean.slice(start, end+1));
+      setResult(parsed);
+    } catch(e) {
+      console.error(e);
+      setResult({grade:"B", verdict:"Error", reasoning:"Could not complete analysis: "+e.message, confluenceHit:[], missing:[], warnings:[], action:"Try again"});
     }
     setLoading(false);
   };
 
-  useEffect(()=>{ fetchEarnings(weekOffset); },[weekOffset]);
+  const gradeColor = result?.grade==="A+" ? B.teal : result?.grade==="B" ? "#FFB700" : B.loss;
+  const verdictColor = result?.verdict==="Go" ? B.teal : result?.verdict==="No-Go" ? B.loss : "#FFB700";
 
-  const {from,to,mon,fri} = getWeekRange(weekOffset);
-  const weekDays = ["Mon","Tue","Wed","Thu","Fri"];
-  const weekDates = Array.from({length:5},(_,i)=>{
-    const d = new Date(mon);
-    d.setDate(mon.getDate()+i);
-    return d.toISOString().slice(0,10);
+  const inputStyle = {background:"rgba(0,0,0,0.3)",border:`1px solid ${B.border}`,borderRadius:8,padding:"8px 10px",color:B.text,fontSize:12,outline:"none",width:"100%",boxSizing:"border-box"};
+  const labelStyle = {fontSize:10,color:B.textMuted,letterSpacing:1.2,textTransform:"uppercase",marginBottom:4,display:"block"};
+  const checkStyle = (checked) => ({
+    display:"flex",alignItems:"center",gap:8,padding:"8px 12px",borderRadius:8,cursor:"pointer",
+    background:checked?`${B.teal}10`:"rgba(255,255,255,0.02)",
+    border:`1px solid ${checked?B.teal:B.border}`,fontSize:12,color:checked?B.teal:B.textMuted,
+    transition:"all 0.15s"
   });
 
-  const filtered = showMajorOnly ? events.filter(e=>e.isMajor) : events;
-  const byDate = weekDates.reduce((acc,d)=>{
-    acc[d] = filtered.filter(e=>e.date===d);
-    return acc;
-  },{});
-
-  const fmtRev = (v)=>{
-    if(!v) return "—";
-    if(v>=1e9) return "$"+(v/1e9).toFixed(1)+"B";
-    if(v>=1e6) return "$"+(v/1e6).toFixed(0)+"M";
-    return "$"+v.toFixed(0);
-  };
-
-  const fmtEps = (v)=>v!==null&&v!==undefined ? (v>=0?"+":"")+v.toFixed(2) : "—";
-
-  const epsColor = (est,act)=>{
-    if(act===null||act===undefined||est===null) return B.text;
-    return act>=est ? B.teal : B.loss;
-  };
-
   return(
-    <div>
-      {/* Header */}
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:24}}>
-        <div style={{display:"flex",alignItems:"center",gap:12}}>
-          <button onClick={()=>setWeekOffset(w=>w-1)}
-            style={{width:32,height:32,borderRadius:8,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:16}}>&#8249;</button>
-          <div>
-            <div style={{fontSize:18,fontWeight:800,color:B.text}}>
-              {weekOffset===0?"This Week":weekOffset===1?"Next Week":weekOffset===-1?"Last Week":"Week of "+from}
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(8px)"}}
+      onClick={onClose}>
+      <div style={{background:"#13121A",border:`1px solid ${B.border}`,borderRadius:20,width:760,maxHeight:"90vh",overflowY:"auto",boxShadow:"0 24px 80px rgba(0,0,0,0.6)"}}
+        onClick={e=>e.stopPropagation()}>
+
+        {/* Header */}
+        <div style={{padding:"20px 24px",borderBottom:`1px solid ${B.border}`,display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,background:"#13121A",zIndex:1}}>
+          <div style={{display:"flex",alignItems:"center",gap:12}}>
+            <div style={{width:36,height:36,borderRadius:10,background:"linear-gradient(135deg,#8B5CF6,#4F8EF7)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>⚡</div>
+            <div>
+              <div style={{fontSize:16,fontWeight:800,color:B.text}}>Pre-Trade Checker</div>
+              <div style={{fontSize:11,color:B.textMuted}}>Liquidity Sweep Strategy Grader</div>
             </div>
-            <div style={{fontSize:11,color:B.textMuted}}>{from} to {to} · {filtered.length} earnings{events.filter(e=>e.isMajor).length>0?" · "+events.filter(e=>e.isMajor).length+" major":""}</div>
           </div>
-          <button onClick={()=>setWeekOffset(w=>w+1)}
-            style={{width:32,height:32,borderRadius:8,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:16}}>&#8250;</button>
-          <button onClick={()=>setWeekOffset(0)}
-            style={{padding:"5px 12px",borderRadius:8,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:11}}>
-            This Week
-          </button>
-        </div>
-        <div style={{display:"flex",gap:8,alignItems:"center"}}>
-          <button onClick={()=>setShowMajorOnly(v=>!v)}
-            style={{padding:"6px 14px",borderRadius:8,border:`1px solid ${showMajorOnly?B.teal:B.border}`,
-              background:showMajorOnly?`${B.teal}15`:"transparent",color:showMajorOnly?B.teal:B.textMuted,
-              cursor:"pointer",fontSize:11,fontWeight:600}}>
-            ⭐ Major Only
-          </button>
-          <button onClick={()=>fetchEarnings(weekOffset)}
-            style={{padding:"6px 14px",borderRadius:8,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:11}}>
-            ↻ Refresh
-          </button>
-        </div>
-      </div>
-
-      {loading&&(
-        <div style={{textAlign:"center",padding:"60px",color:B.textMuted}}>
-          <div style={{fontSize:24,marginBottom:12}}>⏳</div>
-          <div>Loading earnings data...</div>
-        </div>
-      )}
-
-      {error&&(
-        <div style={{padding:"20px",borderRadius:12,background:`${B.loss}10`,border:`1px solid ${B.loss}30`,color:B.loss,marginBottom:16}}>
-          <div style={{fontWeight:700,marginBottom:4}}>Could not load earnings</div>
-          <div style={{fontSize:12}}>{error}</div>
-          {error.includes("not configured")&&(
-            <div style={{marginTop:8,fontSize:11,color:B.textMuted}}>
-              Add FINNHUB_API_KEY to your Vercel environment variables. Get a free key at finnhub.io
-            </div>
-          )}
-        </div>
-      )}
-
-      {!loading&&(
-        <>
-          {/* Day columns */}
-          <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:12,marginBottom:24}}>
-            {weekDates.map((date,di)=>{
-              const dayEvents = byDate[date]||[];
-              const isToday = date===new Date().toISOString().slice(0,10);
-              const hasMajor = dayEvents.some(e=>e.isMajor);
-              return(
-                <div key={date}
-                  onClick={()=>setSelectedDay(selectedDay===date?null:date)}
-                  style={{borderRadius:12,border:`1px solid ${isToday?B.teal:hasMajor?"rgba(255,183,0,0.4)":B.border}`,
-                    background:isToday?`${B.teal}06`:hasMajor?"rgba(255,183,0,0.04)":B.surface,
-                    cursor:"pointer",overflow:"hidden"}}>
-                  <div style={{padding:"10px 12px",borderBottom:`1px solid ${B.border}30`,
-                    background:isToday?`${B.teal}10`:"transparent"}}>
-                    <div style={{fontSize:11,fontWeight:700,color:isToday?B.teal:B.textMuted}}>{weekDays[di]}</div>
-                    <div style={{fontSize:10,color:B.textDim}}>{date.slice(5)}</div>
-                    {dayEvents.length>0&&(
-                      <div style={{marginTop:4,fontSize:10,color:hasMajor?"#FFB700":B.textMuted,fontWeight:600}}>
-                        {dayEvents.length} report{dayEvents.length!==1?"s":""}
-                        {hasMajor&&" ⭐"}
-                      </div>
-                    )}
-                  </div>
-                  <div style={{padding:"8px",display:"flex",flexDirection:"column",gap:4,maxHeight:180,overflowY:"auto"}}>
-                    {dayEvents.slice(0,8).map((e,i)=>(
-                      <div key={i} style={{display:"flex",alignItems:"center",gap:6,padding:"4px 6px",
-                        borderRadius:6,background:e.isMajor?"rgba(255,183,0,0.08)":"rgba(255,255,255,0.02)"}}>
-                        <div style={{width:6,height:6,borderRadius:"50%",flexShrink:0,
-                          background:e.hour==="bmo"?B.blue:B.purple,opacity:0.8}}/>
-                        <div style={{fontSize:10,fontWeight:e.isMajor?700:400,
-                          color:e.isMajor?"#FFB700":B.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                          {e.symbol}
-                        </div>
-                        {e.epsActual!==null&&e.epsActual!==undefined&&(
-                          <div style={{fontSize:9,color:epsColor(e.epsEstimate,e.epsActual),marginLeft:"auto",fontWeight:700}}>
-                            {fmtEps(e.epsActual)}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                    {dayEvents.length>8&&(
-                      <div style={{fontSize:9,color:B.textDim,textAlign:"center",padding:"2px"}}>
-                        +{dayEvents.length-8} more
-                      </div>
-                    )}
-                    {dayEvents.length===0&&(
-                      <div style={{fontSize:10,color:B.textDim,textAlign:"center",padding:"8px 0"}}>No reports</div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Legend */}
-          <div style={{display:"flex",gap:16,marginBottom:20,fontSize:10,color:B.textMuted}}>
-            <div style={{display:"flex",alignItems:"center",gap:4}}><div style={{width:6,height:6,borderRadius:"50%",background:B.blue}}/> BMO (Before Market Open)</div>
-            <div style={{display:"flex",alignItems:"center",gap:4}}><div style={{width:6,height:6,borderRadius:"50%",background:B.purple}}/> AMC (After Market Close)</div>
-            <div style={{display:"flex",alignItems:"center",gap:4}}>⭐ Market-moving company</div>
-          </div>
-
-          {/* Selected day detail */}
-          {selectedDay&&(byDate[selectedDay]||[]).length>0&&(
-            <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:20,marginBottom:20}}>
-              <div style={{fontSize:11,color:B.textMuted,letterSpacing:1.5,marginBottom:14}}>
-                {new Date(selectedDay+"T12:00:00").toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric"})} — {(byDate[selectedDay]||[]).length} EARNINGS
+          <div style={{display:"flex",alignItems:"center",gap:12}}>
+            {todayPnl!==0&&(
+              <div style={{fontSize:11,color:pnlColor(todayPnl),fontFamily:"monospace",fontWeight:700}}>
+                Today: {todayPnl>=0?"+":""}{fmt(todayPnl)}
               </div>
-              <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                {(byDate[selectedDay]||[]).map((e,i)=>(
-                  <div key={i} style={{display:"grid",gridTemplateColumns:"1fr auto auto auto",gap:12,
-                    padding:"12px 14px",borderRadius:10,alignItems:"center",
-                    background:e.isMajor?"rgba(255,183,0,0.05)":"rgba(255,255,255,0.02)",
-                    border:`1px solid ${e.isMajor?"rgba(255,183,0,0.2)":B.border}`}}>
-                    <div>
-                      <div style={{display:"flex",alignItems:"center",gap:8}}>
-                        <span style={{fontSize:13,fontWeight:800,color:e.isMajor?"#FFB700":B.text}}>{e.symbol}</span>
-                        {e.isMajor&&<span style={{fontSize:9,padding:"2px 6px",borderRadius:4,background:"rgba(255,183,0,0.15)",color:"#FFB700",fontWeight:700}}>MAJOR</span>}
-                        <span style={{fontSize:9,padding:"2px 6px",borderRadius:4,
-                          background:e.hour==="bmo"?`${B.blue}20`:`${B.purple}20`,
-                          color:e.hour==="bmo"?B.blue:B.purple,fontWeight:600}}>
-                          {e.hour==="bmo"?"BMO":"AMC"}
-                        </span>
-                      </div>
-                      <div style={{fontSize:11,color:B.textMuted,marginTop:2}}>{e.company}</div>
-                    </div>
-                    <div style={{textAlign:"right"}}>
-                      <div style={{fontSize:9,color:B.textDim,marginBottom:2}}>EPS Est / Act</div>
-                      <div style={{fontSize:12,fontFamily:"monospace",fontWeight:700}}>
-                        <span style={{color:B.textMuted}}>{fmtEps(e.epsEstimate)}</span>
-                        {e.epsActual!==null&&e.epsActual!==undefined&&(
-                          <span style={{color:epsColor(e.epsEstimate,e.epsActual)}}> / {fmtEps(e.epsActual)}</span>
-                        )}
-                      </div>
-                    </div>
-                    <div style={{textAlign:"right"}}>
-                      <div style={{fontSize:9,color:B.textDim,marginBottom:2}}>Rev Est / Act</div>
-                      <div style={{fontSize:12,fontFamily:"monospace",fontWeight:700}}>
-                        <span style={{color:B.textMuted}}>{fmtRev(e.revenueEstimate)}</span>
-                        {e.revenueActual&&<span style={{color:epsColor(e.revenueEstimate,e.revenueActual)}}> / {fmtRev(e.revenueActual)}</span>}
-                      </div>
-                    </div>
-                    <div style={{textAlign:"right"}}>
-                      <div style={{fontSize:9,color:B.textDim,marginBottom:2}}>Period</div>
-                      <div style={{fontSize:11,color:B.textMuted}}>Q{e.quarter||"?"} {e.year||""}</div>
-                    </div>
+            )}
+            <button onClick={onClose} style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${B.border}`,borderRadius:8,color:B.textMuted,cursor:"pointer",width:30,height:30,fontSize:18}}>×</button>
+          </div>
+        </div>
+
+        <div style={{padding:"24px",display:"grid",gridTemplateColumns:"1fr 1fr",gap:20}}>
+
+          {/* LEFT COLUMN - Setup inputs */}
+          <div style={{display:"flex",flexDirection:"column",gap:16}}>
+
+            {/* Instrument + Direction + Session */}
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
+              <div>
+                <label style={labelStyle}>Instrument</label>
+                <select value={form.instrument} onChange={e=>set("instrument",e.target.value)} style={inputStyle}>
+                  {["MES","ES","SPY","SPX","MNQ","NQ","MGC","GC"].map(i=><option key={i}>{i}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={labelStyle}>Direction</label>
+                <select value={form.direction} onChange={e=>set("direction",e.target.value)} style={inputStyle}>
+                  <option>Bullish</option><option>Bearish</option>
+                </select>
+              </div>
+              <div>
+                <label style={labelStyle}>Session</label>
+                <select value={form.session} onChange={e=>set("session",e.target.value)} style={inputStyle}>
+                  {["NY AM","London","Pre-NY","NY PM","Silver Bullet"].map(s=><option key={s}>{s}</option>)}
+                </select>
+              </div>
+            </div>
+            <div>
+              <label style={labelStyle}>Entry Time (ET)</label>
+              <input value={form.entryTime} onChange={e=>set("entryTime",e.target.value)}
+                placeholder="e.g. 9:45 AM" style={inputStyle}/>
+              {form.session==="NY AM"&&form.entryTime&&(()=>{
+                const t=form.entryTime;
+                const hr=parseInt(t);const isAM=t.includes("AM");
+                const valid=(isAM&&hr>=9&&hr<=10)||(t.includes("10")||t.includes("9"));
+                return <div style={{fontSize:9,marginTop:3,color:valid?B.teal:B.loss}}>{valid?"✓ Within 9:30-11:00 AM window":"⚠ Outside valid NY AM window (9:30-11:00 AM)"}</div>;
+              })()}
+            </div>
+
+            {/* Asian Range */}
+            <div>
+              <label style={labelStyle}>Asian Range Behavior</label>
+              <select value={form.asianRange} onChange={e=>set("asianRange",e.target.value)} style={inputStyle}>
+                <option value="">Select...</option>
+                <option>Directional bullish overnight</option>
+                <option>Trades lower, holds support above HTF FVG</option>
+                <option>Sweeps PDH with bullish direction</option>
+                <option>Directional bearish overnight</option>
+                <option>Ranging / consolidation</option>
+              </select>
+            </div>
+
+            {/* London Action */}
+            <div>
+              <label style={labelStyle}>London Session Action</label>
+              <select value={form.londonAction} onChange={e=>set("londonAction",e.target.value)} style={inputStyle}>
+                <option value="">Select...</option>
+                <option>Stays within Asian range</option>
+                <option>Expands higher, sweeps Asian highs</option>
+                <option>Expands bullish, takes PDH + overnight highs</option>
+                <option>Expands lower, sweeps Asian lows</option>
+                <option>Ranging</option>
+              </select>
+            </div>
+
+            {/* Pre-NY Action */}
+            <div>
+              <label style={labelStyle}>Pre-NY / NY Open Action</label>
+              <select value={form.preNYAction} onChange={e=>set("preNYAction",e.target.value)} style={inputStyle}>
+                <option value="">Select...</option>
+                <option>Sweeps London lows before NY open</option>
+                <option>NY sweeps pre-NY lows + Asian lows</option>
+                <option>NY sweeps London + Asian lows</option>
+                <option>Continues London direction</option>
+                <option>Reversal at open</option>
+              </select>
+            </div>
+
+            {/* HTF FVG Section */}
+            <div style={{padding:"12px 14px",borderRadius:10,border:`1px solid ${B.border}`,background:"rgba(255,255,255,0.01)"}}>
+              <div style={{fontSize:10,color:B.purple,letterSpacing:1.5,fontWeight:700,marginBottom:10}}>HTF FVG</div>
+              <div style={{display:"flex",gap:8,marginBottom:8}}>
+                <div style={{flex:1}}>
+                  <label style={labelStyle}>Timeframe</label>
+                  <select value={form.fvgTimeframe} onChange={e=>set("fvgTimeframe",e.target.value)} style={inputStyle}>
+                    {["Daily","4H","1H","30m"].map(t=><option key={t}>{t}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                {[
+                  {k:"htfFVG", label:"FVG Present"},
+                  {k:"priceAtFVG", label:"Price at edge / inside FVG"},
+                ].map(({k,label})=>(
+                  <div key={k} style={checkStyle(form[k])} onClick={()=>set(k,!form[k])}>
+                    <div style={{width:16,height:16,borderRadius:4,border:`2px solid ${form[k]?B.teal:B.border}`,background:form[k]?B.teal:"transparent",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,color:"#0E0E10",flexShrink:0}}>{form[k]?"✓":""}</div>
+                    {label}
                   </div>
                 ))}
               </div>
             </div>
-          )}
 
-          {/* Full list */}
-          {filtered.length===0&&!loading&&(
-            <div style={{textAlign:"center",padding:"40px",color:B.textMuted}}>
-              <div style={{fontSize:24,marginBottom:8}}>📭</div>
-              <div>{error?"Could not load data":"No earnings reported this week"}</div>
+            {/* FIB Section */}
+            <div style={{padding:"12px 14px",borderRadius:10,border:`1px solid ${B.border}`,background:"rgba(255,255,255,0.01)"}}>
+              <div style={{fontSize:10,color:B.blue,letterSpacing:1.5,fontWeight:700,marginBottom:10}}>FIB 0TE (50% - 70.5%)</div>
+              <div style={{display:"flex",gap:8,marginBottom:8}}>
+                <div style={{flex:1}}>
+                  <label style={labelStyle}>Fib Level</label>
+                  <select value={form.fibLevel} onChange={e=>set("fibLevel",e.target.value)} style={inputStyle}>
+                    {["0.5 (50%)","0.618 (61.8%)","0.65 (65%)","0.705 (70.5%)"].map(l=><option key={l} value={l}>{l}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                {[
+                  {k:"fibAlignment", label:"FIB level present"},
+                  {k:"fibFvgCoincide", label:"FIB coincides with FVG ★"},
+                ].map(({k,label})=>(
+                  <div key={k} style={checkStyle(form[k])} onClick={()=>set(k,!form[k])}>
+                    <div style={{width:16,height:16,borderRadius:4,border:`2px solid ${form[k]?B.teal:B.border}`,background:form[k]?B.teal:"transparent",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,color:"#0E0E10",flexShrink:0}}>{form[k]?"✓":""}</div>
+                    {label}
+                  </div>
+                ))}
+              </div>
             </div>
-          )}
-        </>
-      )}
+
+            {/* Sweep + OB/IFVG */}
+            <div style={{padding:"12px 14px",borderRadius:10,border:`1px solid ${B.border}`,background:"rgba(255,255,255,0.01)"}}>
+              <div style={{fontSize:10,color:"#FFB700",letterSpacing:1.5,fontWeight:700,marginBottom:10}}>SWEEP & ENTRY TRIGGER</div>
+              <div style={{display:"flex",gap:8,marginBottom:8}}>
+                <div style={{flex:1}}>
+                  <label style={labelStyle}>Sweep Type</label>
+                  <select value={form.sweepType} onChange={e=>set("sweepType",e.target.value)} style={inputStyle}>
+                    <option value="wick">Wick through level</option>
+                    <option value="close">Candle close beyond</option>
+                    <option value="both">Both</option>
+                  </select>
+                </div>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
+                {[
+                  {k:"sweepConfirmed", label:"Sweep Confirmed"},
+                  {k:"obPresent", label:"OB (entry trigger)"},
+                  {k:"ifvgPresent", label:"IFVG present"},
+                ].map(({k,label})=>(
+                  <div key={k} style={checkStyle(form[k])} onClick={()=>set(k,!form[k])}>
+                    <div style={{width:16,height:16,borderRadius:4,border:`2px solid ${form[k]?B.teal:B.border}`,background:form[k]?B.teal:"transparent",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,color:"#0E0E10",flexShrink:0}}>{form[k]?"✓":""}</div>
+                    <span style={{fontSize:10}}>{label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Risk inputs */}
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
+              {[["entry","Entry Price"],["stop","Stop Loss"],["target","Take Profit"]].map(([k,label])=>(
+                <div key={k}>
+                  <label style={labelStyle}>{label}</label>
+                  <input type="number" value={form[k]} onChange={e=>set(k,e.target.value)} style={inputStyle} placeholder="0.00"/>
+                </div>
+              ))}
+            </div>
+
+            {rr!==null&&(
+              <div style={{padding:"8px 12px",borderRadius:8,background:rr>=2?`${B.teal}10`:rr>=1?`rgba(255,183,0,0.1)`:`${B.loss}10`,
+                border:`1px solid ${rr>=2?B.teal:rr>=1?"#FFB700":B.loss}30`,
+                display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <span style={{fontSize:12,color:B.textMuted}}>Calculated R:R</span>
+                <span style={{fontSize:14,fontWeight:800,fontFamily:"monospace",color:rr>=2?B.teal:rr>=1?"#FFB700":B.loss}}>
+                  1:{rr.toFixed(2)}
+                </span>
+              </div>
+            )}
+
+            {/* Notes */}
+            <div>
+              <label style={labelStyle}>Additional Notes</label>
+              <textarea value={form.notes} onChange={e=>set("notes",e.target.value)}
+                placeholder="Any extra confluence, market context, or observations..."
+                style={{...inputStyle,minHeight:70,resize:"vertical",fontFamily:"inherit",lineHeight:1.5}}/>
+            </div>
+
+            {/* Chart Screenshot Upload */}
+            <div style={{borderRadius:10,overflow:"hidden",border:`1px solid ${B.border}`}}>
+              {chartPreview ? (
+                <div>
+                  <div style={{position:"relative"}}>
+                    <img src={chartPreview} alt="chart" style={{width:"100%",maxHeight:180,objectFit:"contain",background:"#000",display:"block"}}/>
+                    <button onClick={()=>{setChartImage(null);setChartPreview(null);}}
+                      style={{position:"absolute",top:6,right:6,width:24,height:24,borderRadius:"50%",
+                        background:"rgba(0,0,0,0.7)",border:"none",color:"#fff",cursor:"pointer",fontSize:14,
+                        display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
+                    <div style={{position:"absolute",top:6,left:6,padding:"2px 8px",borderRadius:6,
+                      background:"rgba(0,212,168,0.9)",fontSize:9,fontWeight:700,color:"#0E0E10",letterSpacing:1}}>
+                      CHART ATTACHED
+                    </div>
+                  </div>
+                  <div style={{padding:"8px 10px",fontSize:10,color:B.textMuted}}>
+                    AI will visually verify your confluence against this chart
+                  </div>
+                </div>
+              ) : (
+                <div
+                  onDragOver={e=>{e.preventDefault();e.currentTarget.style.background="rgba(139,92,246,0.06)";}}
+                  onDragLeave={e=>{e.currentTarget.style.background="transparent";}}
+                  onDrop={e=>{e.preventDefault();e.currentTarget.style.background="transparent";const f=e.dataTransfer.files[0];if(f)handleChartUpload(f);}}
+                  onClick={()=>chartInputRef.current?.click()}
+                  style={{padding:"16px",textAlign:"center",cursor:"pointer",background:"transparent",transition:"background 0.15s"}}>
+                  <div style={{fontSize:18,marginBottom:4}}>📊</div>
+                  <div style={{fontSize:12,color:B.text,fontWeight:600}}>Attach chart screenshot</div>
+                  <div style={{fontSize:10,color:B.textMuted,marginTop:2}}>Drop here or click · Optional but improves accuracy</div>
+                </div>
+              )}
+              <input ref={chartInputRef} type="file" accept="image/*" style={{display:"none"}}
+                onChange={e=>{if(e.target.files[0])handleChartUpload(e.target.files[0]);e.target.value="";}}/>
+            </div>
+
+            <button onClick={analyze} disabled={loading}
+              style={{padding:"12px",borderRadius:10,border:"none",
+                background:loading?"rgba(255,255,255,0.05)":"linear-gradient(135deg,#8B5CF6,#4F8EF7)",
+                color:loading?"#666":"#fff",cursor:loading?"not-allowed":"pointer",
+                fontSize:13,fontWeight:800,letterSpacing:0.5}}>
+              {loading?"⚡ Analyzing Setup...":chartImage?"⚡ Grade Setup + Chart":"⚡ Grade This Setup"}
+            </button>
+          </div>
+
+          {/* RIGHT COLUMN - Result */}
+          <div style={{display:"flex",flexDirection:"column",gap:16}}>
+
+            {/* Setup reference card */}
+            {!result&&!loading&&(
+              <div style={{background:"rgba(139,92,246,0.05)",border:`1px solid rgba(139,92,246,0.2)`,borderRadius:14,padding:16}}>
+                <div style={{fontSize:10,color:B.purple,letterSpacing:1.5,fontWeight:700,marginBottom:12}}>YOUR A+ SETUPS</div>
+                {[
+                  {num:1, name:"NY Open Bullish Double Sweep", color:B.teal,
+                   steps:["Asian: Directional bullish overnight","London: Stays within range","Pre-NY: Sweeps London lows","NY: Sweeps pre-NY + Asian lows","Confluence: HTF FVG + FIB 0TE","Trade: Bullish"]},
+                  {num:2, name:"HTF FVG Support Continuation", color:B.blue,
+                   steps:["Asian: Trades lower, holds above HTF FVG","London: Expands higher, sweeps Asian highs","NY AM: Retraces to HTF FVG or OB","Confluence: FIB 0TE alignment","Trade: Bullish"]},
+                  {num:3, name:"PDH Sweep Reversal", color:B.purple,
+                   steps:["Asian: Sweeps PDH bullish","London: Expands bullish, takes PDH + highs","NY: Sweeps London + Asian lows","Retraces: Bullish IFVG or Bearish FVG","Trade: Bearish"]},
+                ].map(s=>(
+                  <div key={s.num} style={{marginBottom:12,padding:"10px 12px",borderRadius:10,background:"rgba(255,255,255,0.02)",border:`1px solid ${s.color}20`}}>
+                    <div style={{fontSize:11,fontWeight:700,color:s.color,marginBottom:6}}>Setup {s.num}: {s.name}</div>
+                    {s.steps.map((step,i)=>(
+                      <div key={i} style={{fontSize:10,color:B.textMuted,marginBottom:2,paddingLeft:10,position:"relative"}}>
+                        <span style={{position:"absolute",left:0,color:s.color}}>·</span>{step}
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Loading */}
+            {loading&&(
+              <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,padding:"40px 20px"}}>
+                <div style={{width:56,height:56,borderRadius:"50%",background:"linear-gradient(135deg,#8B5CF6,#4F8EF7)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,animation:"pulse 1.5s infinite"}}>⚡</div>
+                <div style={{fontSize:13,color:B.textMuted,textAlign:"center"}}>TCA Coach is grading your setup...</div>
+              </div>
+            )}
+
+            {/* Result */}
+            {result&&!loading&&(
+              <div style={{display:"flex",flexDirection:"column",gap:12}}>
+
+                {/* Grade + Verdict banner */}
+                <div style={{padding:"20px",borderRadius:14,background:result.grade==="A+"?`${B.teal}08`:`rgba(255,183,0,0.08)`,
+                  border:`2px solid ${gradeColor}40`,textAlign:"center"}}>
+                  <div style={{fontSize:52,fontWeight:900,color:gradeColor,lineHeight:1,fontFamily:"monospace",letterSpacing:-2}}>
+                    {result.grade}
+                  </div>
+                  <div style={{marginTop:8,display:"inline-block",padding:"4px 16px",borderRadius:20,
+                    background:verdictColor+"20",border:`1px solid ${verdictColor}40`,
+                    fontSize:13,fontWeight:800,color:verdictColor,letterSpacing:1}}>
+                    {result.verdict?.toUpperCase()}
+                  </div>
+                  {result.setupMatch&&(
+                    <div style={{marginTop:8,fontSize:11,color:B.textMuted}}>{result.setupMatch}</div>
+                  )}
+                {chartImage&&(
+                  <div style={{marginTop:6,display:"inline-flex",alignItems:"center",gap:4,padding:"2px 8px",
+                    borderRadius:12,background:"rgba(79,142,247,0.15)",border:"1px solid rgba(79,142,247,0.3)"}}>
+                    <span style={{fontSize:9,color:B.blue,fontWeight:700}}>📊 CHART ANALYZED</span>
+                  </div>
+                )}
+                </div>
+
+                {/* Reasoning */}
+                <div style={{padding:"12px 14px",borderRadius:10,background:"rgba(255,255,255,0.02)",border:`1px solid ${B.border}`}}>
+                  <div style={{fontSize:9,color:B.textMuted,letterSpacing:1.5,marginBottom:6}}>ANALYSIS</div>
+                  <div style={{fontSize:12,color:B.text,lineHeight:1.7}}>{result.reasoning}</div>
+                </div>
+
+                {/* Confluence hit */}
+                {result.confluenceHit?.length>0&&(
+                  <div style={{padding:"12px 14px",borderRadius:10,background:`${B.teal}06`,border:`1px solid ${B.teal}20`}}>
+                    <div style={{fontSize:9,color:B.teal,letterSpacing:1.5,marginBottom:8}}>CONFLUENCE MET</div>
+                    {result.confluenceHit.map((c,i)=>(
+                      <div key={i} style={{fontSize:11,color:B.text,marginBottom:4,display:"flex",gap:8,alignItems:"center"}}>
+                        <span style={{color:B.teal,fontSize:13}}>✓</span>{c}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Missing */}
+                {result.missing?.length>0&&(
+                  <div style={{padding:"12px 14px",borderRadius:10,background:`${B.loss}06`,border:`1px solid ${B.loss}20`}}>
+                    <div style={{fontSize:9,color:B.loss,letterSpacing:1.5,marginBottom:8}}>MISSING / WEAK</div>
+                    {result.missing.map((m,i)=>(
+                      <div key={i} style={{fontSize:11,color:B.text,marginBottom:4,display:"flex",gap:8,alignItems:"center"}}>
+                        <span style={{color:B.loss,fontSize:13}}>✗</span>{m}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Warnings */}
+                {result.warnings?.length>0&&(
+                  <div style={{padding:"12px 14px",borderRadius:10,background:"rgba(255,183,0,0.06)",border:"1px solid rgba(255,183,0,0.2)"}}>
+                    <div style={{fontSize:9,color:"#FFB700",letterSpacing:1.5,marginBottom:8}}>WARNINGS</div>
+                    {result.warnings.map((w,i)=>(
+                      <div key={i} style={{fontSize:11,color:B.text,marginBottom:4,display:"flex",gap:8,alignItems:"center"}}>
+                        <span style={{color:"#FFB700"}}>⚠</span>{w}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Risk note + Action */}
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                  <div style={{padding:"10px 12px",borderRadius:10,background:"rgba(255,255,255,0.02)",border:`1px solid ${B.border}`}}>
+                    <div style={{fontSize:9,color:B.textMuted,letterSpacing:1.5,marginBottom:4}}>RISK NOTE</div>
+                    <div style={{fontSize:11,color:B.text}}>{result.riskNote||"—"}</div>
+                  </div>
+                  <div style={{padding:"10px 12px",borderRadius:10,background:result.verdict==="Go"?`${B.teal}08`:`${B.loss}08`,border:`1px solid ${verdictColor}30`}}>
+                    <div style={{fontSize:9,color:verdictColor,letterSpacing:1.5,marginBottom:4}}>ACTION</div>
+                    <div style={{fontSize:12,fontWeight:700,color:verdictColor}}>{result.action||"—"}</div>
+                  </div>
+                </div>
+
+                <button onClick={()=>setResult(null)}
+                  style={{padding:"9px",borderRadius:9,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:11}}>
+                  ← Check Another Setup
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -7099,10 +7376,7 @@ function WeeklyReview({trades, session}){
   const [focusNext, setFocusNext] = useState("");
   const [rulesKept, setRulesKept] = useState([]);
   const [rulesBroken, setRulesBroken] = useState([]);
-  const [weekScreenshots, setWeekScreenshots] = useState([]);
-  const weekFileInputRef = useRef(null);
   const SKEY = `tca_weekly_review_${selectedWeek}`;
-  const SKEY_IMGS = `tca_weekly_review_imgs_${selectedWeek}`;
 
   // Build week dates
   const weekDates = Array.from({length:5}, (_,i)=>{
@@ -7122,61 +7396,13 @@ function WeeklyReview({trades, session}){
       if(saved.rulesKept)setRulesKept(saved.rulesKept);
       if(saved.rulesBroken)setRulesBroken(saved.rulesBroken);
     }catch(e){}
-    try{
-      const imgs=localStorage.getItem(SKEY_IMGS);
-      if(imgs)setWeekScreenshots(JSON.parse(imgs));
-      else setWeekScreenshots([]);
-    }catch(e){setWeekScreenshots([]);}
   },[selectedWeek]);
 
   const saveReview = ()=>{
     const data = {notes,focusNext,rulesKept,rulesBroken,savedAt:new Date().toISOString()};
     localStorage.setItem(SKEY, JSON.stringify(data));
-    // Save screenshots separately (full base64 for local, notes only for cloud)
-    localStorage.setItem(SKEY_IMGS, JSON.stringify(weekScreenshots));
     setSaved(s=>({...s,[selectedWeek]:true}));
     setTimeout(()=>setSaved(s=>({...s,[selectedWeek]:false})),2000);
-  };
-
-  const processWeekFile = (file)=>{
-    const reader = new FileReader();
-    reader.onload = async (ev)=>{
-      const localUrl = ev.target.result;
-      const imgId = Date.now()+Math.random();
-      setWeekScreenshots(prev=>{
-        const updated=[...prev,{id:imgId,url:localUrl,note:"",file:file.name}];
-        // Save without base64 to localStorage (too large), save full in memory only
-        try{
-          const forStorage=updated.map(s=>({...s,url:s.url?.startsWith("http")?s.url:"[local]"}));
-          localStorage.setItem(SKEY_IMGS,JSON.stringify(forStorage));
-        }catch(e){}
-        return updated;
-      });
-      // Try Supabase Storage upload
-      try{
-        const{data:{user}}=await supabase.auth.getUser();
-        const ext=file.name.split(".").pop()||"jpg";
-        const path=user.id+"/weekly/"+selectedWeek+"/"+imgId+"."+ext;
-        const b64=localUrl.split(",")[1];
-        const mime=localUrl.split(";")[0].split(":")[1]||file.type||"image/jpeg";
-        const bytes=atob(b64);const arr=new Uint8Array(bytes.length);
-        for(let k=0;k<bytes.length;k++)arr[k]=bytes.charCodeAt(k);
-        const blob=new Blob([arr],{type:mime});
-        const{error}=await supabase.storage.from("chart-screenshots").upload(path,blob,{upsert:true,contentType:mime});
-        if(!error){
-          const{data:{publicUrl}}=supabase.storage.from("chart-screenshots").getPublicUrl(path);
-          setWeekScreenshots(prev=>{
-            const updated=prev.map(s=>s.id===imgId?{...s,url:publicUrl}:s);
-            try{
-              const forStorage=updated.map(s=>({...s,url:s.url?.startsWith("http")?s.url:"[local]"}));
-              localStorage.setItem(SKEY_IMGS,JSON.stringify(forStorage));
-            }catch(e){}
-            return updated;
-          });
-        }
-      }catch(e){console.log("Weekly screenshot upload failed:",e.message);}
-    };
-    reader.readAsDataURL(file);
   };
 
   const navWeek = (dir)=>{
@@ -7306,67 +7532,6 @@ function WeeklyReview({trades, session}){
           <input value={focusNext} onChange={e=>setFocusNext(e.target.value)}
             placeholder="One thing I will improve next week..."
             style={{width:"100%",background:"rgba(0,0,0,0.3)",border:`1px solid ${B.border}`,borderRadius:10,padding:"11px 14px",color:B.text,fontSize:13,outline:"none"}}/>
-        </div>
-
-        {/* Weekly Screenshots */}
-        <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:16,padding:20,marginBottom:16}}>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
-            <div style={{fontSize:11,color:B.textMuted,letterSpacing:1.5}}>WEEKLY CHART SCREENSHOTS</div>
-            <button onClick={()=>weekFileInputRef.current?.click()}
-              style={{padding:"6px 14px",borderRadius:8,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:11,fontWeight:600}}>
-              + Add Screenshot
-            </button>
-          </div>
-          <input ref={weekFileInputRef} type="file" accept="image/*" multiple style={{display:"none"}}
-            onChange={e=>{Array.from(e.target.files).forEach(f=>processWeekFile(f));e.target.value="";}}/>
-          {weekScreenshots.length===0?(
-            <div
-              onDragOver={e=>{e.preventDefault();e.currentTarget.style.borderColor=B.teal;}}
-              onDragLeave={e=>{e.currentTarget.style.borderColor=B.border;}}
-              onDrop={e=>{e.preventDefault();e.currentTarget.style.borderColor=B.border;Array.from(e.dataTransfer.files).filter(f=>f.type.startsWith("image/")).forEach(f=>processWeekFile(f));}}
-              onClick={()=>weekFileInputRef.current?.click()}
-              style={{border:`2px dashed ${B.border}`,borderRadius:10,padding:"24px",textAlign:"center",cursor:"pointer"}}>
-              <div style={{fontSize:24,marginBottom:6}}>📸</div>
-              <div style={{fontSize:12,color:B.textMuted}}>Drop charts here or click to browse</div>
-              <div style={{fontSize:10,color:B.textDim,marginTop:3}}>Bias setups, key levels, missed trades — anything from this week</div>
-            </div>
-          ):(
-            <div style={{display:"flex",flexDirection:"column",gap:10}}>
-              {weekScreenshots.map((img,idx)=>(
-                <div key={img.id} style={{borderRadius:10,overflow:"hidden",border:`1px solid ${B.border}`,background:"rgba(0,0,0,0.2)"}}>
-                  {img.url&&<img src={img.url} alt="chart" style={{width:"100%",maxHeight:280,objectFit:"contain",background:"#000",display:"block"}}/>}
-                  <div style={{padding:"8px 10px",display:"flex",gap:8,alignItems:"center"}}>
-                    <input value={img.note} onChange={e=>{
-                        const updated=weekScreenshots.map(s=>s.id===img.id?{...s,note:e.target.value}:s);
-                        setWeekScreenshots(updated);
-                        try{
-                          const forStorage=updated.map(s=>({...s,url:s.url?.startsWith("http")?s.url:"[local]"}));
-                          localStorage.setItem(SKEY_IMGS,JSON.stringify(forStorage));
-                        }catch(e){}
-                      }}
-                      placeholder="Add a note — setup, bias, missed trade..."
-                      style={{flex:1,background:"transparent",border:"none",color:B.text,fontSize:11,outline:"none"}}/>
-                    <button onClick={()=>{
-                        const updated=weekScreenshots.filter(s=>s.id!==img.id);
-                        setWeekScreenshots(updated);
-                        try{
-                          const forStorage=updated.map(s=>({...s,url:s.url?.startsWith("http")?s.url:"[local]"}));
-                          localStorage.setItem(SKEY_IMGS,JSON.stringify(forStorage));
-                        }catch(e){}
-                      }}
-                      style={{background:"none",border:"none",color:B.loss,cursor:"pointer",fontSize:14,padding:"2px 6px"}}>×</button>
-                  </div>
-                </div>
-              ))}
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:4}}>
-                <button onClick={()=>weekFileInputRef.current?.click()}
-                  style={{fontSize:11,color:B.textMuted,background:"none",border:`1px solid ${B.border}`,borderRadius:7,padding:"5px 12px",cursor:"pointer"}}>
-                  + Add More
-                </button>
-                <div style={{fontSize:10,color:B.textDim}}>{weekScreenshots.length} screenshot{weekScreenshots.length!==1?"s":""} · auto-saved</div>
-              </div>
-            </div>
-          )}
         </div>
 
         {/* Trade list */}
@@ -7776,222 +7941,8 @@ function TradovateSyncModal({onClose, onSync, syncing, accounts=[]}){
   );
 }
 
-// ── Pre-Trade Confluence Grader ───────────────────────────────────────────────
-function PreTradeGrader({session}){
-  const [images,setImages]=useState([]);
-  const [description,setDescription]=useState("");
-  const [grading,setGrading]=useState(false);
-  const [result,setResult]=useState(null);
-  const [error,setError]=useState("");
 
-  const fileToBase64=file=>new Promise((resolve,reject)=>{
-    const reader=new FileReader();
-    reader.onload=()=>resolve(reader.result.split(",")[1]);
-    reader.onerror=reject;
-    reader.readAsDataURL(file);
-  });
-
-  const handleFileUpload=async e=>{
-    const files=Array.from(e.target.files||[]);
-    const processed=[];
-    for(const f of files){
-      const base64=await fileToBase64(f);
-      processed.push({base64,mediaType:f.type,name:f.name});
-    }
-    setImages(prev=>[...prev,...processed]);
-    if(e.target)e.target.value="";
-  };
-
-  const removeImage=idx=>setImages(images.filter((_,i)=>i!==idx));
-
-  const gradeSetup=async()=>{
-    if(images.length===0){setError("Upload at least one chart screenshot");return;}
-    if(!description.trim()){setError("Add a setup description");return;}
-    setError("");setGrading(true);setResult(null);
-    try{
-      const r=await fetch("/api/coach",{
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({
-          type:"confluence",
-          images:images.map(i=>({base64:i.base64,mediaType:i.mediaType})),
-          description,
-        }),
-      });
-      const data=await r.json();
-      if(data.error)setError(data.error);
-      else setResult(data);
-    }catch(err){setError(err.message);}
-    setGrading(false);
-  };
-
-  const reset=()=>{setImages([]);setDescription("");setResult(null);setError("");};
-
-  const gradeColor=g=>g==="A+"?B.teal:g==="B"?"#eab308":g==="SKIP"?B.loss:B.textMuted;
-
-  const reqRow=(key,label,req)=>{
-    if(!req)return null;
-    const m=req.met;
-    const c=m===true?B.teal:m===false?B.loss:B.textMuted;
-    const l=m===true?"MET":m===false?"NOT MET":"UNVERIFIABLE";
-    return(
-      <div key={key} style={{padding:"10px 14px",borderBottom:`1px solid ${B.border}`,background:"rgba(0,0,0,0.2)"}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:req.evidence?6:0}}>
-          <strong style={{fontSize:12,color:B.text}}>{label}</strong>
-          <span style={{fontSize:10,padding:"2px 10px",borderRadius:20,fontWeight:700,background:`${c}15`,border:`1px solid ${c}40`,color:c,letterSpacing:1}}>{l}</span>
-        </div>
-        {req.evidence&&<div style={{fontSize:11,color:B.textMuted,lineHeight:1.6}}>{req.evidence}</div>}
-      </div>
-    );
-  };
-
-  return(
-    <div style={{display:"flex",flexDirection:"column",gap:18,maxWidth:920}}>
-      {/* Intro card */}
-      {!result&&(
-        <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:22,position:"relative",overflow:"hidden"}}>
-          <div style={{position:"absolute",top:0,left:0,right:0,height:2,background:GL}}/>
-          <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:6}}>
-            <span style={{fontSize:22}}>🎯</span>
-            <div>
-              <div style={{fontSize:15,fontWeight:800,color:B.text}}>Pre-Trade Confluence Grader</div>
-              <div style={{fontSize:11,color:B.textMuted,marginTop:2}}>Grade your setup against the TCA playbook before you take the trade</div>
-            </div>
-          </div>
-          <div style={{fontSize:12,color:B.textMuted,lineHeight:1.7,marginTop:10}}>
-            Upload chart screenshot(s) and write a brief setup description. The agent identifies the template (T1 Continuation / T2 Expansion-Retrace / T3 Trap Reversal), checks all 6 requirements, and returns a grade. The agent does NOT recommend entries, stops, or sizing — that's still your call.
-          </div>
-        </div>
-      )}
-
-      {/* Input form */}
-      {!result&&(
-        <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:22}}>
-          <div style={{marginBottom:18}}>
-            <label style={lS}>Chart Screenshots</label>
-            <input type="file" accept="image/*" multiple onChange={handleFileUpload}
-              style={{...iS,padding:"8px 12px",cursor:"pointer"}}/>
-            {images.length>0&&(
-              <div style={{marginTop:10,display:"flex",flexDirection:"column",gap:5}}>
-                {images.map((img,idx)=>(
-                  <div key={idx} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 12px",borderRadius:8,background:"rgba(0,0,0,0.3)",border:`1px solid ${B.border}`}}>
-                    <span style={{fontSize:11,color:B.text}}>📷 {img.name}</span>
-                    <button onClick={()=>removeImage(idx)} style={{background:"none",border:"none",color:B.loss,cursor:"pointer",fontSize:12,padding:"0 4px"}}>×</button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div style={{marginBottom:18}}>
-            <label style={lS}>Setup Description</label>
-            <textarea
-              value={description}
-              onChange={e=>setDescription(e.target.value)}
-              placeholder="e.g. Tight Asian range, London swept Asian highs, NY retraced into 1H FVG inside 50-70.5% fib zone, 9:30am ET candle confirmed reaction..."
-              rows={5}
-              style={{...iS,resize:"vertical",lineHeight:1.6,fontFamily:"'DM Sans',sans-serif"}}
-            />
-          </div>
-
-          {error&&<div style={{padding:"10px 14px",borderRadius:9,background:`${B.loss}10`,border:`1px solid ${B.loss}30`,color:B.loss,fontSize:12,marginBottom:14}}>{error}</div>}
-
-          <button onClick={gradeSetup} disabled={grading}
-            style={{width:"100%",padding:"12px",borderRadius:10,border:"none",
-              background:grading?"rgba(255,255,255,0.06)":GL,
-              color:grading?B.textMuted:"#0E0E10",
-              cursor:grading?"not-allowed":"pointer",
-              fontSize:13,fontWeight:800,fontFamily:"'DM Sans',sans-serif"}}>
-            {grading?"🧠 Grading setup...":"Grade Setup →"}
-          </button>
-        </div>
-      )}
-
-      {/* Result */}
-      {result&&(
-        <>
-          {/* Grade banner */}
-          <div style={{background:B.surface,border:`1px solid ${gradeColor(result.final_grade)}40`,borderRadius:14,padding:22,position:"relative",overflow:"hidden"}}>
-            <div style={{position:"absolute",top:0,left:0,right:0,height:3,background:result.final_grade==="A+"?GTB:result.final_grade==="B"?"linear-gradient(90deg,#eab308,#f97316)":"linear-gradient(90deg,#F05A7E,#8B5CF6)"}}/>
-            <div style={{display:"flex",alignItems:"center",gap:20}}>
-              <div style={{fontSize:48,fontWeight:800,color:gradeColor(result.final_grade),fontFamily:"'Space Mono',monospace",letterSpacing:-2,minWidth:90}}>{result.final_grade}</div>
-              <div style={{flex:1}}>
-                <div style={{fontSize:14,fontWeight:700,color:B.text,marginBottom:3}}>{result.template_identified}</div>
-                <div style={{fontSize:13,fontWeight:700,color:result.directional_bias==="BULLISH"?B.profit:result.directional_bias==="BEARISH"?B.loss:B.textMuted}}>
-                  {result.directional_bias==="BULLISH"?"▲ ":result.directional_bias==="BEARISH"?"▼ ":""}{result.directional_bias}
-                </div>
-              </div>
-              <button onClick={reset}
-                style={{padding:"8px 16px",borderRadius:9,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:12,fontWeight:600}}>
-                + Grade Another
-              </button>
-            </div>
-          </div>
-
-          {/* Ambiguity flag */}
-          {result.ambiguity_flag&&(
-            <div style={{padding:"12px 16px",borderRadius:10,background:"rgba(234,179,8,0.08)",border:"1px solid rgba(234,179,8,0.3)"}}>
-              <div style={{fontSize:11,fontWeight:700,color:"#eab308",letterSpacing:1.5,textTransform:"uppercase",marginBottom:5}}>⚠️ Ambiguous Setup</div>
-              <div style={{fontSize:12,color:B.text}}>Two templates partially fit: {result.competing_templates?.join(" vs ")}. Grade auto-downgraded to B.</div>
-            </div>
-          )}
-
-          {/* Disqualifiers */}
-          {result.disqualifiers?.length>0&&(
-            <div style={{padding:"12px 16px",borderRadius:10,background:`${B.loss}10`,border:`1px solid ${B.loss}30`}}>
-              <div style={{fontSize:11,fontWeight:700,color:B.loss,letterSpacing:1.5,textTransform:"uppercase",marginBottom:6}}>🛑 Disqualifiers</div>
-              {result.disqualifiers.map((d,i)=>(<div key={i} style={{fontSize:12,color:B.text,marginTop:3}}>• {d}</div>))}
-            </div>
-          )}
-
-          {/* Spine requirements */}
-          <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,overflow:"hidden"}}>
-            <div style={{padding:"12px 16px",borderBottom:`1px solid ${B.border}`,background:"rgba(0,0,0,0.3)"}}>
-              <div style={{fontSize:10,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",fontWeight:700}}>Spine Requirements (all must be MET)</div>
-            </div>
-            {reqRow("s1","1. Session Narrative Template",result.spine_requirements?.["1_session_narrative"])}
-            {reqRow("s2","2. HTF PD Array at Entry",result.spine_requirements?.["2_htf_pd_array"])}
-            {reqRow("s3","3. 0TE Fib Confluence (50–70.5%)",result.spine_requirements?.["3_0te_fib_confluence"])}
-            {reqRow("s4","4. Direction Matches Template",result.spine_requirements?.["4_direction_matches_template"])}
-          </div>
-
-          {/* Supporting requirements */}
-          <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,overflow:"hidden"}}>
-            <div style={{padding:"12px 16px",borderBottom:`1px solid ${B.border}`,background:"rgba(0,0,0,0.3)"}}>
-              <div style={{fontSize:10,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",fontWeight:700}}>Supporting Requirements</div>
-            </div>
-            {reqRow("p5","5. Liquidity Sweep Clean",result.supporting_requirements?.["5_liquidity_sweep_clean"])}
-            {reqRow("p6","6. Killzone Timing",result.supporting_requirements?.["6_killzone_timing"])}
-          </div>
-
-          {/* Reasoning */}
-          {result.reasoning&&(
-            <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:18}}>
-              <div style={{fontSize:10,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",fontWeight:700,marginBottom:8}}>Agent Reasoning</div>
-              <div style={{fontSize:12,color:"#C8C4D8",lineHeight:1.7}}>{result.reasoning}</div>
-            </div>
-          )}
-
-          {/* Needs confirmation */}
-          {result.needs_confirmation?.length>0&&(
-            <div style={{padding:"14px 16px",borderRadius:10,background:`${B.blue}08`,border:`1px solid ${B.blue}30`}}>
-              <div style={{fontSize:11,fontWeight:700,color:B.blue,letterSpacing:1.5,textTransform:"uppercase",marginBottom:8}}>ℹ️ Needs Your Confirmation</div>
-              {result.needs_confirmation.map((n,i)=>(<div key={i} style={{fontSize:12,color:B.text,marginTop:4}}>• {n}</div>))}
-              <div style={{fontSize:11,color:B.textMuted,marginTop:8,fontStyle:"italic"}}>Add details to the description and re-grade.</div>
-            </div>
-          )}
-
-          {/* Reminder footer */}
-          <div style={{padding:"10px 14px",borderRadius:9,background:"rgba(255,255,255,0.02)",border:`1px solid ${B.border}`,fontSize:11,color:B.textMuted,textAlign:"center"}}>
-            The agent grades the setup. <strong style={{color:B.text}}>You</strong> decide whether to take the trade, where to enter, where to stop, and how big.
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-const NAV=[{id:"overview",label:"Overview",icon:"▦"},{id:"journal",label:"Journal",icon:"⊟"},{id:"analytics",label:"Analytics",icon:"◈"},{id:"calendar",label:"P&L Calendar",icon:"⊞"},{id:"playbooks",label:"Strategies",icon:"⊕"},{id:"grader",label:"Pre-Trade Grader",icon:"🎯"},{id:"weeklyreview",label:"Weekly Review",icon:"🧠"},
-  {id:"earnings",label:"Earnings",icon:"💰"},{id:"economiccalendar",label:"Eco Calendar",icon:"📰"},{id:"library",label:"Playbook",icon:"📚"},{id:"resources",label:"Resources",icon:"◎"}];
+const NAV=[{id:"overview",label:"Overview",icon:"▦"},{id:"journal",label:"Journal",icon:"⊟"},{id:"analytics",label:"Analytics",icon:"◈"},{id:"calendar",label:"P&L Calendar",icon:"⊞"},{id:"playbooks",label:"Strategies",icon:"⊕"},{id:"weeklyreview",label:"Weekly Review",icon:"🧠"},{id:"economiccalendar",label:"Eco Calendar",icon:"📰"},{id:"library",label:"Playbook",icon:"📚"},{id:"resources",label:"Resources",icon:"◎"}];
 
 export default function App(){
   const ADMIN_EMAIL = "admin@thecandlestickacademy.com";
@@ -8000,6 +7951,7 @@ export default function App(){
   const [showAdmin,setShowAdmin]=useState(false);
   const [showProfile,setShowProfile]=useState(false);
   const [showReport,setShowReport]=useState(false);
+  const [showPreTrade,setShowPreTrade]=useState(false);
   const [replayTrade,setReplayTrade]=useState(null);
     const [isDark,setIsDark]=useState(()=>{
     try{return localStorage.getItem("tca_theme")!=="light";}catch(e){return true;}
@@ -8273,6 +8225,7 @@ export default function App(){
         <div><h1 style={{margin:0,fontSize:20,fontWeight:800,color:B.text,letterSpacing:-0.5}}>{NAV.find(n=>n.id===active)?.label}</h1></div>
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
           {hasSample&&(<button onClick={()=>setTrades([])} style={{padding:"8px 14px",borderRadius:9,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:11,fontWeight:600}}>Clear Sample Data</button>)}
+          <button onClick={()=>setShowPreTrade(true)} style={{padding:"7px 14px",borderRadius:9,border:"1px solid rgba(139,92,246,0.4)",background:"rgba(139,92,246,0.08)",color:B.purple,cursor:"pointer",fontSize:11,fontWeight:700}}>⚡ Pre-Trade Check</button>
           <button onClick={()=>setShowReport(true)} style={{padding:"7px 14px",borderRadius:9,border:`1px solid rgba(0,212,168,0.3)`,background:"rgba(0,212,168,0.06)",color:B.teal,cursor:"pointer",fontSize:11,fontWeight:700,display:"flex",alignItems:"center",gap:5}}>📄 Export PDF</button>
           {active==="overview"&&<button onClick={()=>document.dispatchEvent(new CustomEvent("tca-toggle-edit"))} style={{padding:"8px 14px",borderRadius:9,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:12,fontWeight:600}}>✏ Edit Layout</button>}
           {/* Theme toggle */}
@@ -8296,13 +8249,12 @@ export default function App(){
       {active==="analytics"&&<Analytics trades={activeAccount==="all"?trades:trades.filter(t=>t.account_id===activeAccount)}/>}
       {active==="calendar"&&<CalendarView trades={activeAccount==="all"?trades:trades.filter(t=>t.account_id===activeAccount)} onGradeUpdate={handleGradeUpdate} onEdit={handleEdit}/>}
       {active==="playbooks"&&<PlaybookView trades={activeAccount==="all"?trades:trades.filter(t=>t.account_id===activeAccount)}/>}
-      {active==="grader"&&<PreTradeGrader session={session}/>}
       {active==="resources"&&<ResourcesPage session={session}/>}
-      {active==="earnings"&&<EarningsCalendar isDark={isDark}/>}
       {active==="weeklyreview"&&<WeeklyReview trades={activeAccount==="all"?trades:trades.filter(t=>t.account_id===activeAccount)} session={session}/>}
       {active==="economiccalendar"&&<EconomicCalendar isDark={isDark}/>}
       {active==="library"&&<PlaybookLibrary session={session}/>}
     </div>
+  {showPreTrade&&<PreTradeChecker trades={trades} onClose={()=>setShowPreTrade(false)}/>}
   <TCAChat trades={trades} strategies={strategies} isOpen={chatOpen} onClose={()=>setChatOpen(false)}/>
   {showReport&&<PDFReportModal trades={trades} session={session} onClose={()=>setShowReport(false)}/>}
   {showProfile&&<ProfileModal session={session} onClose={()=>setShowProfile(false)}/>}
