@@ -11,15 +11,14 @@ export default async function handler(req, res) {
     const MODEL = "claude-sonnet-4-6";
     console.log("Coach called, type:", type);
 
-    // ── CHAT (also handles Pre-Trade Checker with optional image) ─────────────
+    // ── CHAT (handles Pre-Trade Checker with optional image) ──────────────────
     if (type === "chat") {
       const messages = body.chatHistory || [];
-      // Detect image content — pre-trade checker sends chart screenshots
       const hasImage = messages.some(m =>
         Array.isArray(m.content) && m.content.some(c => c.type === "image")
       );
-      // Image analysis needs more tokens for detailed confluence verification
-      const maxTokens = hasImage ? 1500 : 800;
+      // Pre-trade checker with chart image needs significantly more tokens
+      const maxTokens = hasImage ? 2000 : 800;
       console.log("Chat hasImage:", hasImage, "maxTokens:", maxTokens);
 
       const r = await fetch("https://api.anthropic.com/v1/messages", {
@@ -32,7 +31,9 @@ export default async function handler(req, res) {
         console.error("Chat error:", r.status, t.slice(0,200));
         return res.status(200).json({ content: [{ type: "text", text: "API error " + r.status }] });
       }
-      return res.status(200).json(await r.json());
+      const d = await r.json();
+      console.log("Chat stop_reason:", d.stop_reason, "tokens used:", d.usage);
+      return res.status(200).json(d);
     }
 
     // ── STRUCTURED TYPES ──────────────────────────────────────────────────────
@@ -49,6 +50,7 @@ export default async function handler(req, res) {
       try { return JSON.parse(f); } catch(e) {}
       const f2 = f.replace(/[\x00-\x1F\x7F]/g," ");
       try { return JSON.parse(f2); } catch(e) {}
+      // Close truncated JSON
       let opens=[],inStr=false,esc=false;
       for(let i=0;i<f2.length;i++){
         const ch=f2[i];
@@ -68,42 +70,41 @@ export default async function handler(req, res) {
 
     if (type==="full") {
       maxTokens=2500;
-      systemPrompt="You are a trading coach. Output ONLY raw JSON. No prose, no markdown, no explanation before or after.";
-      userPrompt=`Analyze this trader's performance. Output ONLY this JSON structure with real values filled in:
-{"score":75,"summary":"2-3 sentence summary here","patterns":[{"title":"Pattern name","detail":"Specific detail with numbers","type":"positive"},{"title":"Pattern name","detail":"Specific detail","type":"negative"},{"title":"Pattern name","detail":"Specific detail","type":"neutral"}],"psychology":[{"title":"Psychology observation","detail":"Specific detail","type":"positive"},{"title":"Psychology observation","detail":"Detail","type":"negative"}],"actions":[{"priority":"high","action":"Specific action to take","reasoning":"Why this matters"},{"priority":"medium","action":"Another action","reasoning":"Why"}]}
-
-Trader stats: winRate=${stats.winRate}%, totalTrades=${stats.totalTrades}, totalPnl=$${stats.totalPnl}, avgWin=$${stats.avgWin}, avgLoss=$${stats.avgLoss}
+      systemPrompt="You are a trading coach. Output ONLY raw JSON. No prose, no markdown.";
+      userPrompt=`Analyze this trader's performance. Output ONLY this JSON:
+{"score":75,"summary":"2-3 sentences","patterns":[{"title":"string","detail":"string","type":"positive"}],"psychology":[{"title":"string","detail":"string","type":"positive"}],"actions":[{"priority":"high","action":"string","reasoning":"string"}]}
+Stats: winRate=${stats.winRate}%, totalTrades=${stats.totalTrades}, totalPnl=$${stats.totalPnl}, avgWin=$${stats.avgWin}, avgLoss=$${stats.avgLoss}
 Sessions: ${JSON.stringify(stats.sessions)}
 Setups: ${JSON.stringify(stats.setups?.slice(0,5))}
-Recent trades: ${JSON.stringify(stats.recentTrades?.slice(0,8))}`;
+Recent: ${JSON.stringify(stats.recentTrades?.slice(0,8))}`;
     }
     else if (type==="trade") {
       maxTokens=800;
       systemPrompt="You are a trading coach. Output ONLY raw JSON. No prose, no markdown.";
-      userPrompt=`Analyze this trade. Output ONLY this JSON structure:
-{"score":75,"verdict":"One sentence verdict","strengths":["Strength 1","Strength 2"],"improvements":["Improvement 1","Improvement 2"],"lesson":"Key lesson learned"}
+      userPrompt=`Analyze this trade. Output ONLY this JSON:
+{"score":75,"verdict":"string","strengths":["string"],"improvements":["string"],"lesson":"string"}
 Trade: ${JSON.stringify(stats)}`;
     }
     else if (type==="patterns") {
       maxTokens=2500;
-      systemPrompt="You are a trading psychologist. Output ONLY raw JSON. No prose, no markdown. Keep each description under 100 characters.";
-      userPrompt=`Find behavioral patterns. Output ONLY this JSON (keep descriptions SHORT):
-{"topIssue":"Main problem area","topStrength":"Main strength","patterns":[{"title":"Pattern name","description":"Brief description","type":"negative","frequency":"How often","suggestion":"Brief fix"}],"actions":[{"priority":"high","action":"Specific action","reasoning":"Why"}]}
+      systemPrompt="You are a trading psychologist. Output ONLY raw JSON. No prose, no markdown. Keep descriptions under 100 chars.";
+      userPrompt=`Find behavioral patterns. Output ONLY this JSON:
+{"topIssue":"string","topStrength":"string","patterns":[{"title":"string","description":"string","type":"negative","frequency":"string","suggestion":"string"}],"actions":[{"priority":"high","action":"string","reasoning":"string"}]}
 Data: ${JSON.stringify(stats)}`;
     }
     else if (type==="day") {
       maxTokens=800;
       systemPrompt="You are a trading coach. Output ONLY raw JSON. No prose, no markdown.";
       userPrompt=`Review this trading day. Output ONLY this JSON:
-{"mood":"focused","summary":"Day summary","wins":["Win 1"],"improvements":["Improve 1"],"tomorrowFocus":"Focus for tomorrow"}
-Day data: ${JSON.stringify(stats)}`;
+{"mood":"string","summary":"string","wins":["string"],"improvements":["string"],"tomorrowFocus":"string"}
+Data: ${JSON.stringify(stats)}`;
     }
     else if (type==="economic") {
       maxTokens=1500;
       systemPrompt="You are a financial calendar. Output ONLY raw JSON. No prose, no markdown.";
       userPrompt=`Generate US economic calendar for ${dayStats.weekStart} to ${dayStats.weekEnd}. Output ONLY this JSON:
-{"events":[{"date":"YYYY-MM-DD","time":"HH:MM","name":"Event name","impact":"high","currency":"USD","actual":"","forecast":"100K","previous":"95K"}]}
-Include all major USD events. Today: ${dayStats.today}`;
+{"events":[{"date":"YYYY-MM-DD","time":"HH:MM","name":"string","impact":"high","currency":"USD","actual":"","forecast":"","previous":""}]}
+Today: ${dayStats.today}`;
     }
     else { return res.status(400).json({ error:"Unknown type: "+type }); }
 
@@ -121,13 +122,12 @@ Include all major USD events. Today: ${dayStats.today}`;
 
     const d=await r.json();
     const rawText=d.content?.[0]?.text||"";
-    console.log("Raw response (first 300):",rawText.slice(0,300));
-    console.log("Stop reason:",d.stop_reason);
+    console.log("stop_reason:",d.stop_reason,"raw (300):",rawText.slice(0,300));
     if (!rawText) return res.status(200).json({error:"Empty response"});
 
     const parsed=repairJSON(rawText);
     if (!parsed) {
-      console.error("Parse failed. Raw:",rawText.slice(0,500));
+      console.error("Parse failed:",rawText.slice(0,500));
       return res.status(200).json({error:"Parse failed. Raw: "+rawText.slice(0,300)});
     }
     return res.status(200).json(parsed);

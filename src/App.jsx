@@ -6933,15 +6933,8 @@ function PreTradeChecker({trades, onClose}){
         +"\nR:R: "+(rr?("1:"+rr.toFixed(2)):"not provided")
         +"\n\n--- NOTES ---"
         +form.notes
-        +"\n\nReturn ONLY this JSON (no markdown):"
-        +'{"grade":"A+","verdict":"Go","setupMatch":"Setup 1 - NY Open Bullish Double Sweep",'
-        +'"score":95,'
-        +'"confluenceHit":["HTF 1H FVG at edge confirmed","FIB 0.618 coincides with FVG","Sweep confirmed via wick"],'
-        +'"missing":[],'
-        +'"warnings":[],'
-        +'"reasoning":"2-3 precise sentences explaining the grade based on the specific rules",'
-        +'"riskNote":"R:R 1:3.2 - excellent risk reward",'
-        +'"action":"Take the trade - full conviction A+ setup"}';
+        +"\n\nReturn ONLY this JSON (no markdown, be concise):"
+        +'{"grade":"A+","verdict":"Go","setupMatch":"Setup 1","score":95,"confluenceHit":["FVG confirmed","FIB coincides"],"missing":[],"warnings":[],"reasoning":"2 sentences max","riskNote":"R:R note","action":"Take trade"}';
 
       const messages = chartImage
         ? [{role:"user", content:[
@@ -6960,10 +6953,30 @@ function PreTradeChecker({trades, onClose}){
       });
       const data = await res.json();
       const text = data.content?.[0]?.text||"";
-      if(!text) throw new Error("No response");
-      const clean = text.split("```json").join("").split("```").join("").trim();
+      if(!text) throw new Error("No response from AI");
+      // Strip markdown fences
+      let clean = text.split("```json").join("").split("```").join("").trim();
       const start = clean.indexOf("{"); const end = clean.lastIndexOf("}");
-      const parsed = JSON.parse(clean.slice(start, end+1));
+      if(start===-1) throw new Error("No JSON in response");
+      clean = clean.slice(start, end+1);
+      // Fix trailing commas
+      clean = clean.replace(/,\s*([\]}])/g,"$1");
+      // Try parse, if truncated try to close brackets
+      let parsed;
+      try { parsed = JSON.parse(clean); }
+      catch(e) {
+        // Close any unclosed brackets
+        let opens=[],inStr=false;
+        for(let i=0;i<clean.length;i++){
+          const ch=clean[i];
+          if(ch==='"'&&clean[i-1]!=='\\')inStr=!inStr;
+          if(inStr)continue;
+          if(ch==='{'||ch==='[')opens.push(ch);
+          if(ch==='}'||ch===']')opens.pop();
+        }
+        const closing=opens.reverse().map(c=>c==='{'?'}':']').join('');
+        parsed = JSON.parse((clean+closing).replace(/,\s*([\]}])/g,"$1"));
+      }
       setResult(parsed);
     } catch(e) {
       console.error(e);
