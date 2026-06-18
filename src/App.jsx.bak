@@ -4737,79 +4737,6 @@ function ResourcesPage({session}){
 
   const removeVideo=(i)=>saveVideos(videos.filter((_,j)=>j!==i));
 
-  // ── PDF Resources ──────────────────────────────────────────────────────────
-  const PDF_BUCKET="tca-pdf-resources";
-  const PKEY="tca_pdfs_v1";
-  const MAX_PDF_BYTES=25*1024*1024; // 25MB
-  const [pdfs,setPdfs]=useState([]);
-  const [showAddPdf,setShowAddPdf]=useState(false);
-  const [pdfTitle,setPdfTitle]=useState("");
-  const [uploadingPdf,setUploadingPdf]=useState(false);
-  const [pdfError,setPdfError]=useState("");
-  const [previewPdf,setPreviewPdf]=useState(null); // {id,title,url}
-
-  useEffect(()=>{
-    try{
-      const local=localStorage.getItem(`pref_${PKEY}`);
-      if(local)setPdfs(JSON.parse(local));
-    }catch(e){}
-    if(!session?.user?.id)return;
-    (async()=>{
-      try{
-        const val=await getPref(session.user.id, PKEY);
-        if(val)setPdfs(JSON.parse(val));
-      }catch(e){}
-    })();
-  },[session]);
-
-  const savePdfs=(list)=>{
-    setPdfs(list);
-    if(session?.user?.id){
-      setPref(session.user.id, PKEY, JSON.stringify(list)).catch(()=>{});
-    } else {
-      try{localStorage.setItem(`pref_${PKEY}`,JSON.stringify(list));}catch(e){}
-    }
-  };
-
-  const fmtPdfSize=(b)=>{
-    if(!b)return"";
-    if(b<1024)return b+" B";
-    if(b<1024*1024)return(b/1024).toFixed(1)+" KB";
-    return(b/1024/1024).toFixed(1)+" MB";
-  };
-
-  const uploadPdf=async(file)=>{
-    setPdfError("");
-    if(!file)return;
-    const isPdf=file.type==="application/pdf"||file.name.toLowerCase().endsWith(".pdf");
-    if(!isPdf){setPdfError("Please select a PDF file.");return;}
-    if(file.size>MAX_PDF_BYTES){setPdfError("File is too large — max 25MB.");return;}
-    if(!session?.user?.id){setPdfError("You must be signed in to upload a PDF.");return;}
-    setUploadingPdf(true);
-    try{
-      const id=Date.now()+"_"+Math.random().toString(36).slice(2,8);
-      const safeName=file.name.replace(/[^a-zA-Z0-9._-]/g,"_");
-      const path=`${session.user.id}/${id}_${safeName}`;
-      const{error}=await supabase.storage.from(PDF_BUCKET).upload(path,file,{upsert:true,contentType:"application/pdf"});
-      if(error)throw error;
-      const{data:{publicUrl}}=supabase.storage.from(PDF_BUCKET).getPublicUrl(path);
-      const newPdf={id,title:pdfTitle.trim()||file.name.replace(/\.pdf$/i,""),path,url:publicUrl,size:file.size,addedAt:new Date().toISOString()};
-      savePdfs([...pdfs,newPdf]);
-      setPdfTitle("");setShowAddPdf(false);
-    }catch(e){
-      setPdfError("Upload failed: "+(e.message||"please try again."));
-    }finally{
-      setUploadingPdf(false);
-    }
-  };
-
-  const removePdf=async(p)=>{
-    if(!confirm(`Delete "${p.title}"? This cannot be undone.`))return;
-    try{await supabase.storage.from(PDF_BUCKET).remove([p.path]);}catch(e){}
-    savePdfs(pdfs.filter(x=>x.id!==p.id));
-    if(previewPdf?.id===p.id)setPreviewPdf(null);
-  };
-
   return(
     <div style={{display:"flex",flexDirection:"column",gap:20}}>
       {/* Header */}
@@ -4900,95 +4827,6 @@ function ResourcesPage({session}){
               </div>
             </div>
           ))}
-        </div>
-      )}
-
-      {/* Divider */}
-      <div style={{height:1,background:B.border,margin:"4px 0"}}/>
-
-      {/* PDF Resources header */}
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-        <div style={{display:"flex",alignItems:"center",gap:12}}>
-          <div style={{width:36,height:36,borderRadius:10,background:"rgba(240,90,126,0.15)",display:"flex",alignItems:"center",justifyContent:"center"}}>
-            <span style={{fontSize:18}}>📄</span>
-          </div>
-          <div>
-            <div style={{fontSize:18,fontWeight:800,color:B.text}}>PDF Resources</div>
-            <div style={{fontSize:12,color:B.textMuted}}>{pdfs.length} document{pdfs.length!==1?"s":""} saved</div>
-          </div>
-        </div>
-        <button onClick={()=>{setShowAddPdf(p=>!p);setPdfError("");}} style={{padding:"8px 18px",borderRadius:9,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:12,fontWeight:800}}>
-          {showAddPdf?"✕ Cancel":"+ Add PDF"}
-        </button>
-      </div>
-
-      {/* Add PDF form */}
-      {showAddPdf&&(
-        <div style={{padding:20,borderRadius:14,background:B.surface,border:`1px solid ${B.borderTeal}`}}>
-          <div style={{fontSize:13,fontWeight:700,color:B.text,marginBottom:14}}>Add PDF Resource</div>
-          <div style={{marginBottom:14}}>
-            <label style={lS}>Title (optional)</label>
-            <input value={pdfTitle} onChange={e=>setPdfTitle(e.target.value)} style={iS} placeholder="e.g. ICT Glossary, MES Playbook Cheat Sheet"/>
-          </div>
-          <label style={{display:"block",cursor:uploadingPdf?"default":"pointer"}}>
-            <div style={{border:`2px dashed ${B.border}`,borderRadius:12,padding:"24px",textAlign:"center",background:"rgba(255,255,255,0.02)",transition:"all 0.2s"}}
-              onDragOver={e=>{e.preventDefault();if(!uploadingPdf)e.currentTarget.style.borderColor=B.teal;}}
-              onDragLeave={e=>{e.currentTarget.style.borderColor=B.border;}}
-              onDrop={e=>{
-                e.preventDefault();
-                e.currentTarget.style.borderColor=B.border;
-                if(uploadingPdf)return;
-                const file=Array.from(e.dataTransfer.files).find(f=>f.type==="application/pdf"||f.name.toLowerCase().endsWith(".pdf"));
-                if(file)uploadPdf(file);else setPdfError("Please drop a PDF file.");
-              }}>
-              <div style={{fontSize:24,marginBottom:8}}>📄</div>
-              <div style={{fontSize:13,color:B.text,fontWeight:600}}>{uploadingPdf?"Uploading...":"Drop a PDF here"}</div>
-              <div style={{fontSize:11,color:B.textMuted,marginTop:4}}>or click to browse — max 25MB</div>
-            </div>
-            <input type="file" accept=".pdf,application/pdf" disabled={uploadingPdf} style={{display:"none"}}
-              onChange={e=>{const file=e.target.files[0];if(file)uploadPdf(file);e.target.value="";}}/>
-          </label>
-          {pdfError&&<div style={{marginTop:10,fontSize:12,color:B.loss}}>{pdfError}</div>}
-        </div>
-      )}
-
-      {/* PDF list */}
-      {pdfs.length===0?(
-        <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"80px 20px",borderRadius:14,border:`2px dashed ${B.border}`,gap:14}}>
-          <div style={{fontSize:48}}>📄</div>
-          <div style={{fontSize:15,fontWeight:700,color:B.text}}>No PDFs yet</div>
-          <div style={{fontSize:12,color:B.textMuted,textAlign:"center",lineHeight:1.6}}>
-            Upload PDF guides, cheat sheets, or playbooks<br/>to build your personal document library
-          </div>
-          <button onClick={()=>setShowAddPdf(true)} style={{marginTop:4,padding:"10px 24px",borderRadius:9,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:13,fontWeight:800}}>+ Add Your First PDF</button>
-        </div>
-      ):(
-        <div style={{display:"flex",flexDirection:"column",gap:10}}>
-          {pdfs.map(p=>(
-            <div key={p.id} style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:12,padding:"14px 16px",display:"flex",alignItems:"center",gap:12}}>
-              <div style={{width:38,height:38,borderRadius:9,background:"rgba(240,90,126,0.12)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>📄</div>
-              <div style={{flex:1,minWidth:0}}>
-                <div style={{fontSize:13,fontWeight:700,color:B.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{p.title}</div>
-                <div style={{fontSize:11,color:B.textMuted}}>{fmtPdfSize(p.size)}{p.size?" · ":""}{new Date(p.addedAt).toLocaleDateString()}</div>
-              </div>
-              <div style={{display:"flex",gap:6,flexShrink:0}}>
-                <button onClick={()=>setPreviewPdf(previewPdf?.id===p.id?null:p)} style={{padding:"6px 14px",borderRadius:7,border:`1px solid ${previewPdf?.id===p.id?B.teal:B.border}`,background:previewPdf?.id===p.id?`${B.teal}15`:"transparent",color:previewPdf?.id===p.id?B.teal:B.textMuted,cursor:"pointer",fontSize:11,fontWeight:700}}>{previewPdf?.id===p.id?"Hide":"👁 View"}</button>
-                <a href={p.url} target="_blank" rel="noopener noreferrer" style={{padding:"6px 10px",borderRadius:7,border:`1px solid ${B.border}`,color:B.textMuted,fontSize:11,textDecoration:"none"}}>⤓</a>
-                <button onClick={()=>removePdf(p)} style={{background:"none",border:`1px solid ${B.border}`,borderRadius:7,color:B.textMuted,cursor:"pointer",fontSize:11,padding:"6px 10px"}}>✕</button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Inline PDF preview */}
-      {previewPdf&&(
-        <div style={{background:B.surface,border:`1px solid ${B.borderTeal}`,borderRadius:14,overflow:"hidden"}}>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 16px",borderBottom:`1px solid ${B.border}`}}>
-            <div style={{fontSize:12,fontWeight:700,color:B.text}}>{previewPdf.title}</div>
-            <button onClick={()=>setPreviewPdf(null)} style={{background:"none",border:"none",color:B.textMuted,cursor:"pointer",fontSize:13}}>✕ Close</button>
-          </div>
-          <iframe src={previewPdf.url} title={previewPdf.title} style={{width:"100%",height:700,border:"none",display:"block"}}/>
         </div>
       )}
     </div>
@@ -6971,6 +6809,573 @@ function AdminPanel({onClose}){
 }
 
 
+// ── Weekly Review Page ────────────────────────────────────────────────────────
+// ── Pre-Trade Checker ─────────────────────────────────────────────────────────
+function PreTradeChecker({trades, onClose}){
+  const [form, setForm] = useState({
+    instrument:"MES", direction:"Bullish", session:"NY AM", entryTime:"",
+    asianRange:"", londonAction:"", preNYAction:"",
+    htfFVG:false, priceAtFVG:false, fvgTimeframe:"1H",
+    fibAlignment:false, fibLevel:"0.618", fibFvgCoincide:false,
+    sweepConfirmed:false, sweepType:"wick",
+    obPresent:false, ifvgPresent:false,
+    entry:"", stop:"", target:"", notes:""
+  });
+  const [result, setResult] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [chartImage, setChartImage] = useState(null);
+  const [chartPreview, setChartPreview] = useState(null);
+  const chartInputRef = useRef(null);
+
+  const handleChartUpload = (file) => {
+    if(!file || !file.type.startsWith("image/")) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      setChartPreview(ev.target.result);
+      // Extract base64 data only (strip data:image/...;base64, prefix)
+      const b64 = ev.target.result.split(",")[1];
+      setChartImage(b64);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const set = (k,v) => setForm(f=>({...f,[k]:v}));
+
+  // Calculate R:R
+  const rr = form.entry && form.stop && form.target
+    ? Math.abs(parseFloat(form.target)-parseFloat(form.entry)) /
+      Math.abs(parseFloat(form.stop)-parseFloat(form.entry))
+    : null;
+
+  // Today's P&L from trades
+  const today = new Date().toISOString().slice(0,10);
+  const todayPnl = trades.filter(t=>t.date===today).reduce((a,t)=>a+t.pnl,0);
+  const todayTrades = trades.filter(t=>t.date===today).length;
+  const recentLosses = trades.slice(0,5).filter(t=>t.result==="Loss").length;
+
+  const analyze = async () => {
+    setLoading(true);
+    try {
+      // Build context about trader's current state
+      const context = "You are TCA Coach, an expert ICT methodology trading analyst. Your job is to score pre-trade confluence quality for a liquidity sweep strategy on MES futures and SPX/SPY options."
+        +"\n\n=== CONFLUENCE RULES (apply these precisely) ==="
+        +"\n\nHTF FVG RULES:"
+        +"\n- Valid timeframes: Daily, 4H, 1H, or 30m"
+        +"\n- Price must be AT the edge of the FVG or INSIDE it (not just near it)"
+        +"\n- Mitigation status does not matter"
+        +"\n- FVG MUST coincide with FIB level - this is mandatory for A+"
+        +"\n\nFIB 0TE RULES:"
+        +"\n- Valid fib levels: 50% to 70.5% range (0.5, 0.618, 0.65, 0.705)"
+        +"\n- Drawn from last swing low to swing high (bullish) OR swing high to swing low (bearish)"
+        +"\n- FIB level MUST overlap with HTF FVG - if they do not coincide, maximum grade is B"
+        +"\n\nLIQUIDITY SWEEP RULES:"
+        +"\n- Either a wick through the level OR a candle close beyond it counts as confirmed sweep"
+        +"\n- No minimum number of sweeps required - quality matters more than quantity"
+        +"\n- Sweep must occur within the same session as the entry"
+        +"\n\nORDER BLOCK (OB) RULES:"
+        +"\n- Bullish OB: last down-candle before a bullish impulse move"
+        +"\n- Bearish OB: last up-candle before a bearish impulse move"
+        +"\n- OB is an ENTRY TRIGGER, not just confluence"
+        +"\n\nSESSION TIMING:"
+        +"\n- Valid NY AM entry window: 9:30 AM to 11:00 AM ET only"
+        +"\n- Entries outside this window cannot be A+"
+        +"\n\n=== THE 3 A+ SETUPS ==="
+        +"\n\nSETUP 1 - NY Open Bullish Double Sweep:"
+        +"\n1. Asian range: directional bullish overnight"
+        +"\n2. London: stays WITHIN the Asian range (no expansion)"
+        +"\n3. Pre-NY: sweeps London lows"
+        +"\n4. NY Open (9:30-11am): sweeps BOTH pre-NY lows AND Asian lows"
+        +"\n5. At sweep low: price is AT EDGE or INSIDE a Daily/4H/1H/30m FVG"
+        +"\n6. That FVG MUST coincide with a FIB level between 50%-70.5%"
+        +"\n7. Trade direction: BULLISH"
+        +"\n\nSETUP 2 - HTF FVG Support Continuation Bullish:"
+        +"\n1. Asian session: trades LOWER overnight but holds SUPPORT above a HTF FVG"
+        +"\n2. London: expands HIGHER, sweeps Asian highs, maintains bullish momentum"
+        +"\n3. NY AM (9:30-11am): retraces to test HTF FVG or OB"
+        +"\n4. That FVG or OB MUST align with FIB 50%-70.5%"
+        +"\n5. OB acts as entry trigger if present"
+        +"\n6. Trade direction: BULLISH"
+        +"\n\nSETUP 3 - PDH Sweep Reversal Bearish:"
+        +"\n1. Asian range: sweeps PDH with bullish direction"
+        +"\n2. London: expands the bullish direction, takes PDH + overnight highs"
+        +"\n3. NY Open (9:30-11am): sweeps BOTH London lows AND Asian lows"
+        +"\n4. After sweep: price retraces into a Bullish IFVG or Bearish FVG"
+        +"\n5. That IFVG or FVG MUST align with FIB 50%-70.5%"
+        +"\n6. IFVG or FVG is the entry trigger"
+        +"\n7. Trade direction: BEARISH"
+        +"\n\n=== GRADING RULES ==="
+        +"\nA+: Setup clearly matches one of the 3 patterns AND FVG/FIB coincide AND session timing is valid AND sweep is confirmed in same session"
+        +"\nB: Has most elements but one key condition is unclear, partially met, or timing is off — still a tradeable setup but not highest conviction"
+        +"\nNo-Go: FVG and FIB do NOT coincide, entry outside 9:30-11am, setup matches none of the 3 patterns, OR R:R below 1:2"
+        +"\n\n=== CHART ANALYSIS INSTRUCTIONS ==="+"\nA chart screenshot may be attached. If so: identify the FVG (gap between candle bodies) and check price is at edge or inside it. Look for FIB retracement lines and confirm a level between 50-70.5% coincides with the FVG. Verify the liquidity sweep via wick or close. Assess if the session structure matches the narrative described. If the chart contradicts any form input, flag it in your reasoning. If no chart, grade from form inputs only."+"\n\n=== TRADER STATE ==="
+        +"\nToday P&L: $"+todayPnl.toFixed(2)+" | Trades today: "+todayTrades+" | Recent losses (last 5): "+recentLosses
+        +"\nIf trader is down more than $500 today or has 3+ consecutive losses, add a warning regardless of setup grade.";
+
+      const userMsg = "Score this pre-trade setup against the confluence rules. Be precise and strict."
+        +"\n\n--- SETUP DETAILS ---"
+        +"\nInstrument: "+form.instrument+" | Intended Direction: "+form.direction+" | Session: "+form.session
+        +"\nEntry Time: "+(form.entryTime||"Not specified")
+        +"\n\n--- SESSION NARRATIVE ---"
+        +"\nAsian Range: "+form.asianRange
+        +"\nLondon Action: "+form.londonAction
+        +"\nPre-NY / NY Open Action: "+form.preNYAction
+        +"\n\n--- CONFLUENCE CHECKLIST ---"
+        +"\nHTF FVG present (Daily/4H/1H/30m): "+(form.htfFVG?"YES":"NO")
+        +"\nPrice at edge or inside FVG: "+(form.priceAtFVG?"YES":"NO")
+        +"\nFVG timeframe: "+form.fvgTimeframe
+        +"\nFIB level (50-70.5%): "+(form.fibAlignment?"YES - level: "+form.fibLevel:"NO")
+        +"\nFIB coincides with FVG: "+(form.fibFvgCoincide?"YES":"NO")
+        +"\nLiquidity sweep confirmed: "+(form.sweepConfirmed?"YES - "+form.sweepType:"NO")
+        +"\nOrder Block present: "+(form.obPresent?"YES":"NO")
+        +"\nIFVG present: "+(form.ifvgPresent?"YES":"NO")
+        +"\n\n--- RISK ---"
+        +"\nEntry: "+form.entry+" | Stop: "+form.stop+" | Target: "+form.target
+        +"\nR:R: "+(rr?("1:"+rr.toFixed(2)):"not provided")
+        +"\n\n--- NOTES ---"
+        +form.notes
+        +"\n\nReturn ONLY this JSON (no markdown, be concise):"
+        +'{"grade":"A+","verdict":"Go","setupMatch":"Setup 1","score":95,"confluenceHit":["FVG confirmed","FIB coincides"],"missing":[],"warnings":[],"reasoning":"2 sentences max","riskNote":"R:R note","action":"Take trade"}';
+
+      const messages = chartImage
+        ? [{role:"user", content:[
+            {type:"image", source:{type:"base64", media_type:"image/jpeg", data:chartImage}},
+            {type:"text", text:"Here is my chart screenshot. " + userMsg}
+          ]}]
+        : [{role:"user", content:userMsg}];
+
+      const res = await fetch("/api/coach", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({
+          type:"chat",
+          chatContext: context,
+          chatHistory: messages
+        })
+      });
+      const data = await res.json();
+      const text = data.content?.[0]?.text||"";
+      if(!text) throw new Error("No response from AI");
+      // Strip markdown fences
+      let clean = text.split("```json").join("").split("```").join("").trim();
+      const start = clean.indexOf("{"); const end = clean.lastIndexOf("}");
+      if(start===-1) throw new Error("No JSON in response");
+      clean = clean.slice(start, end+1);
+      // Fix trailing commas
+      clean = clean.replace(/,\s*([\]}])/g,"$1");
+      // Try parse, if truncated try to close brackets
+      let parsed;
+      try { parsed = JSON.parse(clean); }
+      catch(e) {
+        // Close any unclosed brackets
+        let opens=[],inStr=false;
+        for(let i=0;i<clean.length;i++){
+          const ch=clean[i];
+          if(ch==='"'&&clean[i-1]!=='\\')inStr=!inStr;
+          if(inStr)continue;
+          if(ch==='{'||ch==='[')opens.push(ch);
+          if(ch==='}'||ch===']')opens.pop();
+        }
+        const closing=opens.reverse().map(c=>c==='{'?'}':']').join('');
+        parsed = JSON.parse((clean+closing).replace(/,\s*([\]}])/g,"$1"));
+      }
+      setResult(parsed);
+    } catch(e) {
+      console.error(e);
+      setResult({grade:"B", verdict:"Error", reasoning:"Could not complete analysis: "+e.message, confluenceHit:[], missing:[], warnings:[], action:"Try again"});
+    }
+    setLoading(false);
+  };
+
+  const gradeColor = result?.grade==="A+" ? B.teal : result?.grade==="B" ? "#FFB700" : B.loss;
+  const verdictColor = result?.verdict==="Go" ? B.teal : result?.verdict==="No-Go" ? B.loss : "#FFB700";
+
+  const inputStyle = {background:"rgba(0,0,0,0.3)",border:`1px solid ${B.border}`,borderRadius:8,padding:"8px 10px",color:B.text,fontSize:12,outline:"none",width:"100%",boxSizing:"border-box"};
+  const labelStyle = {fontSize:10,color:B.textMuted,letterSpacing:1.2,textTransform:"uppercase",marginBottom:4,display:"block"};
+  const checkStyle = (checked) => ({
+    display:"flex",alignItems:"center",gap:8,padding:"8px 12px",borderRadius:8,cursor:"pointer",
+    background:checked?`${B.teal}10`:"rgba(255,255,255,0.02)",
+    border:`1px solid ${checked?B.teal:B.border}`,fontSize:12,color:checked?B.teal:B.textMuted,
+    transition:"all 0.15s"
+  });
+
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(8px)"}}
+      onClick={onClose}>
+      <div style={{background:"#13121A",border:`1px solid ${B.border}`,borderRadius:20,width:760,maxHeight:"90vh",overflowY:"auto",boxShadow:"0 24px 80px rgba(0,0,0,0.6)"}}
+        onClick={e=>e.stopPropagation()}>
+
+        {/* Header */}
+        <div style={{padding:"20px 24px",borderBottom:`1px solid ${B.border}`,display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,background:"#13121A",zIndex:1}}>
+          <div style={{display:"flex",alignItems:"center",gap:12}}>
+            <div style={{width:36,height:36,borderRadius:10,background:"linear-gradient(135deg,#8B5CF6,#4F8EF7)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>⚡</div>
+            <div>
+              <div style={{fontSize:16,fontWeight:800,color:B.text}}>Pre-Trade Checker</div>
+              <div style={{fontSize:11,color:B.textMuted}}>Liquidity Sweep Strategy Grader</div>
+            </div>
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:12}}>
+            {todayPnl!==0&&(
+              <div style={{fontSize:11,color:pnlColor(todayPnl),fontFamily:"monospace",fontWeight:700}}>
+                Today: {todayPnl>=0?"+":""}{fmt(todayPnl)}
+              </div>
+            )}
+            <button onClick={onClose} style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${B.border}`,borderRadius:8,color:B.textMuted,cursor:"pointer",width:30,height:30,fontSize:18}}>×</button>
+          </div>
+        </div>
+
+        <div style={{padding:"24px",display:"grid",gridTemplateColumns:"1fr 1fr",gap:20}}>
+
+          {/* LEFT COLUMN - Setup inputs */}
+          <div style={{display:"flex",flexDirection:"column",gap:16}}>
+
+            {/* Instrument + Direction + Session */}
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
+              <div>
+                <label style={labelStyle}>Instrument</label>
+                <select value={form.instrument} onChange={e=>set("instrument",e.target.value)} style={inputStyle}>
+                  {["MES","ES","SPY","SPX","MNQ","NQ","MGC","GC"].map(i=><option key={i}>{i}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={labelStyle}>Direction</label>
+                <select value={form.direction} onChange={e=>set("direction",e.target.value)} style={inputStyle}>
+                  <option>Bullish</option><option>Bearish</option>
+                </select>
+              </div>
+              <div>
+                <label style={labelStyle}>Session</label>
+                <select value={form.session} onChange={e=>set("session",e.target.value)} style={inputStyle}>
+                  {["NY AM","London","Pre-NY","NY PM","Silver Bullet"].map(s=><option key={s}>{s}</option>)}
+                </select>
+              </div>
+            </div>
+            <div>
+              <label style={labelStyle}>Entry Time (ET)</label>
+              <input value={form.entryTime} onChange={e=>set("entryTime",e.target.value)}
+                placeholder="e.g. 9:45 AM" style={inputStyle}/>
+              {form.session==="NY AM"&&form.entryTime&&(()=>{
+                const t=form.entryTime;
+                const hr=parseInt(t);const isAM=t.includes("AM");
+                const valid=(isAM&&hr>=9&&hr<=10)||(t.includes("10")||t.includes("9"));
+                return <div style={{fontSize:9,marginTop:3,color:valid?B.teal:B.loss}}>{valid?"✓ Within 9:30-11:00 AM window":"⚠ Outside valid NY AM window (9:30-11:00 AM)"}</div>;
+              })()}
+            </div>
+
+            {/* Asian Range */}
+            <div>
+              <label style={labelStyle}>Asian Range Behavior</label>
+              <select value={form.asianRange} onChange={e=>set("asianRange",e.target.value)} style={inputStyle}>
+                <option value="">Select...</option>
+                <option>Directional bullish overnight</option>
+                <option>Trades lower, holds support above HTF FVG</option>
+                <option>Sweeps PDH with bullish direction</option>
+                <option>Directional bearish overnight</option>
+                <option>Ranging / consolidation</option>
+              </select>
+            </div>
+
+            {/* London Action */}
+            <div>
+              <label style={labelStyle}>London Session Action</label>
+              <select value={form.londonAction} onChange={e=>set("londonAction",e.target.value)} style={inputStyle}>
+                <option value="">Select...</option>
+                <option>Stays within Asian range</option>
+                <option>Expands higher, sweeps Asian highs</option>
+                <option>Expands bullish, takes PDH + overnight highs</option>
+                <option>Expands lower, sweeps Asian lows</option>
+                <option>Ranging</option>
+              </select>
+            </div>
+
+            {/* Pre-NY Action */}
+            <div>
+              <label style={labelStyle}>Pre-NY / NY Open Action</label>
+              <select value={form.preNYAction} onChange={e=>set("preNYAction",e.target.value)} style={inputStyle}>
+                <option value="">Select...</option>
+                <option>Sweeps London lows before NY open</option>
+                <option>NY sweeps pre-NY lows + Asian lows</option>
+                <option>NY sweeps London + Asian lows</option>
+                <option>Continues London direction</option>
+                <option>Reversal at open</option>
+              </select>
+            </div>
+
+            {/* HTF FVG Section */}
+            <div style={{padding:"12px 14px",borderRadius:10,border:`1px solid ${B.border}`,background:"rgba(255,255,255,0.01)"}}>
+              <div style={{fontSize:10,color:B.purple,letterSpacing:1.5,fontWeight:700,marginBottom:10}}>HTF FVG</div>
+              <div style={{display:"flex",gap:8,marginBottom:8}}>
+                <div style={{flex:1}}>
+                  <label style={labelStyle}>Timeframe</label>
+                  <select value={form.fvgTimeframe} onChange={e=>set("fvgTimeframe",e.target.value)} style={inputStyle}>
+                    {["Daily","4H","1H","30m"].map(t=><option key={t}>{t}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                {[
+                  {k:"htfFVG", label:"FVG Present"},
+                  {k:"priceAtFVG", label:"Price at edge / inside FVG"},
+                ].map(({k,label})=>(
+                  <div key={k} style={checkStyle(form[k])} onClick={()=>set(k,!form[k])}>
+                    <div style={{width:16,height:16,borderRadius:4,border:`2px solid ${form[k]?B.teal:B.border}`,background:form[k]?B.teal:"transparent",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,color:"#0E0E10",flexShrink:0}}>{form[k]?"✓":""}</div>
+                    {label}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* FIB Section */}
+            <div style={{padding:"12px 14px",borderRadius:10,border:`1px solid ${B.border}`,background:"rgba(255,255,255,0.01)"}}>
+              <div style={{fontSize:10,color:B.blue,letterSpacing:1.5,fontWeight:700,marginBottom:10}}>FIB 0TE (50% - 70.5%)</div>
+              <div style={{display:"flex",gap:8,marginBottom:8}}>
+                <div style={{flex:1}}>
+                  <label style={labelStyle}>Fib Level</label>
+                  <select value={form.fibLevel} onChange={e=>set("fibLevel",e.target.value)} style={inputStyle}>
+                    {["0.5 (50%)","0.618 (61.8%)","0.65 (65%)","0.705 (70.5%)"].map(l=><option key={l} value={l}>{l}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                {[
+                  {k:"fibAlignment", label:"FIB level present"},
+                  {k:"fibFvgCoincide", label:"FIB coincides with FVG ★"},
+                ].map(({k,label})=>(
+                  <div key={k} style={checkStyle(form[k])} onClick={()=>set(k,!form[k])}>
+                    <div style={{width:16,height:16,borderRadius:4,border:`2px solid ${form[k]?B.teal:B.border}`,background:form[k]?B.teal:"transparent",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,color:"#0E0E10",flexShrink:0}}>{form[k]?"✓":""}</div>
+                    {label}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Sweep + OB/IFVG */}
+            <div style={{padding:"12px 14px",borderRadius:10,border:`1px solid ${B.border}`,background:"rgba(255,255,255,0.01)"}}>
+              <div style={{fontSize:10,color:"#FFB700",letterSpacing:1.5,fontWeight:700,marginBottom:10}}>SWEEP & ENTRY TRIGGER</div>
+              <div style={{display:"flex",gap:8,marginBottom:8}}>
+                <div style={{flex:1}}>
+                  <label style={labelStyle}>Sweep Type</label>
+                  <select value={form.sweepType} onChange={e=>set("sweepType",e.target.value)} style={inputStyle}>
+                    <option value="wick">Wick through level</option>
+                    <option value="close">Candle close beyond</option>
+                    <option value="both">Both</option>
+                  </select>
+                </div>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
+                {[
+                  {k:"sweepConfirmed", label:"Sweep Confirmed"},
+                  {k:"obPresent", label:"OB (entry trigger)"},
+                  {k:"ifvgPresent", label:"IFVG present"},
+                ].map(({k,label})=>(
+                  <div key={k} style={checkStyle(form[k])} onClick={()=>set(k,!form[k])}>
+                    <div style={{width:16,height:16,borderRadius:4,border:`2px solid ${form[k]?B.teal:B.border}`,background:form[k]?B.teal:"transparent",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,color:"#0E0E10",flexShrink:0}}>{form[k]?"✓":""}</div>
+                    <span style={{fontSize:10}}>{label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Risk inputs */}
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
+              {[["entry","Entry Price"],["stop","Stop Loss"],["target","Take Profit"]].map(([k,label])=>(
+                <div key={k}>
+                  <label style={labelStyle}>{label}</label>
+                  <input type="number" value={form[k]} onChange={e=>set(k,e.target.value)} style={inputStyle} placeholder="0.00"/>
+                </div>
+              ))}
+            </div>
+
+            {rr!==null&&(
+              <div style={{padding:"8px 12px",borderRadius:8,background:rr>=2?`${B.teal}10`:rr>=1?`rgba(255,183,0,0.1)`:`${B.loss}10`,
+                border:`1px solid ${rr>=2?B.teal:rr>=1?"#FFB700":B.loss}30`,
+                display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <span style={{fontSize:12,color:B.textMuted}}>Calculated R:R</span>
+                <span style={{fontSize:14,fontWeight:800,fontFamily:"monospace",color:rr>=2?B.teal:rr>=1?"#FFB700":B.loss}}>
+                  1:{rr.toFixed(2)}
+                </span>
+              </div>
+            )}
+
+            {/* Notes */}
+            <div>
+              <label style={labelStyle}>Additional Notes</label>
+              <textarea value={form.notes} onChange={e=>set("notes",e.target.value)}
+                placeholder="Any extra confluence, market context, or observations..."
+                style={{...inputStyle,minHeight:70,resize:"vertical",fontFamily:"inherit",lineHeight:1.5}}/>
+            </div>
+
+            {/* Chart Screenshot Upload */}
+            <div style={{borderRadius:10,overflow:"hidden",border:`1px solid ${B.border}`}}>
+              {chartPreview ? (
+                <div>
+                  <div style={{position:"relative"}}>
+                    <img src={chartPreview} alt="chart" style={{width:"100%",maxHeight:180,objectFit:"contain",background:"#000",display:"block"}}/>
+                    <button onClick={()=>{setChartImage(null);setChartPreview(null);}}
+                      style={{position:"absolute",top:6,right:6,width:24,height:24,borderRadius:"50%",
+                        background:"rgba(0,0,0,0.7)",border:"none",color:"#fff",cursor:"pointer",fontSize:14,
+                        display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
+                    <div style={{position:"absolute",top:6,left:6,padding:"2px 8px",borderRadius:6,
+                      background:"rgba(0,212,168,0.9)",fontSize:9,fontWeight:700,color:"#0E0E10",letterSpacing:1}}>
+                      CHART ATTACHED
+                    </div>
+                  </div>
+                  <div style={{padding:"8px 10px",fontSize:10,color:B.textMuted}}>
+                    AI will visually verify your confluence against this chart
+                  </div>
+                </div>
+              ) : (
+                <div
+                  onDragOver={e=>{e.preventDefault();e.currentTarget.style.background="rgba(139,92,246,0.06)";}}
+                  onDragLeave={e=>{e.currentTarget.style.background="transparent";}}
+                  onDrop={e=>{e.preventDefault();e.currentTarget.style.background="transparent";const f=e.dataTransfer.files[0];if(f)handleChartUpload(f);}}
+                  onClick={()=>chartInputRef.current?.click()}
+                  style={{padding:"16px",textAlign:"center",cursor:"pointer",background:"transparent",transition:"background 0.15s"}}>
+                  <div style={{fontSize:18,marginBottom:4}}>📊</div>
+                  <div style={{fontSize:12,color:B.text,fontWeight:600}}>Attach chart screenshot</div>
+                  <div style={{fontSize:10,color:B.textMuted,marginTop:2}}>Drop here or click · Optional but improves accuracy</div>
+                </div>
+              )}
+              <input ref={chartInputRef} type="file" accept="image/*" style={{display:"none"}}
+                onChange={e=>{if(e.target.files[0])handleChartUpload(e.target.files[0]);e.target.value="";}}/>
+            </div>
+
+            <button onClick={analyze} disabled={loading}
+              style={{padding:"12px",borderRadius:10,border:"none",
+                background:loading?"rgba(255,255,255,0.05)":"linear-gradient(135deg,#8B5CF6,#4F8EF7)",
+                color:loading?"#666":"#fff",cursor:loading?"not-allowed":"pointer",
+                fontSize:13,fontWeight:800,letterSpacing:0.5}}>
+              {loading?"⚡ Analyzing Setup...":chartImage?"⚡ Grade Setup + Chart":"⚡ Grade This Setup"}
+            </button>
+          </div>
+
+          {/* RIGHT COLUMN - Result */}
+          <div style={{display:"flex",flexDirection:"column",gap:16}}>
+
+            {/* Setup reference card */}
+            {!result&&!loading&&(
+              <div style={{background:"rgba(139,92,246,0.05)",border:`1px solid rgba(139,92,246,0.2)`,borderRadius:14,padding:16}}>
+                <div style={{fontSize:10,color:B.purple,letterSpacing:1.5,fontWeight:700,marginBottom:12}}>YOUR A+ SETUPS</div>
+                {[
+                  {num:1, name:"NY Open Bullish Double Sweep", color:B.teal,
+                   steps:["Asian: Directional bullish overnight","London: Stays within range","Pre-NY: Sweeps London lows","NY: Sweeps pre-NY + Asian lows","Confluence: HTF FVG + FIB 0TE","Trade: Bullish"]},
+                  {num:2, name:"HTF FVG Support Continuation", color:B.blue,
+                   steps:["Asian: Trades lower, holds above HTF FVG","London: Expands higher, sweeps Asian highs","NY AM: Retraces to HTF FVG or OB","Confluence: FIB 0TE alignment","Trade: Bullish"]},
+                  {num:3, name:"PDH Sweep Reversal", color:B.purple,
+                   steps:["Asian: Sweeps PDH bullish","London: Expands bullish, takes PDH + highs","NY: Sweeps London + Asian lows","Retraces: Bullish IFVG or Bearish FVG","Trade: Bearish"]},
+                ].map(s=>(
+                  <div key={s.num} style={{marginBottom:12,padding:"10px 12px",borderRadius:10,background:"rgba(255,255,255,0.02)",border:`1px solid ${s.color}20`}}>
+                    <div style={{fontSize:11,fontWeight:700,color:s.color,marginBottom:6}}>Setup {s.num}: {s.name}</div>
+                    {s.steps.map((step,i)=>(
+                      <div key={i} style={{fontSize:10,color:B.textMuted,marginBottom:2,paddingLeft:10,position:"relative"}}>
+                        <span style={{position:"absolute",left:0,color:s.color}}>·</span>{step}
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Loading */}
+            {loading&&(
+              <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,padding:"40px 20px"}}>
+                <div style={{width:56,height:56,borderRadius:"50%",background:"linear-gradient(135deg,#8B5CF6,#4F8EF7)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,animation:"pulse 1.5s infinite"}}>⚡</div>
+                <div style={{fontSize:13,color:B.textMuted,textAlign:"center"}}>TCA Coach is grading your setup...</div>
+              </div>
+            )}
+
+            {/* Result */}
+            {result&&!loading&&(
+              <div style={{display:"flex",flexDirection:"column",gap:12}}>
+
+                {/* Grade + Verdict banner */}
+                <div style={{padding:"20px",borderRadius:14,background:result.grade==="A+"?`${B.teal}08`:`rgba(255,183,0,0.08)`,
+                  border:`2px solid ${gradeColor}40`,textAlign:"center"}}>
+                  <div style={{fontSize:52,fontWeight:900,color:gradeColor,lineHeight:1,fontFamily:"monospace",letterSpacing:-2}}>
+                    {result.grade}
+                  </div>
+                  <div style={{marginTop:8,display:"inline-block",padding:"4px 16px",borderRadius:20,
+                    background:verdictColor+"20",border:`1px solid ${verdictColor}40`,
+                    fontSize:13,fontWeight:800,color:verdictColor,letterSpacing:1}}>
+                    {result.verdict?.toUpperCase()}
+                  </div>
+                  {result.setupMatch&&(
+                    <div style={{marginTop:8,fontSize:11,color:B.textMuted}}>{result.setupMatch}</div>
+                  )}
+                {chartImage&&(
+                  <div style={{marginTop:6,display:"inline-flex",alignItems:"center",gap:4,padding:"2px 8px",
+                    borderRadius:12,background:"rgba(79,142,247,0.15)",border:"1px solid rgba(79,142,247,0.3)"}}>
+                    <span style={{fontSize:9,color:B.blue,fontWeight:700}}>📊 CHART ANALYZED</span>
+                  </div>
+                )}
+                </div>
+
+                {/* Reasoning */}
+                <div style={{padding:"12px 14px",borderRadius:10,background:"rgba(255,255,255,0.02)",border:`1px solid ${B.border}`}}>
+                  <div style={{fontSize:9,color:B.textMuted,letterSpacing:1.5,marginBottom:6}}>ANALYSIS</div>
+                  <div style={{fontSize:12,color:B.text,lineHeight:1.7}}>{result.reasoning}</div>
+                </div>
+
+                {/* Confluence hit */}
+                {result.confluenceHit?.length>0&&(
+                  <div style={{padding:"12px 14px",borderRadius:10,background:`${B.teal}06`,border:`1px solid ${B.teal}20`}}>
+                    <div style={{fontSize:9,color:B.teal,letterSpacing:1.5,marginBottom:8}}>CONFLUENCE MET</div>
+                    {result.confluenceHit.map((c,i)=>(
+                      <div key={i} style={{fontSize:11,color:B.text,marginBottom:4,display:"flex",gap:8,alignItems:"center"}}>
+                        <span style={{color:B.teal,fontSize:13}}>✓</span>{c}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Missing */}
+                {result.missing?.length>0&&(
+                  <div style={{padding:"12px 14px",borderRadius:10,background:`${B.loss}06`,border:`1px solid ${B.loss}20`}}>
+                    <div style={{fontSize:9,color:B.loss,letterSpacing:1.5,marginBottom:8}}>MISSING / WEAK</div>
+                    {result.missing.map((m,i)=>(
+                      <div key={i} style={{fontSize:11,color:B.text,marginBottom:4,display:"flex",gap:8,alignItems:"center"}}>
+                        <span style={{color:B.loss,fontSize:13}}>✗</span>{m}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Warnings */}
+                {result.warnings?.length>0&&(
+                  <div style={{padding:"12px 14px",borderRadius:10,background:"rgba(255,183,0,0.06)",border:"1px solid rgba(255,183,0,0.2)"}}>
+                    <div style={{fontSize:9,color:"#FFB700",letterSpacing:1.5,marginBottom:8}}>WARNINGS</div>
+                    {result.warnings.map((w,i)=>(
+                      <div key={i} style={{fontSize:11,color:B.text,marginBottom:4,display:"flex",gap:8,alignItems:"center"}}>
+                        <span style={{color:"#FFB700"}}>⚠</span>{w}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Risk note + Action */}
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                  <div style={{padding:"10px 12px",borderRadius:10,background:"rgba(255,255,255,0.02)",border:`1px solid ${B.border}`}}>
+                    <div style={{fontSize:9,color:B.textMuted,letterSpacing:1.5,marginBottom:4}}>RISK NOTE</div>
+                    <div style={{fontSize:11,color:B.text}}>{result.riskNote||"—"}</div>
+                  </div>
+                  <div style={{padding:"10px 12px",borderRadius:10,background:result.verdict==="Go"?`${B.teal}08`:`${B.loss}08`,border:`1px solid ${verdictColor}30`}}>
+                    <div style={{fontSize:9,color:verdictColor,letterSpacing:1.5,marginBottom:4}}>ACTION</div>
+                    <div style={{fontSize:12,fontWeight:700,color:verdictColor}}>{result.action||"—"}</div>
+                  </div>
+                </div>
+
+                <button onClick={()=>setResult(null)}
+                  style={{padding:"9px",borderRadius:9,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:11}}>
+                  ← Check Another Setup
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 function WeeklyReview({trades, session}){
   const [selectedWeek, setSelectedWeek] = useState(()=>{
     const d = new Date();
@@ -7559,6 +7964,7 @@ export default function App(){
   const [showAdmin,setShowAdmin]=useState(false);
   const [showProfile,setShowProfile]=useState(false);
   const [showReport,setShowReport]=useState(false);
+  const [showPreTrade,setShowPreTrade]=useState(false);
   const [replayTrade,setReplayTrade]=useState(null);
     const [isDark,setIsDark]=useState(()=>{
     try{return localStorage.getItem("tca_theme")!=="light";}catch(e){return true;}
@@ -7832,6 +8238,7 @@ export default function App(){
         <div><h1 style={{margin:0,fontSize:20,fontWeight:800,color:B.text,letterSpacing:-0.5}}>{NAV.find(n=>n.id===active)?.label}</h1></div>
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
           {hasSample&&(<button onClick={()=>setTrades([])} style={{padding:"8px 14px",borderRadius:9,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:11,fontWeight:600}}>Clear Sample Data</button>)}
+          <button onClick={()=>setShowPreTrade(true)} style={{padding:"7px 14px",borderRadius:9,border:"1px solid rgba(139,92,246,0.4)",background:"rgba(139,92,246,0.08)",color:B.purple,cursor:"pointer",fontSize:11,fontWeight:700}}>⚡ Pre-Trade Check</button>
           <button onClick={()=>setShowReport(true)} style={{padding:"7px 14px",borderRadius:9,border:`1px solid rgba(0,212,168,0.3)`,background:"rgba(0,212,168,0.06)",color:B.teal,cursor:"pointer",fontSize:11,fontWeight:700,display:"flex",alignItems:"center",gap:5}}>📄 Export PDF</button>
           {active==="overview"&&<button onClick={()=>document.dispatchEvent(new CustomEvent("tca-toggle-edit"))} style={{padding:"8px 14px",borderRadius:9,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:12,fontWeight:600}}>✏ Edit Layout</button>}
           {/* Theme toggle */}
@@ -7860,6 +8267,7 @@ export default function App(){
       {active==="economiccalendar"&&<EconomicCalendar isDark={isDark}/>}
       {active==="library"&&<PlaybookLibrary session={session}/>}
     </div>
+  {showPreTrade&&<PreTradeChecker trades={trades} onClose={()=>setShowPreTrade(false)}/>}
   <TCAChat trades={trades} strategies={strategies} isOpen={chatOpen} onClose={()=>setChatOpen(false)}/>
   {showReport&&<PDFReportModal trades={trades} session={session} onClose={()=>setShowReport(false)}/>}
   {showProfile&&<ProfileModal session={session} onClose={()=>setShowProfile(false)}/>}
