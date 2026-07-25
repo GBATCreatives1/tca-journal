@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, ComposedChart, Line, Cell } from "recharts";
 import { createClient } from "@supabase/supabase-js";
@@ -7589,7 +7589,243 @@ function TradovateSyncModal({onClose, onSync, syncing, accounts=[]}){
 }
 
 
-const NAV=[{id:"overview",label:"Overview",icon:"▦"},{id:"journal",label:"Journal",icon:"⊟"},{id:"analytics",label:"Analytics",icon:"◈"},{id:"calendar",label:"P&L Calendar",icon:"⊞"},{id:"playbooks",label:"Strategies",icon:"⊕"},{id:"weeklyreview",label:"Weekly Review",icon:"🧠"},{id:"economiccalendar",label:"Eco Calendar",icon:"📰"},{id:"library",label:"Playbook",icon:"📚"},{id:"resources",label:"Resources",icon:"◎"}];
+// ── Best Version of You ───────────────────────────────────────────────────────
+function BestVersionOfYou({trades}){
+  const GRADE_SCORE={"A+":5,"A":4,"B":3,"C":2,"D":1};
+  const DOW=["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+
+  // Score every trade: normalise P&L rank (0-1) + grade score (0-1), average them
+  const scored=useMemo(()=>{
+    if(!trades.length)return[];
+    const pnls=trades.map(t=>t.pnl);
+    const minP=Math.min(...pnls), maxP=Math.max(...pnls);
+    const pRange=maxP-minP||1;
+    return trades.map(t=>({
+      ...t,
+      _pnlScore:(t.pnl-minP)/pRange,
+      _gradeScore:(GRADE_SCORE[t.grade]||3)/5,
+      _combined:((t.pnl-minP)/pRange+(((GRADE_SCORE[t.grade]||3)/5)))/2,
+    })).sort((a,b)=>b._combined-a._combined);
+  },[trades]);
+
+  const topN=Math.max(1,Math.ceil(scored.length*0.20));
+  const top=scored.slice(0,topN);
+  const rest=scored.slice(topN);
+
+  // ── helpers ──────────────────────────────────────────────────────────────────
+  const freq=(arr,key)=>{
+    const m={};
+    arr.forEach(t=>{const v=t[key]||"Unknown";m[v]=(m[v]||0)+1;});
+    return Object.entries(m).sort((a,b)=>b[1]-a[1]);
+  };
+
+  const avgPnl=(arr)=>arr.length?arr.reduce((s,t)=>s+t.pnl,0)/arr.length:0;
+  const winRate=(arr)=>arr.length?Math.round(arr.filter(t=>t.pnl>0).length/arr.length*100):0;
+
+  // ── derived insights ─────────────────────────────────────────────────────────
+  const topInstruments = freq(top,"instrument");
+  const topSetups      = freq(top,"setup");
+  const topSessions    = freq(top,"session");
+  const topDays        = useMemo(()=>{
+    const m={};
+    top.forEach(t=>{
+      try{const d=DOW[new Date(t.date+"T12:00:00").getDay()];m[d]=(m[d]||0)+1;}catch(e){}
+    });
+    return Object.entries(m).sort((a,b)=>b[1]-a[1]);
+  },[top]);
+
+  // Notes keyword frequency (strip common filler words)
+  const STOP=new Set(["the","a","an","and","or","of","in","on","at","to","is","was","i","my","it","for","with","this","that","but","so","as","be","from","into","then","had","have","did","got","took"]);
+  const topKeywords=useMemo(()=>{
+    const m={};
+    top.forEach(t=>{
+      if(!t.notes)return;
+      t.notes.toLowerCase().replace(/[^a-z\s]/g," ").split(/\s+/).forEach(w=>{
+        if(w.length>2&&!STOP.has(w))m[w]=(m[w]||0)+1;
+      });
+    });
+    return Object.entries(m).filter(([,c])=>c>1).sort((a,b)=>b[1]-a[1]).slice(0,12);
+  },[top]);
+
+  // Compare top vs rest
+  const compare=(topArr,restArr,key)=>{
+    const tFreq=freq(topArr,key);
+    const rFreq=freq(restArr,key);
+    return {top:tFreq[0]?.[0]||"—", rest:rFreq[0]?.[0]||"—"};
+  };
+
+  // ── bar chart helper ─────────────────────────────────────────────────────────
+  const BarRow=({label,count,total,color="#00D4A8",extra})=>(
+    <div style={{marginBottom:10}}>
+      <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+        <span style={{fontSize:12,fontWeight:700,color:B.text}}>{label}</span>
+        <span style={{fontSize:11,color:B.textMuted}}>{count} trade{count!==1?"s":""}  {extra&&<span style={{color}}>{extra}</span>}</span>
+      </div>
+      <div style={{height:7,borderRadius:4,background:"rgba(255,255,255,0.06)"}}>
+        <div style={{height:"100%",borderRadius:4,background:color,width:`${Math.round((count/topN)*100)}%`,transition:"width 0.5s ease"}}/>
+      </div>
+    </div>
+  );
+
+  // ── card wrapper ─────────────────────────────────────────────────────────────
+  const Card=({title,emoji,children,accent=B.teal})=>(
+    <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:16,padding:22,display:"flex",flexDirection:"column",gap:14}}>
+      <div style={{display:"flex",alignItems:"center",gap:10}}>
+        <div style={{width:34,height:34,borderRadius:9,background:`${accent}15`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17}}>{emoji}</div>
+        <div style={{fontSize:14,fontWeight:800,color:B.text}}>{title}</div>
+      </div>
+      {children}
+    </div>
+  );
+
+  if(!trades.length)return(
+    <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"100px 20px",gap:16}}>
+      <div style={{fontSize:52}}>⭐</div>
+      <div style={{fontSize:18,fontWeight:800,color:B.text}}>No trades yet</div>
+      <div style={{fontSize:13,color:B.textMuted}}>Log or import trades to discover your best trading patterns.</div>
+    </div>
+  );
+
+  const totalPnl=top.reduce((s,t)=>s+t.pnl,0);
+  const avgGrade=top.length?Object.entries(
+    top.reduce((m,t)=>{m[t.grade]=(m[t.grade]||0)+1;return m;},{})
+  ).sort((a,b)=>b[1]-a[1])[0][0]:"—";
+
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:24}}>
+
+      {/* Header */}
+      <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
+        <div>
+          <div style={{fontSize:22,fontWeight:900,color:B.text}}>⭐ Best Version of You</div>
+          <div style={{fontSize:13,color:B.textMuted,marginTop:4}}>
+            Analysing your top {topN} trade{topN!==1?"s":""} — the highest-scoring {Math.round(topN/trades.length*100)}% by P&L + grade combined
+          </div>
+        </div>
+        <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+          {[
+            {label:"Top Trades",val:topN,color:B.teal},
+            {label:"Avg P&L",val:`$${avgPnl(top).toFixed(0)}`,color:B.profit},
+            {label:"Win Rate",val:`${winRate(top)}%`,color:"#4ade80"},
+            {label:"Most Common Grade",val:avgGrade,color:GRADE_COLOR[avgGrade]||B.teal},
+          ].map(s=>(
+            <div key={s.label} style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:12,padding:"10px 16px",textAlign:"center",minWidth:90}}>
+              <div style={{fontSize:16,fontWeight:900,color:s.color}}>{s.val}</div>
+              <div style={{fontSize:10,color:B.textMuted,marginTop:2,letterSpacing:0.5}}>{s.label.toUpperCase()}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 2-col grid */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(340px,1fr))",gap:18}}>
+
+        {/* Best Instrument */}
+        <Card title="Best Instrument" emoji="📈" accent={B.teal}>
+          {topInstruments.length===0?<div style={{color:B.textMuted,fontSize:12}}>Not enough data</div>:
+          topInstruments.map(([sym,cnt])=>{
+            const symTrades=top.filter(t=>t.instrument===sym);
+            return <BarRow key={sym} label={sym} count={cnt} total={topN} extra={`avg $${avgPnl(symTrades).toFixed(0)}`}/>;
+          })}
+        </Card>
+
+        {/* Best Session */}
+        <Card title="Best Session" emoji="🌅" accent="#4F8EF7">
+          {topSessions.length===0?<div style={{color:B.textMuted,fontSize:12}}>Not enough data</div>:
+          topSessions.map(([ses,cnt])=>{
+            const sesTrades=top.filter(t=>t.session===ses);
+            return <BarRow key={ses} label={ses} count={cnt} total={topN} color="#4F8EF7" extra={`${winRate(sesTrades)}% WR`}/>;
+          })}
+        </Card>
+
+        {/* Best Day of Week */}
+        <Card title="Best Day of Week" emoji="📅" accent="#8B5CF6">
+          {topDays.length===0?<div style={{color:B.textMuted,fontSize:12}}>Not enough data</div>:
+          topDays.map(([day,cnt])=>(
+            <BarRow key={day} label={day} count={cnt} total={topN} color="#8B5CF6"/>
+          ))}
+        </Card>
+
+        {/* Best Setup */}
+        <Card title="Best Setup Type" emoji="🎯" accent="#F59E0B">
+          {topSetups.length===0?<div style={{color:B.textMuted,fontSize:12}}>Not enough data</div>:
+          topSetups.slice(0,6).map(([setup,cnt])=>{
+            const setupTrades=top.filter(t=>t.setup===setup);
+            return <BarRow key={setup} label={setup} count={cnt} total={topN} color="#F59E0B" extra={`avg $${avgPnl(setupTrades).toFixed(0)}`}/>;
+          })}
+        </Card>
+
+        {/* Notes / Emotional patterns */}
+        <Card title="Notes & Emotional Patterns" emoji="🧠" accent="#EC4899">
+          <div style={{fontSize:11,color:B.textMuted,marginBottom:6}}>Most common words in your top trade notes</div>
+          {topKeywords.length===0?(
+            <div style={{color:B.textMuted,fontSize:12}}>Add notes to your trades to unlock this insight</div>
+          ):(
+            <div style={{display:"flex",flexWrap:"wrap",gap:7}}>
+              {topKeywords.map(([word,cnt])=>(
+                <span key={word} style={{
+                  padding:"4px 11px",borderRadius:20,fontSize:11,fontWeight:700,
+                  background:`rgba(236,72,153,${0.08+cnt*0.04})`,
+                  border:`1px solid rgba(236,72,153,${0.15+cnt*0.06})`,
+                  color:"#EC4899"
+                }}>{word} ×{cnt}</span>
+              ))}
+            </div>
+          )}
+        </Card>
+
+        {/* Top vs Rest comparison */}
+        <Card title="Top You vs Rest" emoji="⚖️" accent="#00D4A8">
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+            {[
+              {label:"Avg P&L",top:`$${avgPnl(top).toFixed(0)}`,rest:`$${avgPnl(rest).toFixed(0)}`,good:avgPnl(top)>avgPnl(rest)},
+              {label:"Win Rate",top:`${winRate(top)}%`,rest:`${winRate(rest)}%`,good:winRate(top)>winRate(rest)},
+              {label:"Top Session",...compare(top,rest,"session"),good:true},
+              {label:"Top Setup",...compare(top,rest,"setup"),good:true},
+            ].map(row=>(
+              <div key={row.label} style={{background:"rgba(0,0,0,0.2)",borderRadius:10,padding:"10px 12px"}}>
+                <div style={{fontSize:10,color:B.textMuted,letterSpacing:1,textTransform:"uppercase",marginBottom:6}}>{row.label}</div>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:6}}>
+                  <div style={{textAlign:"center",flex:1}}>
+                    <div style={{fontSize:13,fontWeight:800,color:B.teal}}>{row.top}</div>
+                    <div style={{fontSize:9,color:B.textMuted,marginTop:2}}>TOP 20%</div>
+                  </div>
+                  <div style={{color:B.textMuted,fontSize:11}}>vs</div>
+                  <div style={{textAlign:"center",flex:1}}>
+                    <div style={{fontSize:13,fontWeight:800,color:B.textMuted}}>{row.rest}</div>
+                    <div style={{fontSize:9,color:B.textMuted,marginTop:2}}>REST</div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      </div>
+
+      {/* Top trades list */}
+      <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:16,padding:22}}>
+        <div style={{fontSize:14,fontWeight:800,color:B.text,marginBottom:16}}>Your Top {topN} Trades</div>
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {top.map((t,i)=>(
+            <div key={t.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 14px",borderRadius:10,background:"rgba(0,0,0,0.2)"}}>
+              <div style={{width:24,height:24,borderRadius:"50%",background:`${B.teal}18`,border:`1px solid ${B.teal}40`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800,color:B.teal,flexShrink:0}}>#{i+1}</div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:12,fontWeight:700,color:B.text}}>{t.date} · {t.instrument} {t.direction} · {t.session}</div>
+                <div style={{fontSize:11,color:B.textMuted,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{t.setup}{t.notes?` · ${t.notes}`:""}</div>
+              </div>
+              <div style={{display:"flex",gap:8,alignItems:"center",flexShrink:0}}>
+                <span style={{fontSize:11,fontWeight:700,padding:"3px 8px",borderRadius:6,background:`${GRADE_COLOR[t.grade]||"#aaa"}18`,color:GRADE_COLOR[t.grade]||"#aaa"}}>{t.grade}</span>
+                <span style={{fontSize:13,fontWeight:800,color:t.pnl>=0?B.profit:B.loss}}>{t.pnl>=0?"+":""}{t.pnl.toFixed(2)}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const NAV=[{id:"overview",label:"Overview",icon:"▦"},{id:"journal",label:"Journal",icon:"⊟"},{id:"analytics",label:"Analytics",icon:"◈"},{id:"calendar",label:"P&L Calendar",icon:"⊞"},{id:"playbooks",label:"Strategies",icon:"⊕"},{id:"weeklyreview",label:"Weekly Review",icon:"🧠"},{id:"economiccalendar",label:"Eco Calendar",icon:"📰"},{id:"library",label:"Playbook",icon:"📚"},{id:"resources",label:"Resources",icon:"◎"},{id:"bestversion",label:"Best You",icon:"⭐"}];
 
 export default function App(){
   const ADMIN_EMAIL = "admin@thecandlestickacademy.com";
@@ -7898,6 +8134,7 @@ export default function App(){
       {active==="weeklyreview"&&<WeeklyReview trades={activeAccount==="all"?trades:trades.filter(t=>t.account_id===activeAccount)} session={session}/>}
       {active==="economiccalendar"&&<EconomicCalendar isDark={isDark}/>}
       {active==="library"&&<PlaybookLibrary session={session}/>}
+      {active==="bestversion"&&<BestVersionOfYou trades={activeAccount==="all"?trades:trades.filter(t=>t.account_id===activeAccount)}/>}
     </div>
   <TCAChat trades={trades} strategies={strategies} isOpen={chatOpen} onClose={()=>setChatOpen(false)}/>
   {showReport&&<PDFReportModal trades={trades} session={session} onClose={()=>setShowReport(false)}/>}
