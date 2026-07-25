@@ -306,7 +306,7 @@ function parseTradovateCSV(text){
   return parseTradovateOrdersCSV(text);
 }
 
-function parseTradovatePerformanceCSV(text){
+function parseTradovatePerformanceCSV(text, commissionRates={}){
   // Parse CSV respecting quoted fields
   function parseCSVLine(line){
     const result=[];let cur="";let inQ=false;
@@ -328,10 +328,10 @@ function parseTradovatePerformanceCSV(text){
     const row={};
     headers.forEach((h,idx)=>{row[h]=(vals[idx]||"").replace(/"/g,"").trim();});
 
-    // Parse P&L — handles "$6.25" and "$(51.25)" formats
+    // Parse gross P&L — handles "$6.25" and "$(51.25)" formats
     const rawPnl=row["pnl"]||"0";
     const isNeg=rawPnl.includes("(");
-    const pnl=parseFloat(rawPnl.replace(/[$(),]/g,""))*(isNeg?-1:1)||0;
+    const grossPnl=parseFloat(rawPnl.replace(/[$(),]/g,""))*(isNeg?-1:1)||0;
 
     // Parse dates
     const rawDate=row["boughttimestamp"]||row["soldtimestamp"]||"";
@@ -363,6 +363,11 @@ function parseTradovatePerformanceCSV(text){
 
     if(!dateStr)continue;
 
+    // Deduct commission: rate per contract (round trip) x number of contracts
+    const ratePerContract=commissionRates[product]??commissionRates["MES"]??1.80;
+    const commission=ratePerContract*qty;
+    const pnl=Math.round((grossPnl-commission)*100)/100;
+
     const tradeObj={
       id:`perf_${Date.now()}_${i}`,
       date:dateStr,
@@ -371,11 +376,11 @@ function parseTradovatePerformanceCSV(text){
       contracts:qty,
       entry:entryPrice,
       exit:exitPrice,
-      pnl:Math.round(pnl*100)/100,
+      pnl,
       rr:"--",
       setup:"Imported",
       grade:"B",
-      notes:`${rawSymbol} | ${duration} | Entry: ${entryPrice} → Exit: ${exitPrice}`,
+      notes:`${rawSymbol} | ${duration} | Entry: ${entryPrice} -> Exit: ${exitPrice} | Comm: $${commission.toFixed(2)}`,
       session,
       result:pnl>=0?"Win":"Loss",
     };
@@ -794,6 +799,9 @@ function TradeFormModal({onClose,onSave,editTrade}){
               <div><label style={lS}>Account</label><select value={form.account_id||"main"} onChange={e=>set("account_id",e.target.value)} style={{...iS,cursor:"pointer"}}>{formAccounts.map(a=>(<option key={a.id} value={a.id}>{a.label}</option>))}</select></div><div style={{gridColumn:"1/-1"}}><label style={lS}>Grade</label><div style={{display:"flex",gap:6}}>{GRADES.map(g=>(<button key={g} onClick={()=>set("grade",g)} style={{flex:1,padding:"7px 0",borderRadius:8,border:"1px solid",cursor:"pointer",fontWeight:800,fontSize:12,borderColor:form.grade===g?GRADE_COLOR[g]:B.border,background:form.grade===g?`${GRADE_COLOR[g]}18`:"transparent",color:form.grade===g?GRADE_COLOR[g]:B.textMuted}}>{g}</button>))}</div></div><div style={{gridColumn:"1/-1"}}><label style={lS}>Notes</label><textarea value={form.notes} onChange={e=>set("notes",e.target.value)} rows={3} style={{...iS,resize:"vertical"}} placeholder="What happened?"/></div></div><div style={{display:"flex",gap:10,marginTop:24,justifyContent:"flex-end"}}><button onClick={onClose} style={{padding:"10px 22px",borderRadius:10,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:13,fontWeight:600}}>Cancel</button><button onClick={handleSave} style={{padding:"10px 28px",borderRadius:10,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:13,fontWeight:800}}>{editTrade?"Save Changes":"Log Trade"}</button></div></div></div>);
 }
 
+// Default round-trip all-in commission per contract (exchange + NFA + platform)
+const DEFAULT_COMMISSION_RATES={"MES":1.80,"MNQ":2.40,"MGC":2.50};
+
 function ImportModal({onClose,onImport,existingTrades}){
   const [step,setStep]=useState("upload");
   const [parsed,setParsed]=useState([]);
@@ -807,6 +815,8 @@ function ImportModal({onClose,onImport,existingTrades}){
     {id:"apex_eval",label:"Apex Eval",color:"#4F8EF7"},
     {id:"apex_demo",label:"Apex Demo",color:"#8B5CF6"},
   ]);
+  const [commissionRates,setCommissionRates]=useState({...DEFAULT_COMMISSION_RATES});
+  const [showCommission,setShowCommission]=useState(false);
   const ref=useRef();
 
   // Load custom accounts from localStorage
@@ -825,7 +835,7 @@ function ImportModal({onClose,onImport,existingTrades}){
         let tr=[];
         let type="";
         if(firstLine.includes("buyprice")||firstLine.includes("soldtimestamp")){
-          tr=parseTradovatePerformanceCSV(t);
+          tr=parseTradovatePerformanceCSV(t,commissionRates);
           type="Performance CSV";
         }else{
           tr=parseTradovateOrdersCSV(t);
@@ -881,6 +891,35 @@ function ImportModal({onClose,onImport,existingTrades}){
                   ))}
                 </div>
                 <input ref={ref} type="file" accept=".csv,.txt" style={{display:"none"}} onChange={e=>handle(e.target.files[0])}/>
+              </div>
+
+              {/* Commission rates */}
+              <div style={{marginBottom:16,borderRadius:12,border:`1px solid ${B.border}`,overflow:"hidden"}}>
+                <button onClick={()=>setShowCommission(p=>!p)} style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"11px 14px",background:"rgba(0,0,0,0.2)",border:"none",cursor:"pointer",color:B.text}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <span style={{fontSize:13}}>💸</span>
+                    <span style={{fontSize:12,fontWeight:700}}>Commission Rates (round trip / contract)</span>
+                  </div>
+                  <span style={{fontSize:11,color:B.textMuted}}>{showCommission?"▲ hide":"▼ edit"}</span>
+                </button>
+                {showCommission&&(
+                  <div style={{padding:"14px 16px",background:"rgba(0,0,0,0.15)",display:"flex",flexWrap:"wrap",gap:12}}>
+                    {Object.entries(commissionRates).map(([sym,rate])=>(
+                      <div key={sym} style={{display:"flex",alignItems:"center",gap:8}}>
+                        <label style={{fontSize:11,fontWeight:700,color:B.teal,minWidth:36}}>{sym}</label>
+                        <div style={{display:"flex",alignItems:"center",gap:4}}>
+                          <span style={{fontSize:12,color:B.textMuted}}>$</span>
+                          <input
+                            type="number" step="0.01" min="0" value={rate}
+                            onChange={e=>setCommissionRates(r=>({...r,[sym]:parseFloat(e.target.value)||0}))}
+                            style={{...iS,width:72,padding:"5px 8px",fontSize:12,textAlign:"right"}}/>
+                          <span style={{fontSize:11,color:B.textMuted}}>/ct</span>
+                        </div>
+                      </div>
+                    ))}
+                    <button onClick={()=>setCommissionRates({...DEFAULT_COMMISSION_RATES})} style={{fontSize:11,color:B.textMuted,background:"none",border:`1px solid ${B.border}`,borderRadius:6,padding:"4px 10px",cursor:"pointer",alignSelf:"center"}}>Reset defaults</button>
+                  </div>
+                )}
               </div>
 
               {error&&<div style={{padding:"12px 16px",borderRadius:10,background:`${B.loss}10`,border:`1px solid ${B.loss}30`,color:B.loss,fontSize:12,marginBottom:16}}>{error}</div>}
