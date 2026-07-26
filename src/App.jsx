@@ -4237,7 +4237,10 @@ function AICoachWidget({trades, session}){
         body:JSON.stringify({type:"full",stats})
       });
       if(!res.ok) throw new Error("Server error "+res.status);
-      const data=await res.json();
+      const raw=await res.text();
+      if(!raw||!raw.trim())throw new Error("Empty response — please try again");
+      let data;
+      try{data=JSON.parse(raw);}catch(e){throw new Error("Server timed out — please try again");}
       if(data.error) throw new Error(data.error);
       // Accept any response that has at least some useful data
       if(!data.score && !data.summary && !data.patterns) throw new Error("Invalid response format");
@@ -5951,7 +5954,12 @@ function RecurringPatternsWidget({trades, session}){
         headers:{"Content-Type":"application/json"},
         body:JSON.stringify({type:"patterns",stats:stats}),
       });
-      const data=await res.json();
+      if(!res.ok)throw new Error(`Server error ${res.status}`);
+      const text=await res.text();
+      if(!text||!text.trim())throw new Error("Empty response from server — please try again");
+      let data;
+      try{data=JSON.parse(text);}catch(e){throw new Error("Response was not valid JSON — the server may have timed out");}
+
       // coach.js returns parsed JSON directly
       if(data.error){throw new Error(data.error);}
       // Handle both direct object and wrapped content
@@ -7023,6 +7031,9 @@ function WeeklyReview({trades, session}){
   const [focusNext, setFocusNext] = useState("");
   const [rulesKept, setRulesKept] = useState([]);
   const [rulesBroken, setRulesBroken] = useState([]);
+  const [debrief, setDebrief] = useState(null);
+  const [debriefLoading, setDebriefLoading] = useState(false);
+  const [debriefError, setDebriefError] = useState("");
   const SKEY = `tca_weekly_review_${selectedWeek}`;
 
   // Build week dates
@@ -7034,7 +7045,7 @@ function WeeklyReview({trades, session}){
   const weekEnd = weekDates[4];
   const weekTrades = trades.filter(t=>t.date>=selectedWeek&&t.date<=weekEnd);
 
-  // Load saved notes
+  // Load saved debrief alongside notes
   useEffect(()=>{
     try{
       const saved = JSON.parse(localStorage.getItem(SKEY)||"{}");
@@ -7042,14 +7053,89 @@ function WeeklyReview({trades, session}){
       if(saved.focusNext)setFocusNext(saved.focusNext);
       if(saved.rulesKept)setRulesKept(saved.rulesKept);
       if(saved.rulesBroken)setRulesBroken(saved.rulesBroken);
+      if(saved.debrief)setDebrief(saved.debrief);else setDebrief(null);
     }catch(e){}
   },[selectedWeek]);
 
   const saveReview = ()=>{
-    const data = {notes,focusNext,rulesKept,rulesBroken,savedAt:new Date().toISOString()};
+    const data = {notes,focusNext,rulesKept,rulesBroken,debrief,savedAt:new Date().toISOString()};
     localStorage.setItem(SKEY, JSON.stringify(data));
     setSaved(s=>({...s,[selectedWeek]:true}));
     setTimeout(()=>setSaved(s=>({...s,[selectedWeek]:false})),2000);
+  };
+
+  const generateDebrief = async()=>{
+    if(!weekTrades.length)return;
+    setDebriefLoading(true);setDebriefError("");setDebrief(null);
+    try{
+      // Build rich week context
+      const weekWins=weekTrades.filter(t=>t.result==="Win");
+      const weekLosses=weekTrades.filter(t=>t.result==="Loss");
+      const weekPnl=weekTrades.reduce((a,t)=>a+t.pnl,0);
+      const weekWr=weekTrades.length?Math.round(weekWins.length/weekTrades.length*100):0;
+      const avgWin=weekWins.length?Math.round(weekWins.reduce((a,t)=>a+t.pnl,0)/weekWins.length*100)/100:0;
+      const avgLoss=weekLosses.length?Math.round(Math.abs(weekLosses.reduce((a,t)=>a+t.pnl,0))/weekLosses.length*100)/100:0;
+
+      // Session breakdown for the week
+      const wBySession={};
+      weekTrades.forEach(t=>{if(!wBySession[t.session])wBySession[t.session]={wins:0,total:0,pnl:0};wBySession[t.session].total++;wBySession[t.session].pnl+=t.pnl;if(t.result==="Win")wBySession[t.session].wins++;});
+
+      // All-time context for comparison
+      const allWr=trades.length?Math.round(trades.filter(t=>t.result==="Win").length/trades.length*100):0;
+      const allAvgPnl=trades.length?Math.round(trades.reduce((a,t)=>a+t.pnl,0)/trades.length*100)/100:0;
+
+      // Full trade list for the week with notes
+      const tradeList=weekTrades.sort((a,b)=>a.date.localeCompare(b.date))
+        .map(t=>`${t.date} ${new Date(t.date+"T12:00:00").toLocaleDateString("en-US",{weekday:"short"})} | ${t.instrument} ${t.direction} | ${t.result} | $${t.pnl.toFixed(2)} | ${t.setup||t.strategy||"?"} | ${t.session} | Grade:${t.grade}${t.notes?" | Notes:"+t.notes.slice(0,60):""}`)
+        .join("\n");
+
+      const ctx=`You are TCA Coach for The Candlestick Academy, expert in MES futures and ICT methodology.
+
+Generate a structured weekly trading debrief for the week of ${selectedWeek} to ${weekEnd}.
+
+THIS WEEK'S TRADES:
+${tradeList}
+
+WEEK SUMMARY: ${weekTrades.length} trades | $${weekPnl.toFixed(2)} net P&L | ${weekWr}% WR | AvgW:$${avgWin} | AvgL:$${avgLoss}
+SESSIONS THIS WEEK: ${Object.entries(wBySession).map(([s,d])=>s+"="+d.total+"t,"+Math.round(d.wins/d.total*100)+"%WR,$"+Math.round(d.pnl)).join(" | ")}
+ALL-TIME COMPARISON: ${trades.length} total trades | ${allWr}% WR | $${allAvgPnl} avg P&L per trade
+
+Write the debrief in this exact format with these four sections. Be specific — reference actual trades, dates, P&L figures, and setups from the data above. Do not be generic.
+
+## What Went Well
+[2-3 specific observations about wins, good setups, or strong execution this week]
+
+## What Needs Work
+[2-3 specific observations about losses, mistakes, or patterns that hurt this week]
+
+## Key Pattern Spotted
+[1 clear pattern — good or bad — visible in this week's data, with specific evidence]
+
+## One Focus for Next Week
+[1 concrete, actionable instruction based on the biggest opportunity or weakness identified above]`;
+
+      const res=await fetch("/api/coach",{
+        method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({type:"chat",chatContext:ctx,chatHistory:[{role:"user",content:"Generate my weekly trading debrief now."}]}),
+      });
+      if(!res.ok)throw new Error("Server error "+res.status);
+      const raw=await res.text();
+      if(!raw||!raw.trim())throw new Error("Empty response — please try again");
+      let data;
+      try{data=JSON.parse(raw);}catch(e){throw new Error("Server timed out — please try again");}
+      const text=data.content?.[0]?.text||data.response||"";
+      if(!text)throw new Error("Empty response");
+      setDebrief(text);
+      // Auto-save debrief alongside any existing notes
+      try{
+        const existing=JSON.parse(localStorage.getItem(SKEY)||"{}");
+        localStorage.setItem(SKEY,JSON.stringify({...existing,debrief:text,savedAt:new Date().toISOString()}));
+      }catch(e){}
+    }catch(e){
+      setDebriefError("Failed to generate debrief: "+(e.message||"please try again."));
+    }finally{
+      setDebriefLoading(false);
+    }
   };
 
   const navWeek = (dir)=>{
@@ -7059,7 +7145,7 @@ function WeeklyReview({trades, session}){
     const mon = new Date(d);
     mon.setDate(d.getDate()-(dow===0?6:dow-1));
     setSelectedWeek(mon.toISOString().slice(0,10));
-    setReview(null);setNotes("");setFocusNext("");setRulesKept([]);setRulesBroken([]);
+    setReview(null);setNotes("");setFocusNext("");setRulesKept([]);setRulesBroken([]);setDebrief(null);setDebriefError("");
   };
 
   // Stats
@@ -7135,6 +7221,43 @@ function WeeklyReview({trades, session}){
               <div style={{fontSize:20,fontWeight:800,color:s.color,fontFamily:"monospace"}}>{s.value}</div>
             </div>
           ))}
+        </div>
+
+        {/* AI Debrief */}
+        <div style={{background:B.surface,border:`1px solid ${debrief?"rgba(139,92,246,0.35)":B.border}`,borderRadius:16,padding:20,marginBottom:20}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:debrief?16:0}}>
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <div style={{width:32,height:32,borderRadius:9,background:"rgba(139,92,246,0.15)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>🧠</div>
+              <div>
+                <div style={{fontSize:13,fontWeight:800,color:B.text}}>AI Weekly Debrief</div>
+                <div style={{fontSize:11,color:B.textMuted}}>{debrief?"Generated by TCA Coach":"Let the coach analyse this week's trades"}</div>
+              </div>
+            </div>
+            <button
+              onClick={generateDebrief}
+              disabled={debriefLoading||weekTrades.length===0}
+              style={{padding:"8px 16px",borderRadius:9,border:"1px solid rgba(139,92,246,0.4)",background:debriefLoading?"rgba(139,92,246,0.05)":"rgba(139,92,246,0.12)",color:"#8B5CF6",cursor:weekTrades.length===0?"not-allowed":"pointer",fontSize:12,fontWeight:700,opacity:weekTrades.length===0?0.4:1}}>
+              {debriefLoading?"Generating...":debrief?"↺ Regenerate":"✦ Generate Debrief"}
+            </button>
+          </div>
+          {debriefError&&<div style={{fontSize:12,color:B.loss,marginTop:8}}>{debriefError}</div>}
+          {debriefLoading&&(
+            <div style={{display:"flex",alignItems:"center",gap:10,padding:"14px 0"}}>
+              <div style={{width:18,height:18,borderRadius:"50%",border:"2px solid rgba(139,92,246,0.3)",borderTopColor:"#8B5CF6",animation:"spin 0.8s linear infinite"}}/>
+              <div style={{fontSize:12,color:B.textMuted}}>Analysing your {weekTrades.length} trades for the week of {selectedWeek}...</div>
+            </div>
+          )}
+          {debrief&&!debriefLoading&&(
+            <div style={{fontSize:13,color:B.text,lineHeight:1.75}}>
+              {debrief.split("\n").map((line,i)=>{
+                if(line.startsWith("## ")){
+                  return <div key={i} style={{fontSize:12,fontWeight:800,color:"#8B5CF6",letterSpacing:1,textTransform:"uppercase",marginTop:i===0?0:16,marginBottom:6}}>{line.replace("## ","")}</div>;
+                }
+                if(!line.trim())return null;
+                return <div key={i} style={{marginBottom:4,color:B.text}}>{line}</div>;
+              })}
+            </div>
+          )}
         </div>
 
         {/* Day grid */}
@@ -7403,24 +7526,81 @@ function TCAChat({trades, strategies, isOpen, onClose}){
     const losses=trades.filter(t=>t.result==="Loss");
     const totalPnl=trades.reduce((a,t)=>a+t.pnl,0);
     const winRate=trades.length?Math.round((wins.length/trades.length)*100):0;
-    const bySession={};
-    trades.forEach(t=>{if(!bySession[t.session])bySession[t.session]={wins:0,total:0,pnl:0};bySession[t.session].total++;bySession[t.session].pnl+=t.pnl;if(t.result==="Win")bySession[t.session].wins++;});
-    const byDay={};
-    trades.forEach(t=>{const d=new Date(t.date+"T12:00:00").toLocaleDateString("en-US",{weekday:"short"});if(!byDay[d])byDay[d]={wins:0,total:0,pnl:0};byDay[d].total++;byDay[d].pnl+=t.pnl;if(t.result==="Win")byDay[d].wins++;});
-    const bySetup={};
-    trades.forEach(t=>{const s=t.strategy||t.setup||"Unknown";if(!bySetup[s])bySetup[s]={wins:0,total:0,pnl:0};bySetup[s].total++;bySetup[s].pnl+=t.pnl;if(t.result==="Win")bySetup[s].wins++;});
-    const recent=[...trades].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,15).map(t=>`${t.date}|${t.instrument}|${t.direction==="Long"?"L":"S"}|${t.result==="Win"?"W":"L"}|$${Math.round(t.pnl*100)/100}|${(t.strategy||t.setup||"?").slice(0,20)}|${t.session}|${t.grade}`);
     const avgWin=wins.length?Math.round(wins.reduce((a,t)=>a+t.pnl,0)/wins.length*100)/100:0;
     const avgLoss=losses.length?Math.round(Math.abs(losses.reduce((a,t)=>a+t.pnl,0))/losses.length*100)/100:0;
     const pf=wins.reduce((a,t)=>a+t.pnl,0)/(Math.abs(losses.reduce((a,t)=>a+t.pnl,0))||1);
-    return `You are TCA Coach for The Candlestick Academy. Expert in MES futures + ICT methodology. You have this trader's data. Be direct, specific, use their numbers. Max 4 sentences unless asked for full review.
 
-STATS: ${trades.length} trades | $${Math.round(totalPnl*100)/100} PnL | ${winRate}%WR | AvgW:$${avgWin} | AvgL:$${avgLoss} | PF:${Math.round(pf*100)/100}
-SESSIONS: ${Object.entries(bySession).map(([s,d])=>s+"="+d.total+"t,"+Math.round(d.wins/d.total*100)+"%WR,$"+Math.round(d.pnl*100)/100).join("|")}
-DAYS: ${Object.entries(byDay).map(([d,v])=>d+"="+v.total+"t,"+Math.round(v.wins/v.total*100)+"%WR,$"+Math.round(v.pnl*100)/100).join("|")}
-SETUPS: ${Object.entries(bySetup).slice(0,6).map(([s,d])=>s.slice(0,15)+"="+d.total+"t,"+Math.round(d.wins/d.total*100)+"%WR,$"+Math.round(d.pnl*100)/100).join("|")}
-STRATEGIES: ${strategies.map(s=>s.name).join(",")||"none"}
-RECENT 15: ${recent.join(" / ")}`;
+    // Session breakdown
+    const bySession={};
+    trades.forEach(t=>{if(!bySession[t.session])bySession[t.session]={wins:0,total:0,pnl:0};bySession[t.session].total++;bySession[t.session].pnl+=t.pnl;if(t.result==="Win")bySession[t.session].wins++;});
+
+    // Day breakdown
+    const byDay={};
+    trades.forEach(t=>{const d=new Date(t.date+"T12:00:00").toLocaleDateString("en-US",{weekday:"short"});if(!byDay[d])byDay[d]={wins:0,total:0,pnl:0};byDay[d].total++;byDay[d].pnl+=t.pnl;if(t.result==="Win")byDay[d].wins++;});
+
+    // Setup breakdown
+    const bySetup={};
+    trades.forEach(t=>{const s=t.strategy||t.setup||"Unknown";if(!bySetup[s])bySetup[s]={wins:0,total:0,pnl:0};bySetup[s].total++;bySetup[s].pnl+=t.pnl;if(t.result==="Win")bySetup[s].wins++;});
+
+    // Grade distribution
+    const byGrade={};
+    trades.forEach(t=>{byGrade[t.grade]=(byGrade[t.grade]||0)+1;});
+
+    // Current win/loss streak
+    const sorted=[...trades].sort((a,b)=>b.date.localeCompare(a.date));
+    let streak=0;let streakType="";
+    if(sorted.length){
+      streakType=sorted[0].result;
+      for(const t of sorted){if(t.result===streakType)streak++;else break;}
+    }
+
+    // Max drawdown + current drawdown from peak equity
+    let peak=0,maxDD=0,equity=0;
+    [...trades].sort((a,b)=>a.date.localeCompare(b.date)).forEach(t=>{
+      equity+=t.pnl;
+      if(equity>peak)peak=equity;
+      const dd=peak-equity;
+      if(dd>maxDD)maxDD=dd;
+    });
+    const currentDD=Math.max(0,peak-equity);
+
+    // Weekly P&L trend (last 8 weeks)
+    const weeklyTrend=[];
+    for(let w=0;w<8;w++){
+      const now=new Date();
+      const dow=now.getDay();
+      const mon=new Date(now);
+      mon.setDate(now.getDate()-(dow===0?6:dow-1)-(w*7));
+      const wStart=mon.toISOString().slice(0,10);
+      const wEnd=new Date(mon.getTime()+4*86400000).toISOString().slice(0,10);
+      const wTrades=trades.filter(t=>t.date>=wStart&&t.date<=wEnd);
+      if(wTrades.length){
+        const wPnl=wTrades.reduce((a,t)=>a+t.pnl,0);
+        const wWr=Math.round(wTrades.filter(t=>t.result==="Win").length/wTrades.length*100);
+        weeklyTrend.unshift(`${wStart.slice(5)}:$${Math.round(wPnl)}(${wWr}%WR,${wTrades.length}t)`);
+      }
+    }
+
+    // Full trade history compressed — cap notes tightly to keep payload small
+    const allTrades=sorted.map(t=>`${t.date}|${t.instrument}|${t.direction==="Long"?"L":"S"}|${t.result==="Win"?"W":"L"}|$${Math.round(t.pnl*100)/100}|${(t.strategy||t.setup||"?").slice(0,15)}|${t.session}|${t.grade}${t.notes?"|"+t.notes.slice(0,20):""}`);
+
+    // Recent 25 in detail, older trades summarised as aggregate stats only
+    const recent25=allTrades.slice(0,25);
+    const olderSummary=allTrades.length>25?` [+${allTrades.length-25} older trades included in aggregate stats above]`:"";
+
+    return `You are TCA Coach for The Candlestick Academy. Expert in MES futures + ICT methodology. Be direct, specific, reference the trader's actual numbers. Max 4 sentences unless asked for a full review or debrief.
+
+OVERALL: ${trades.length} trades | $${Math.round(totalPnl*100)/100} net PnL | ${winRate}% WR | AvgW:$${avgWin} | AvgL:$${avgLoss} | PF:${Math.round(pf*100)/100}
+STREAK: Current ${streak}-trade ${streakType||"—"} streak
+DRAWDOWN: Max $${Math.round(maxDD*100)/100} | Current from peak: $${Math.round(currentDD*100)/100}
+GRADES: ${Object.entries(byGrade).sort((a,b)=>["A+","A","B","C","D"].indexOf(a[0])-["A+","A","B","C","D"].indexOf(b[0])).map(([g,c])=>g+":"+c).join(", ")}
+SESSIONS: ${Object.entries(bySession).map(([s,d])=>s+"="+d.total+"t,"+Math.round(d.wins/d.total*100)+"%WR,$"+Math.round(d.pnl)).join(" | ")}
+DAYS: ${Object.entries(byDay).map(([d,v])=>d+"="+v.total+"t,"+Math.round(v.wins/v.total*100)+"%WR,$"+Math.round(v.pnl)).join(" | ")}
+SETUPS: ${Object.entries(bySetup).sort((a,b)=>b[1].pnl-a[1].pnl).slice(0,8).map(([s,d])=>s.slice(0,15)+"="+d.total+"t,"+Math.round(d.wins/d.total*100)+"%WR,$"+Math.round(d.pnl)).join(" | ")}
+WEEKLY TREND: ${weeklyTrend.join(" → ")||"not enough data"}
+STRATEGIES: ${strategies.map(s=>s.name).join(", ")||"none"}
+RECENT 25 (date|inst|dir|W/L|pnl|setup|session|grade|notes):
+${recent25.join("\n")}${olderSummary}`;
   };
 
   const send=async()=>{

@@ -11,15 +11,16 @@ export default async function handler(req, res) {
     const MODEL = "claude-sonnet-4-6";
     console.log("Coach called, type:", type);
 
-    // ── CHAT (handles Pre-Trade Checker with optional image) ──────────────────
+    // ── CHAT ─────────────────────────────────────────────────────────────────
     if (type === "chat") {
       const messages = body.chatHistory || [];
       const hasImage = messages.some(m =>
         Array.isArray(m.content) && m.content.some(c => c.type === "image")
       );
-      // Pre-trade checker with chart image needs significantly more tokens
-      const maxTokens = hasImage ? 2000 : 800;
-      console.log("Chat hasImage:", hasImage, "maxTokens:", maxTokens);
+      // Weekly debrief and chart image analysis need more tokens than a normal chat reply
+      const isDebrief = (body.chatContext || "").includes("weekly trading debrief");
+      const maxTokens = hasImage ? 2000 : isDebrief ? 1500 : 1000;
+      console.log("Chat hasImage:", hasImage, "isDebrief:", isDebrief, "maxTokens:", maxTokens);
 
       const r = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
