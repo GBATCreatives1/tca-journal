@@ -100,20 +100,16 @@ async function fetchClosedTrades(token, fromDate=null, toDate=null, account="mai
 }
 
 function execToTrade(exec) {
-  // New proxy returns pre-built trade objects - just pass through
-  // with any missing fields filled in
   if (exec.date && exec.instrument) {
-    // Deduct commission from gross P&L if not already done
-    if(!exec._commissionApplied){
-      const comm=getCommission(exec.instrument, exec.contracts||1);
-      exec.pnl=Math.round(((exec.pnl||0)-comm)*100)/100;
-      exec.result=exec.pnl>=0?"Win":"Loss";
-      exec._commissionApplied=true;
-    }
+    // Deduct commission from gross P&L (called once per trade)
+    const comm=getCommission(exec.instrument, exec.contracts||1);
+    exec.pnl=Math.round(((exec.pnl||0)-comm)*100)/100;
+    exec.result=exec.pnl>=0?"Win":"Loss";
+    exec.notes=(exec.notes||"Tradovate sync")+` | Comm: $${comm.toFixed(2)}`;
     if (!exec.grade || exec.grade === "B") exec.grade = autoGrade(exec);
     return exec;
   }
-  // Fallback for old format
+  // Fallback for old Tradovate format
   const rawDate = exec.timestamp || new Date().toISOString();
   const dateStr = new Date(rawDate).toISOString().slice(0, 10);
   const rawSymbol = exec.name || "MES";
@@ -127,7 +123,7 @@ function execToTrade(exec) {
   return {
     date: dateStr, instrument: symbol, direction,
     contracts: qty, entry: exec.entry || 0, exit: exec.exit || 0,
-    pnl, rr: "--", setup: "Auto-synced", grade: "B",
+    pnl, rr: null, setup: "Auto-synced", grade: "B",
     notes: `Tradovate sync | Comm: $${commission.toFixed(2)}`,
     session: hr < 10 ? "AM" : hr < 13 ? "Mid" : "PM",
     result: pnl >= 0 ? "Win" : "Loss",
@@ -8138,14 +8134,41 @@ export default function App(){
       console.log("New trades to insert:", newExecs.length, "of", execs.length);
 
       if (newExecs.length > 0) {
+        const toNum=(v)=>{const n=parseFloat(v);return isNaN(n)?null:n;};
         const newTrades = newExecs.map(e => {
           const built = execToTrade(e);
-          built.grade = autoGrade(built, strategies); // auto-grade synced trades
-          const { id, ...rest } = built; // strip client ID
-          return { ...rest, user_id: session.user.id, day: dayName(built.date) };
+          built.grade = autoGrade(built, strategies);
+          // Explicitly build DB row — never spread internal flags into Supabase
+          return {
+            user_id:      session.user.id,
+            day:          dayName(built.date),
+            date:         built.date,
+            account_id:   built.account_id||"main",
+            instrument:   built.instrument,
+            direction:    built.direction,
+            contracts:    parseInt(built.contracts)||1,
+            entry:        toNum(built.entry)??0,
+            exit:         toNum(built.exit)??0,
+            stop_loss:    toNum(built.stop_loss),
+            take_profit:  toNum(built.take_profit),
+            pnl:          toNum(built.pnl)??0,
+            rr:           toNum(built.rr),
+            result:       built.result||"Win",
+            setup:        built.setup||"Auto-synced",
+            strategy:     built.strategy||"",
+            grade:        built.grade||"B",
+            session:      built.session||"AM",
+            notes:        built.notes||"",
+            tradovate_id: built.tradovate_id||null,
+          };
         });
         const { data, error } = await supabase.from("trades").insert(newTrades).select();
-        if (error) { console.error("Supabase insert error:", error); }
+        if (error) {
+          console.error("Supabase insert error:", error);
+          showT("Sync failed: "+error.message, "error");
+          setSyncStatus("error");
+          return;
+        }
         if (data?.length) {
           setTrades(ts => [...(ts.filter(t => !t.id?.startsWith("s"))), ...data]);
           showT(`${data.length} new trade${data.length > 1 ? "s" : ""} synced from Tradovate ✓`);
@@ -8181,23 +8204,33 @@ export default function App(){
   const showT=(msg,type="success")=>{setToast({msg,type});setTimeout(()=>setToast(null),4000);};
 
   const handleSave=async(trade)=>{
-    const{id,...rest}=trade;
-    // Strip internal-only fields that don't exist in the DB schema
-    const{_commissionApplied,...cleanRest}=rest;
-    // Sanitize: convert empty strings and "--" to null for numeric columns
     const toNum=(v)=>{const n=parseFloat(v);return isNaN(n)?null:n;};
+    const toInt=(v)=>{const n=parseInt(v);return isNaN(n)?null:n;};
+    // Explicitly build the row — never spread raw form object into Supabase
     const row={
-      ...cleanRest,
-      user_id:session.user.id,
-      day:dayName(trade.date),
-      pnl:toNum(cleanRest.pnl)??0,
-      entry:toNum(cleanRest.entry)??0,
-      exit:toNum(cleanRest.exit)??0,
-      contracts:parseInt(cleanRest.contracts)||1,
-      stop_loss:toNum(cleanRest.stop_loss),
-      take_profit:toNum(cleanRest.take_profit),
-      rr:toNum(cleanRest.rr),  // "--" becomes null
+      user_id:       session.user.id,
+      day:           dayName(trade.date),
+      date:          trade.date||new Date().toISOString().slice(0,10),
+      account_id:    trade.account_id||"main",
+      instrument:    trade.instrument||"MES",
+      direction:     trade.direction||"Long",
+      contracts:     toInt(trade.contracts)||1,
+      entry:         toNum(trade.entry)??0,
+      exit:          toNum(trade.exit)??0,
+      stop_loss:     toNum(trade.stop_loss),      // null if empty
+      take_profit:   toNum(trade.take_profit),    // null if empty
+      pnl:           toNum(trade.pnl)??0,
+      rr:            toNum(trade.rr),             // null if "--" or empty
+      result:        trade.result||"Win",
+      setup:         trade.setup||"",
+      strategy:      trade.strategy||"",
+      grade:         trade.grade||"B",
+      session:       trade.session||"AM",
+      notes:         trade.notes||"",
+      tp_category:   trade.tp_category||null,
+      tradovate_id:  trade.tradovate_id||null,
     };
+    console.log("Saving row:", JSON.stringify(row));
     if(editTrade){
       const{error}=await supabase.from("trades").update(row).eq("id",trade.id);
       if(error){console.error("Update error:",error);showT("Update failed: "+error.message,"error");return;}
