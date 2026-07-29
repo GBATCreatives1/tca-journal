@@ -103,7 +103,13 @@ function execToTrade(exec) {
   // New proxy returns pre-built trade objects - just pass through
   // with any missing fields filled in
   if (exec.date && exec.instrument) {
-    // Re-grade synced trades using autoGrade
+    // Deduct commission from gross P&L if not already done
+    if(!exec._commissionApplied){
+      const comm=getCommission(exec.instrument, exec.contracts||1);
+      exec.pnl=Math.round(((exec.pnl||0)-comm)*100)/100;
+      exec.result=exec.pnl>=0?"Win":"Loss";
+      exec._commissionApplied=true;
+    }
     if (!exec.grade || exec.grade === "B") exec.grade = autoGrade(exec);
     return exec;
   }
@@ -113,20 +119,28 @@ function execToTrade(exec) {
   const rawSymbol = exec.name || "MES";
   const symbol = rawSymbol.replace(/[FGHJKMNQUVXZ]\d+$/, "").replace(/\d+/g, "").toUpperCase() || "MES";
   const direction = exec.action === "Sell" ? "Short" : "Long";
-  const pnl = Math.round((exec.pnl || 0) * 100) / 100;
+  const qty=exec.qty||1;
+  const grossPnl=Math.round((exec.pnl || 0) * 100) / 100;
+  const commission=getCommission(symbol, qty);
+  const pnl=Math.round((grossPnl-commission)*100)/100;
   const hr = new Date(rawDate).getHours();
   return {
     date: dateStr, instrument: symbol, direction,
-    contracts: exec.qty || 1, entry: exec.entry || 0, exit: exec.exit || 0,
+    contracts: qty, entry: exec.entry || 0, exit: exec.exit || 0,
     pnl, rr: "--", setup: "Auto-synced", grade: "B",
-    notes: exec.notes || "Tradovate sync",
+    notes: `Tradovate sync | Comm: $${commission.toFixed(2)}`,
     session: hr < 10 ? "AM" : hr < 13 ? "Mid" : "PM",
     result: pnl >= 0 ? "Win" : "Loss",
     tradovate_id: exec.tradovate_id || String(exec.id),
   };
 }
 
-// ── Brand ─────────────────────────────────────────────────────────────────────
+// ── Commission rates (round-trip, per contract) ───────────────────────────────
+const DEFAULT_COMMISSION_RATES={"MES":1.80,"MNQ":2.40,"MGC":2.50,"ES":2.10,"NQ":3.20};
+function getCommission(instrument, contracts){
+  const rate=DEFAULT_COMMISSION_RATES[instrument]??DEFAULT_COMMISSION_RATES["MES"]??1.80;
+  return Math.round(rate*(parseInt(contracts)||1)*100)/100;
+}
 // ── Theme System ──────────────────────────────────────────────────────────────
 const DARK_THEME={
   teal:"#00D4A8",blue:"#4F8EF7",purple:"#8B5CF6",spark:"#7B61FF",
@@ -726,8 +740,17 @@ function TradeFormModal({onClose,onSave,editTrade}){
   const [newTpCat,setNewTpCat]=useState("");
   const saveTpCats=(cats)=>{setTpCats(cats);try{localStorage.setItem("tca_tp_categories",JSON.stringify(cats));}catch(e){}};
   useEffect(()=>{try{const l=localStorage.getItem("pref_tca_accounts_v1");if(l)setFormAccounts(JSON.parse(l));}catch(e){};},[]);
-  useEffect(()=>{if(!auto)return;const en=parseFloat(form.entry),ex=parseFloat(form.exit),qty=parseInt(form.contracts)||1;if(isNaN(en)||isNaN(ex))return;const inst=form.instrument;let tv=1,ts=0.25;if(inst==="MES"){tv=1.25;ts=0.25;}else if(inst==="ES"){tv=12.5;ts=0.25;}else if(inst==="NQ"){tv=5;ts=0.25;}else if(inst==="MNQ"){tv=0.5;ts=0.25;}const pts=form.direction==="Long"?ex-en:en-ex;const p=Math.round((pts/ts)*tv*qty*100)/100;set("pnl",p);set("result",p>=0?"Win":"Loss");},[form.entry,form.exit,form.contracts,form.instrument,form.direction,auto]);
-  const handleSave=()=>{onSave({...form,id:editTrade?.id||`t_${Date.now()}`,pnl:parseFloat(form.pnl)||0,contracts:parseInt(form.contracts)||1,entry:parseFloat(form.entry)||0,exit:parseFloat(form.exit)||0,result:parseFloat(form.pnl)>=0?"Win":"Loss"});onClose();};
+  useEffect(()=>{if(!auto)return;const en=parseFloat(form.entry),ex=parseFloat(form.exit),qty=parseInt(form.contracts)||1;if(isNaN(en)||isNaN(ex))return;const inst=form.instrument;let tv=1,ts=0.25;if(inst==="MES"){tv=1.25;ts=0.25;}else if(inst==="ES"){tv=12.5;ts=0.25;}else if(inst==="NQ"){tv=5;ts=0.25;}else if(inst==="MNQ"){tv=0.5;ts=0.25;}else if(inst==="MGC"){tv=1;ts=0.10;}const pts=form.direction==="Long"?ex-en:en-ex;const grossPnl=Math.round((pts/ts)*tv*qty*100)/100;const commission=getCommission(inst,qty);const p=Math.round((grossPnl-commission)*100)/100;set("pnl",p);set("result",p>=0?"Win":"Loss");},[form.entry,form.exit,form.contracts,form.instrument,form.direction,auto]);
+  const [saveError,setSaveError]=useState("");
+  const handleSave=()=>{
+    setSaveError("");
+    if(!form.date){setSaveError("Please enter a date.");return;}
+    if(!form.entry&&form.entry!==0){setSaveError("Please enter an entry price.");return;}
+    if(!form.exit&&form.exit!==0){setSaveError("Please enter an exit price.");return;}
+    const pnl=parseFloat(form.pnl)||0;
+    onSave({...form,id:editTrade?.id||`t_${Date.now()}`,pnl,contracts:parseInt(form.contracts)||1,entry:parseFloat(form.entry)||0,exit:parseFloat(form.exit)||0,result:pnl>=0?"Win":"Loss"});
+    onClose();
+  };
   return(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.82)",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(6px)"}}><div style={{background:"#13121A",border:`1px solid ${B.border}`,borderRadius:18,padding:32,width:580,maxHeight:"90vh",overflowY:"auto"}}><div style={{height:3,background:GL,borderRadius:3,marginBottom:24}}/><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:24}}><div style={{fontSize:18,fontWeight:800,color:B.text}}>{editTrade?"Edit Trade":"Log New Trade"}</div><button onClick={onClose} style={{background:"none",border:"none",color:B.textMuted,cursor:"pointer",fontSize:22}}>x</button></div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}><div><label style={lS}>Date</label><input type="date" value={form.date} onChange={e=>set("date",e.target.value)} style={iS}/></div><div><label style={lS}>Instrument</label><select value={form.instrument} onChange={e=>set("instrument",e.target.value)} style={iS}>{INSTRUMENTS.map(i=><option key={i}>{i}</option>)}</select></div><div><label style={lS}>Direction</label><div style={{display:"flex",gap:8}}>{["Long","Short"].map(d=>(<button key={d} onClick={()=>set("direction",d)} style={{flex:1,padding:"9px",borderRadius:8,border:"1px solid",cursor:"pointer",fontWeight:700,fontSize:13,borderColor:form.direction===d?(d==="Long"?"#4ade80":"#f87171"):B.border,background:form.direction===d?(d==="Long"?"rgba(74,222,128,0.1)":"rgba(248,113,113,0.1)"):"transparent",color:form.direction===d?(d==="Long"?"#4ade80":"#f87171"):B.textMuted}}>{d}</button>))}</div></div><div><label style={lS}>Contracts</label><input type="number" value={form.contracts} onChange={e=>set("contracts",e.target.value)} style={iS} min="1"/></div><div><label style={lS}>Entry Price</label><input type="number" step="0.01" value={form.entry} onChange={e=>set("entry",e.target.value)} style={iS} placeholder="e.g. 5780.25"/></div><div><label style={lS}>Exit Price</label><input type="number" step="0.01" value={form.exit} onChange={e=>set("exit",e.target.value)} style={iS} placeholder="e.g. 5794.00"/></div>
               <div><label style={lS}>Stop Loss</label><input type="number" step="0.25" value={form.stop_loss||""} onChange={e=>set("stop_loss",e.target.value)} style={iS} placeholder="Price level"/></div>
               <div><label style={lS}>Take Profit</label><input type="number" step="0.25" value={form.take_profit||""} onChange={e=>set("take_profit",e.target.value)} style={iS} placeholder="Price level"/></div>
@@ -796,12 +819,11 @@ function TradeFormModal({onClose,onSave,editTrade}){
                 </select>
               </div>
               
-              <div><label style={lS}>Account</label><select value={form.account_id||"main"} onChange={e=>set("account_id",e.target.value)} style={{...iS,cursor:"pointer"}}>{formAccounts.map(a=>(<option key={a.id} value={a.id}>{a.label}</option>))}</select></div><div style={{gridColumn:"1/-1"}}><label style={lS}>Grade</label><div style={{display:"flex",gap:6}}>{GRADES.map(g=>(<button key={g} onClick={()=>set("grade",g)} style={{flex:1,padding:"7px 0",borderRadius:8,border:"1px solid",cursor:"pointer",fontWeight:800,fontSize:12,borderColor:form.grade===g?GRADE_COLOR[g]:B.border,background:form.grade===g?`${GRADE_COLOR[g]}18`:"transparent",color:form.grade===g?GRADE_COLOR[g]:B.textMuted}}>{g}</button>))}</div></div><div style={{gridColumn:"1/-1"}}><label style={lS}>Notes</label><textarea value={form.notes} onChange={e=>set("notes",e.target.value)} rows={3} style={{...iS,resize:"vertical"}} placeholder="What happened?"/></div></div><div style={{display:"flex",gap:10,marginTop:24,justifyContent:"flex-end"}}><button onClick={onClose} style={{padding:"10px 22px",borderRadius:10,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:13,fontWeight:600}}>Cancel</button><button onClick={handleSave} style={{padding:"10px 28px",borderRadius:10,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:13,fontWeight:800}}>{editTrade?"Save Changes":"Log Trade"}</button></div></div></div>);
+              <div><label style={lS}>Account</label><select value={form.account_id||"main"} onChange={e=>set("account_id",e.target.value)} style={{...iS,cursor:"pointer"}}>{formAccounts.map(a=>(<option key={a.id} value={a.id}>{a.label}</option>))}</select></div><div style={{gridColumn:"1/-1"}}><label style={lS}>Grade</label><div style={{display:"flex",gap:6}}>{GRADES.map(g=>(<button key={g} onClick={()=>set("grade",g)} style={{flex:1,padding:"7px 0",borderRadius:8,border:"1px solid",cursor:"pointer",fontWeight:800,fontSize:12,borderColor:form.grade===g?GRADE_COLOR[g]:B.border,background:form.grade===g?`${GRADE_COLOR[g]}18`:"transparent",color:form.grade===g?GRADE_COLOR[g]:B.textMuted}}>{g}</button>))}</div></div><div style={{gridColumn:"1/-1"}}><label style={lS}>Notes</label><textarea value={form.notes} onChange={e=>set("notes",e.target.value)} rows={3} style={{...iS,resize:"vertical"}} placeholder="What happened?"/></div></div><div style={{display:"flex",gap:10,marginTop:24,justifyContent:"flex-end",flexDirection:"column",alignItems:"flex-end"}}>{saveError&&<div style={{fontSize:12,color:B.loss,marginBottom:4}}>{saveError}</div>}<div style={{display:"flex",gap:10}}><button onClick={onClose} style={{padding:"10px 22px",borderRadius:10,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:13,fontWeight:600}}>Cancel</button><button onClick={handleSave} style={{padding:"10px 28px",borderRadius:10,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:13,fontWeight:800}}>{editTrade?"Save Changes":"Log Trade"}</button></div></div></div></div>);
 }
 
 // Default round-trip all-in commission per contract (exchange + NFA + platform)
-const DEFAULT_COMMISSION_RATES={"MES":1.80,"MNQ":2.40,"MGC":2.50};
-
+// Note: DEFAULT_COMMISSION_RATES is now module-level above
 function ImportModal({onClose,onImport,existingTrades}){
   const [step,setStep]=useState("upload");
   const [parsed,setParsed]=useState([]);
@@ -8160,16 +8182,33 @@ export default function App(){
 
   const handleSave=async(trade)=>{
     const{id,...rest}=trade;
-    const row={...rest,user_id:session.user.id,day:dayName(trade.date)};
+    // Strip internal-only fields that don't exist in the DB schema
+    const{_commissionApplied,...cleanRest}=rest;
+    // Sanitize: convert empty strings and "--" to null for numeric columns
+    const toNum=(v)=>{const n=parseFloat(v);return isNaN(n)?null:n;};
+    const row={
+      ...cleanRest,
+      user_id:session.user.id,
+      day:dayName(trade.date),
+      pnl:toNum(cleanRest.pnl)??0,
+      entry:toNum(cleanRest.entry)??0,
+      exit:toNum(cleanRest.exit)??0,
+      contracts:parseInt(cleanRest.contracts)||1,
+      stop_loss:toNum(cleanRest.stop_loss),
+      take_profit:toNum(cleanRest.take_profit),
+      rr:toNum(cleanRest.rr),  // "--" becomes null
+    };
     if(editTrade){
-      await supabase.from("trades").update(row).eq("id",trade.id);
+      const{error}=await supabase.from("trades").update(row).eq("id",trade.id);
+      if(error){console.error("Update error:",error);showT("Update failed: "+error.message,"error");return;}
       setTrades(ts=>ts.map(t=>t.id===trade.id?{...row,id:trade.id}:t));
       showT("Trade updated");
     }else{
       const{data,error}=await supabase.from("trades").insert(row).select();
-      if(error){console.error(error);showT("Save failed","error");return;}
-      setTrades(ts=>[...(ts.filter(t=>!t.id?.startsWith("s"))),data[0]]);
-      showT("Trade logged");
+      if(error){console.error("Insert error:",error);showT("Save failed: "+error.message,"error");return;}
+      if(!data?.length){showT("Save failed — no data returned","error");return;}
+      setTrades(ts=>[...ts.filter(t=>!t.id?.startsWith("s")),data[0]]);
+      showT("Trade logged ✓");
     }
     setEditTrade(null);
   };
