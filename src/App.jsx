@@ -1910,7 +1910,7 @@ function Overview({trades, onGradeUpdate, session, onEdit, accounts=[], activeAc
 }
 
 
-function Journal({trades,onEdit,onDelete,onGradeUpdate}){
+function Journal({trades,onEdit,onDelete,onGradeUpdate,onAnalysisSave}){
   const [selectedTrade,setSelectedTrade]=useState(null);
   const [filterInst,setFilterInst]=useState("All");
   const [filterResult,setFilterResult]=useState("All");
@@ -1952,7 +1952,7 @@ function Journal({trades,onEdit,onDelete,onGradeUpdate}){
   const sorted=[...filtered].sort(sortFns[sort]||sortFns.date);
   const activeFilters=[filterInst!=="All",filterResult!=="All",filterGrade!=="All",filterSession!=="All",filterSetup!=="All",filterAccount!=="All",search].filter(Boolean).length;
   if(!trades.length)return(<div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:400,gap:16}}><TCAIcon size={64}/><div style={{fontSize:15,color:B.textMuted}}>No trades yet.</div></div>);
-  return(<div style={{display:"flex",flexDirection:"column",gap:16}}>{selectedTrade&&<TradeDetailModal trade={selectedTrade} onClose={()=>setSelectedTrade(null)} onEdit={t=>{onEdit(t);setSelectedTrade(null);}} onGradeUpdate={onGradeUpdate}/>}<div style={{display:"flex",flexDirection:"column",gap:10}}>
+  return(<div style={{display:"flex",flexDirection:"column",gap:16}}>{selectedTrade&&<TradeDetailModal trade={selectedTrade} onClose={()=>setSelectedTrade(null)} onEdit={t=>{onEdit(t);setSelectedTrade(null);}} onGradeUpdate={onGradeUpdate} onAnalysisSave={onAnalysisSave}/>}<div style={{display:"flex",flexDirection:"column",gap:10}}>
     {/* Search bar */}
     <div style={{display:"flex",gap:8,alignItems:"center"}}>
       <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Search trades by setup, notes, date..." style={{...iS,flex:1,padding:"8px 14px",fontSize:12}}/>
@@ -2353,9 +2353,9 @@ function StrategyChecklist({trade}){
   }catch(e){return null;}
 }
 
-function TradeDetailModal({trade, onClose, onEdit, onGradeUpdate}){
+function TradeDetailModal({trade, onClose, onEdit, onGradeUpdate, onAnalysisSave}){
   const isWin = trade.result === "Win";
-  const [aiAnalysis, setAiAnalysis] = useState(null);
+  const [aiAnalysis, setAiAnalysis] = useState(trade.ai_analysis||null);
   const [aiLoading, setAiLoading] = useState(false);
   const [screenshot, setScreenshot] = useState(null);
   const [screenshotUrl, setScreenshotUrl] = useState(null);
@@ -2483,19 +2483,25 @@ function TradeDetailModal({trade, onClose, onEdit, onGradeUpdate}){
         body: JSON.stringify({ type: "trade", stats: tradeData, chartImage: imageData }),
       });
       if(!res.ok) throw new Error("Server error "+res.status);
-      const data = await res.json();
+      const raw = await res.text();
+      if(!raw||!raw.trim()) throw new Error("Empty response from server");
+      let data;
+      try{data=JSON.parse(raw);}catch(e){throw new Error("Server timed out — please try again");}
       // coach.js returns parsed JSON directly for trade type
       if(data.score !== undefined) {
         setAiAnalysis(data);
+        if(onAnalysisSave) onAnalysisSave(trade.id, data);
       } else if(data.content?.[0]?.text) {
         const clean = data.content[0].text.split("```json").join("").split("```").join("").trim();
-        setAiAnalysis(JSON.parse(clean));
+        const parsed = JSON.parse(clean);
+        setAiAnalysis(parsed);
+        if(onAnalysisSave) onAnalysisSave(trade.id, parsed);
       } else {
-        throw new Error(data.error || "Invalid response");
+        throw new Error(data.error || "Invalid response format");
       }
     } catch(e) {
       console.error("Trade AI error:", e);
-      setAiAnalysis({score:50, verdict:"Could not analyze this trade. Please check your connection and try again.", strengths:[], improvements:[], lesson:""});
+      setAiAnalysis({score:50, verdict:`Analysis failed: ${e.message}`, strengths:[], improvements:[], lesson:""});
     }
     setAiLoading(false);
   };
@@ -7104,7 +7110,13 @@ function WeeklyReview({trades, session}){
 
       // Full trade list for the week with notes
       const tradeList=weekTrades.sort((a,b)=>a.date.localeCompare(b.date))
-        .map(t=>`${t.date} ${new Date(t.date+"T12:00:00").toLocaleDateString("en-US",{weekday:"short"})} | ${t.instrument} ${t.direction} | ${t.result} | $${t.pnl.toFixed(2)} | ${t.setup||t.strategy||"?"} | ${t.session} | Grade:${t.grade}${t.notes?" | Notes:"+t.notes.slice(0,60):""}`)
+        .map(t=>{
+          const base=`${t.date} ${new Date(t.date+"T12:00:00").toLocaleDateString("en-US",{weekday:"short"})} | ${t.instrument} ${t.direction} | ${t.result} | $${t.pnl.toFixed(2)} | ${t.setup||t.strategy||"?"} | ${t.session} | Grade:${t.grade}`;
+          const notes=t.notes?` | Notes: ${t.notes}`:"";
+          const aiVerdict=t.ai_analysis?.verdict?` | AI Verdict: ${t.ai_analysis.verdict.slice(0,120)}`:"";
+          const aiLesson=t.ai_analysis?.lesson?` | AI Lesson: ${t.ai_analysis.lesson.slice(0,80)}`:"";
+          return base+notes+aiVerdict+aiLesson;
+        })
         .join("\n");
 
       const ctx=`You are TCA Coach for The Candlestick Academy, expert in MES futures and ICT methodology.
@@ -8299,6 +8311,11 @@ export default function App(){
     showT("Grade updated to "+newGrade);
   };
 
+  const handleAnalysisSave=async(tradeId, analysis)=>{
+    await supabase.from("trades").update({ai_analysis:analysis}).eq("id",tradeId);
+    setTrades(ts=>ts.map(t=>t.id===tradeId?{...t,ai_analysis:analysis}:t));
+  };
+
   const handleDelete=async()=>{
     await supabase.from("trades").delete().eq("id",delTrade.id);
     setTrades(ts=>ts.filter(t=>t.id!==delTrade.id));
@@ -8378,7 +8395,7 @@ export default function App(){
       </div>
       {hasSample&&(<div style={{marginBottom:18,padding:"10px 16px",borderRadius:10,background:"rgba(79,142,247,0.07)",border:"1px solid rgba(79,142,247,0.2)",fontSize:12,color:B.blue,display:"flex",alignItems:"center",justifyContent:"space-between"}}><span>Viewing sample data. Import your Tradovate CSV or log a real trade to get started.</span><button onClick={()=>setTrades([])} style={{background:"none",border:"none",color:B.blue,cursor:"pointer",fontWeight:700,fontSize:12,textDecoration:"underline"}}>Clear it</button></div>)}
       {active==="overview"&&<Overview trades={activeAccount==="all"?trades:trades.filter(t=>t.account_id===activeAccount)} onGradeUpdate={handleGradeUpdate} session={session} accounts={accounts} activeAccount={activeAccount} setAccounts={setAccounts}/>}
-      {active==="journal"&&<Journal trades={activeAccount==="all"?trades:trades.filter(t=>t.account_id===activeAccount)} onEdit={handleEdit} onDelete={setDelTrade} onGradeUpdate={handleGradeUpdate}/>}
+      {active==="journal"&&<Journal trades={activeAccount==="all"?trades:trades.filter(t=>t.account_id===activeAccount)} onEdit={handleEdit} onDelete={setDelTrade} onGradeUpdate={handleGradeUpdate} onAnalysisSave={handleAnalysisSave}/>}
       {active==="analytics"&&<Analytics trades={activeAccount==="all"?trades:trades.filter(t=>t.account_id===activeAccount)}/>}
       {active==="calendar"&&<CalendarView trades={activeAccount==="all"?trades:trades.filter(t=>t.account_id===activeAccount)} onGradeUpdate={handleGradeUpdate} onEdit={handleEdit}/>}
       {active==="playbooks"&&<PlaybookView trades={activeAccount==="all"?trades:trades.filter(t=>t.account_id===activeAccount)}/>}
