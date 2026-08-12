@@ -4751,12 +4751,18 @@ function ReportWidget({trades}){
 // ── Resources Page ────────────────────────────────────────────────────────────
 function ResourcesPage({session}){
   const SKEY="tca_yt_videos_v1";
+  const VIDEO_BUCKET="tca-video-uploads";
+  const MAX_VIDEO_BYTES=500*1024*1024; // 500MB
   const [videos,setVideos]=useState([]);
   const [showAdd,setShowAdd]=useState(false);
-  const [editingVideo,setEditingVideo]=useState(null); // {idx, title, desc}
+  const [addTab,setAddTab]=useState("youtube"); // "youtube" | "upload"
+  const [editingVideo,setEditingVideo]=useState(null);
   const [newUrl,setNewUrl]=useState("");
   const [newTitle,setNewTitle]=useState("");
   const [newDesc,setNewDesc]=useState("");
+  const [uploadingVideo,setUploadingVideo]=useState(false);
+  const [videoUploadError,setVideoUploadError]=useState("");
+  const [videoUploadProgress,setVideoUploadProgress]=useState(0);
 
   useEffect(()=>{
     // Load from localStorage instantly
@@ -4801,7 +4807,50 @@ function ResourcesPage({session}){
     setNewUrl("");setNewTitle("");setNewDesc("");setShowAdd(false);
   };
 
-  const removeVideo=(i)=>saveVideos(videos.filter((_,j)=>j!==i));
+  const removeVideo=(i)=>{
+    const v=videos[i];
+    // If it's an uploaded file, remove from Supabase Storage too
+    if(v.type==="upload"&&v.path){
+      supabase.storage.from(VIDEO_BUCKET).remove([v.path]).catch(()=>{});
+    }
+    saveVideos(videos.filter((_,j)=>j!==i));
+  };
+
+  const fmtVideoSize=(b)=>{
+    if(!b)return"";
+    if(b<1024*1024)return(b/1024).toFixed(0)+" KB";
+    return(b/1024/1024).toFixed(1)+" MB";
+  };
+
+  const uploadVideo=async(file)=>{
+    setVideoUploadError("");
+    if(!file)return;
+    const isVideo=file.type.startsWith("video/")||/\.(mp4|mov|mkv|avi|webm|m4v)$/i.test(file.name);
+    if(!isVideo){setVideoUploadError("Please select a video file (MP4, MOV, MKV, WebM).");return;}
+    if(file.size>MAX_VIDEO_BYTES){setVideoUploadError(`File is too large — max 500MB. This file is ${fmtVideoSize(file.size)}.`);return;}
+    if(!session?.user?.id){setVideoUploadError("You must be signed in to upload a video.");return;}
+    setUploadingVideo(true);setVideoUploadProgress(0);
+    try{
+      const id=Date.now()+"_"+Math.random().toString(36).slice(2,8);
+      const safeName=file.name.replace(/[^a-zA-Z0-9._-]/g,"_");
+      const path=`${session.user.id}/${id}_${safeName}`;
+      const{error}=await supabase.storage.from(VIDEO_BUCKET).upload(path,file,{upsert:true,contentType:file.type||"video/mp4"});
+      if(error)throw error;
+      const{data:{publicUrl}}=supabase.storage.from(VIDEO_BUCKET).getPublicUrl(path);
+      const newVid={
+        uid:id, type:"upload",
+        title:newTitle.trim()||file.name.replace(/\.[^.]+$/,""),
+        desc:newDesc.trim(), path, url:publicUrl,
+        size:file.size, addedAt:new Date().toISOString(),
+      };
+      saveVideos([...videos,newVid]);
+      setNewTitle("");setNewDesc("");setShowAdd(false);setVideoUploadProgress(0);
+    }catch(e){
+      setVideoUploadError("Upload failed: "+(e.message||"please try again."));
+    }finally{
+      setUploadingVideo(false);
+    }
+  };
 
   // ── PDF Resources ──────────────────────────────────────────────────────────
   const PDF_BUCKET="tca-pdf-resources";
@@ -4897,28 +4946,70 @@ function ResourcesPage({session}){
       {/* Add form */}
       {showAdd&&(
         <div style={{padding:20,borderRadius:14,background:B.surface,border:`1px solid ${B.borderTeal}`}}>
-          <div style={{fontSize:13,fontWeight:700,color:B.text,marginBottom:14}}>Add YouTube Video</div>
-          <div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:16}}>
-            <div>
-              <label style={lS}>YouTube URL or Video ID *</label>
-              <input value={newUrl} onChange={e=>setNewUrl(e.target.value)}
-                style={iS} placeholder="https://youtube.com/watch?v=xxxxx  or just the video ID"/>
-            </div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-              <div>
-                <label style={lS}>Title</label>
-                <input value={newTitle} onChange={e=>setNewTitle(e.target.value)} style={iS} placeholder="e.g. 10AM Triple TF Setup"/>
-              </div>
-              <div>
-                <label style={lS}>Description (optional)</label>
-                <input value={newDesc} onChange={e=>setNewDesc(e.target.value)} style={iS} placeholder="What does this video cover?"/>
-              </div>
-            </div>
+          {/* Tabs */}
+          <div style={{display:"flex",gap:4,marginBottom:16,background:"rgba(0,0,0,0.2)",borderRadius:9,padding:4}}>
+            {[{id:"youtube",label:"🎬 YouTube URL"},{id:"upload",label:"📁 Upload File"}].map(t=>(
+              <button key={t.id} onClick={()=>{setAddTab(t.id);setVideoUploadError("");}} style={{flex:1,padding:"7px 0",borderRadius:7,border:"none",background:addTab===t.id?"rgba(255,255,255,0.08)":"transparent",color:addTab===t.id?B.text:B.textMuted,cursor:"pointer",fontSize:12,fontWeight:addTab===t.id?700:500}}>{t.label}</button>
+            ))}
           </div>
-          <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
-            <button onClick={()=>setShowAdd(false)} style={{padding:"8px 16px",borderRadius:8,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:12}}>Cancel</button>
-            <button onClick={addVideo} style={{padding:"8px 24px",borderRadius:8,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:12,fontWeight:800}}>Save Video</button>
-          </div>
+
+          {addTab==="youtube"?(
+            <>
+              <div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:16}}>
+                <div>
+                  <label style={lS}>YouTube URL or Video ID *</label>
+                  <input value={newUrl} onChange={e=>setNewUrl(e.target.value)}
+                    style={iS} placeholder="https://youtube.com/watch?v=xxxxx  or just the video ID"/>
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+                  <div>
+                    <label style={lS}>Title</label>
+                    <input value={newTitle} onChange={e=>setNewTitle(e.target.value)} style={iS} placeholder="e.g. 10AM Triple TF Setup"/>
+                  </div>
+                  <div>
+                    <label style={lS}>Description (optional)</label>
+                    <input value={newDesc} onChange={e=>setNewDesc(e.target.value)} style={iS} placeholder="What does this video cover?"/>
+                  </div>
+                </div>
+              </div>
+              <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+                <button onClick={()=>setShowAdd(false)} style={{padding:"8px 16px",borderRadius:8,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:12}}>Cancel</button>
+                <button onClick={addVideo} style={{padding:"8px 24px",borderRadius:8,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:12,fontWeight:800}}>Save Video</button>
+              </div>
+            </>
+          ):(
+            <>
+              <div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:16}}>
+                <div>
+                  <label style={lS}>Title (optional — defaults to filename)</label>
+                  <input value={newTitle} onChange={e=>setNewTitle(e.target.value)} style={iS} placeholder="e.g. Tuesday AM Session Review"/>
+                </div>
+                <div>
+                  <label style={lS}>Description (optional)</label>
+                  <input value={newDesc} onChange={e=>setNewDesc(e.target.value)} style={iS} placeholder="What does this recording cover?"/>
+                </div>
+                <label style={{display:"block",cursor:uploadingVideo?"default":"pointer"}}>
+                  <div style={{border:`2px dashed ${B.border}`,borderRadius:12,padding:"28px",textAlign:"center",background:"rgba(255,255,255,0.02)",transition:"border-color 0.2s"}}
+                    onDragOver={e=>{e.preventDefault();if(!uploadingVideo)e.currentTarget.style.borderColor=B.teal;}}
+                    onDragLeave={e=>{e.currentTarget.style.borderColor=B.border;}}
+                    onDrop={e=>{
+                      e.preventDefault();e.currentTarget.style.borderColor=B.border;
+                      if(uploadingVideo)return;
+                      const file=Array.from(e.dataTransfer.files).find(f=>f.type.startsWith("video/")||/\.(mp4|mov|mkv|avi|webm|m4v)$/i.test(f.name));
+                      if(file)uploadVideo(file);else setVideoUploadError("Please drop a video file (MP4, MOV, MKV, WebM).");
+                    }}>
+                    <div style={{fontSize:28,marginBottom:8}}>🎥</div>
+                    <div style={{fontSize:13,color:B.text,fontWeight:600}}>{uploadingVideo?"Uploading...":"Drop a video file here"}</div>
+                    <div style={{fontSize:11,color:B.textMuted,marginTop:4}}>or click to browse — MP4, MOV, MKV, WebM · max 500MB</div>
+                  </div>
+                  <input type="file" accept="video/*,.mp4,.mov,.mkv,.avi,.webm,.m4v" disabled={uploadingVideo} style={{display:"none"}}
+                    onChange={e=>{const file=e.target.files[0];if(file)uploadVideo(file);e.target.value="";}}/>
+                </label>
+                {videoUploadError&&<div style={{fontSize:12,color:B.loss}}>{videoUploadError}</div>}
+                {uploadingVideo&&<div style={{fontSize:12,color:B.teal}}>⏳ Uploading — this may take a minute for larger files...</div>}
+              </div>
+            </>
+          )}
         </div>
       )}
 
@@ -4928,7 +5019,7 @@ function ResourcesPage({session}){
           <div style={{fontSize:48}}>🎬</div>
           <div style={{fontSize:15,fontWeight:700,color:B.text}}>No videos yet</div>
           <div style={{fontSize:12,color:B.textMuted,textAlign:"center",lineHeight:1.6}}>
-            Add YouTube videos from The Candlestick Academy<br/>to build your personal educational library
+            Add YouTube videos or upload recordings<br/>to build your personal educational library
           </div>
           <button onClick={()=>setShowAdd(true)} style={{marginTop:4,padding:"10px 24px",borderRadius:9,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:13,fontWeight:800}}>+ Add Your First Video</button>
         </div>
@@ -4937,9 +5028,13 @@ function ResourcesPage({session}){
           {videos.map((v,i)=>(
             <div key={i} style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,overflow:"hidden"}}>
               <div style={{position:"relative",paddingBottom:"56.25%",height:0,background:"#000"}}>
-                <iframe src={`https://www.youtube.com/embed/${v.id}?rel=0&modestbranding=1`} title={v.title}
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowFullScreen style={{position:"absolute",top:0,left:0,width:"100%",height:"100%",border:"none"}}/>
+                {v.type==="upload"?(
+                  <video src={v.url} controls style={{position:"absolute",top:0,left:0,width:"100%",height:"100%"}}/>
+                ):(
+                  <iframe src={`https://www.youtube.com/embed/${v.id}?rel=0&modestbranding=1`} title={v.title}
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen style={{position:"absolute",top:0,left:0,width:"100%",height:"100%",border:"none"}}/>
+                )}
               </div>
               <div style={{padding:"12px 14px",display:"flex",gap:10,alignItems:"flex-start"}}>
                 <div style={{flex:1}}>
@@ -4955,6 +5050,7 @@ function ResourcesPage({session}){
                   ):(
                     <div>
                       <div style={{fontSize:13,fontWeight:700,color:B.text,marginBottom:3}}>{v.title}</div>
+                      {v.type==="upload"&&v.size&&<div style={{fontSize:10,color:B.textMuted,marginBottom:2}}>📁 {fmtVideoSize(v.size)}</div>}
                       {v.desc&&<div style={{fontSize:11,color:B.textMuted,lineHeight:1.5}}>{v.desc}</div>}
                     </div>
                   )}
