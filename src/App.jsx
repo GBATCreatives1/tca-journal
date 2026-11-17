@@ -137,24 +137,181 @@ function getCommission(instrument, contracts){
   const rate=DEFAULT_COMMISSION_RATES[instrument]??DEFAULT_COMMISSION_RATES["MES"]??1.80;
   return Math.round(rate*(parseInt(contracts)||1)*100)/100;
 }
+// ── Options helpers (single-leg, ThinkorSwim / Schwab) ────────────────────────
+// Commission $0.65/contract/side + estimated exchange/regulatory pass-through fees.
+// The "other fees" figure is an estimate; the fees field on each trade is editable so
+// you can enter the actual amount from your Schwab statement.
+const OPT_COMMISSION_PER_SIDE=0.65;
+const OPT_OTHER_FEES_PER_SIDE=0.04;
+const OPT_UNDERLYINGS=["SPX","SPY","QQQ","NVDA","MSFT","AMZN","TSLA","AAPL","META","GOOGL"];
+function optionFees(contracts){
+  const q=parseInt(contracts)||1;
+  return Math.round((OPT_COMMISSION_PER_SIDE+OPT_OTHER_FEES_PER_SIDE)*q*2*100)/100;
+}
+function optionGross(entry,exit,contracts,direction){
+  const en=parseFloat(entry),ex=parseFloat(exit),q=parseInt(contracts)||1;
+  if(isNaN(en)||isNaN(ex))return null;
+  const diff=direction==="Short"?en-ex:ex-en;
+  return Math.round(diff*100*q*100)/100;
+}
+const isOptionTrade=(t)=>t&&t.asset_type==="Options";
+function tradeLabel(t){
+  if(!isOptionTrade(t))return t.instrument;
+  const exp=t.expiration?String(t.expiration).slice(5,10).replace("-","/"):"";
+  const d=daysToExpiry(t.date,t.expiration);
+  return `${t.instrument} ${t.strike||""}${(t.option_type||"C")[0]} ${exp}${d!==null?` (${d}DTE)`:""}`;
+}
+function optionsSummary(trades){
+  const o=trades.filter(isOptionTrade);
+  if(!o.length)return "";
+  const grp=(fn)=>{const m={};o.forEach(t=>{const k=fn(t);if(!m[k])m[k]={n:0,w:0,pnl:0};m[k].n++;m[k].pnl+=t.pnl;if(t.pnl>=0)m[k].w++;});return Object.entries(m).map(([k,d])=>`${k}=${d.n}t,${Math.round(d.w/d.n*100)}%WR,$${Math.round(d.pnl)}`).join(" | ");};
+  const prem=o.reduce((a,t)=>a+(parseFloat(t.entry)||0)*100*(parseInt(t.contracts)||1),0);
+  const net=o.reduce((a,t)=>a+t.pnl,0);
+  return `OPTIONS (${o.length} trades, ${prem?Math.round(net/prem*100):0}% return on premium risked)\nBY UNDERLYING: ${grp(t=>t.instrument)}\nBY CALL/PUT: ${grp(t=>t.option_type||"?")}\nBY DTE: ${grp(t=>dteBucket(daysToExpiry(t.date,t.expiration)))}`;
+}
+function daysToExpiry(date,expiration){
+  if(!date||!expiration)return null;
+  const a=new Date(date+"T00:00:00"),b=new Date(String(expiration).slice(0,10)+"T00:00:00");
+  if(isNaN(a)||isNaN(b))return null;
+  return Math.round((b-a)/86400000);
+}
+function dteBucket(d){
+  if(d===null||d===undefined)return "Unknown";
+  if(d<=0)return "0DTE";
+  if(d<=7)return "1-7 DTE";
+  if(d<=30)return "8-30 DTE";
+  return "30+ DTE";
+}
+// Parse a ThinkorSwim Account Statement CSV or a Schwab transactions CSV into paired
+// single-leg option trades. Legs are matched FIFO per contract (underlying+exp+strike+type).
+function parseOptionsBrokerCSV(text){
+  const splitLine=(line)=>{const out=[];let cur="",q=false;for(let i=0;i<line.length;i++){const c=line[i];if(c==='"'){q=!q;}else if(c===","&&!q){out.push(cur.trim());cur="";}else cur+=c;}out.push(cur.trim());return out;};
+  const lines=text.replace(/\r/g,"").split("\n");
+  const num=(v)=>{if(v===undefined||v===null)return 0;const s=String(v).trim();const neg=s.includes("(")||s.startsWith("-");const n=parseFloat(s.replace(/[$,()\-+]/g,""));return isNaN(n)?0:(neg?-n:n);};
+  const mon={JAN:1,FEB:2,MAR:3,APR:4,MAY:5,JUN:6,JUL:7,AUG:8,SEP:9,OCT:10,NOV:11,DEC:12};
+  const toISO=(s)=>{
+    s=String(s||"").trim();
+    let m=s.match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+    if(m){const y=m[3].length===2?"20"+m[3]:m[3];return `${y}-${m[1].padStart(2,"0")}-${m[2].padStart(2,"0")}`;}
+    m=s.match(/(\d{1,2})\s+([A-Za-z]{3})[a-z]*\s+(\d{2,4})/);
+    if(m&&mon[m[2].toUpperCase()]){const y=m[3].length===2?"20"+m[3]:m[3];return `${y}-${String(mon[m[2].toUpperCase()]).padStart(2,"0")}-${m[1].padStart(2,"0")}`;}
+    m=s.match(/(\d{4})-(\d{2})-(\d{2})/);
+    if(m)return m[0];
+    return "";
+  };
+  const legs=[];
+  // ── Format A: Schwab transactions CSV (Date,Action,Symbol,Description,Quantity,Price,Fees & Comm,Amount)
+  const hdrIdx=lines.findIndex(l=>/^"?date"?,/i.test(l)&&/action/i.test(l)&&/symbol/i.test(l));
+  if(hdrIdx>=0){
+    const h=splitLine(lines[hdrIdx]).map(x=>x.toLowerCase());
+    const col=(n)=>h.findIndex(x=>x.startsWith(n));
+    const cD=col("date"),cA=col("action"),cS=col("symbol"),cQ=col("quantity"),cP=col("price"),cF=col("fees");
+    for(let i=hdrIdx+1;i<lines.length;i++){
+      if(!lines[i].trim())continue;
+      const r=splitLine(lines[i]);
+      const action=(r[cA]||"").toLowerCase();
+      const sym=(r[cS]||"").trim();
+      const m=sym.match(/^([A-Z.]+)\s+(\d{1,2}\/\d{1,2}\/\d{2,4})\s+([\d.]+)\s+([CP])$/);
+      if(!m)continue;
+      let open=null,side=null;
+      if(action.includes("buy to open")){open=true;side="Buy";}
+      else if(action.includes("sell to close")){open=false;side="Sell";}
+      else if(action.includes("sell to open")){open=true;side="Sell";}
+      else if(action.includes("buy to close")){open=false;side="Buy";}
+      else if(action.includes("expired")){open=false;side="Expire";}
+      else continue;
+      const dateStr=toISO((r[cD]||"").replace(/\s+as of.*/i,""));
+      legs.push({date:dateStr,time:"",open,side,qty:Math.abs(num(r[cQ]))||1,price:side==="Expire"?0:num(r[cP]),fees:Math.abs(num(r[cF])),under:m[1],exp:toISO(m[2]),strike:parseFloat(m[3]),type:m[4]==="C"?"Call":"Put"});
+    }
+  }else{
+    // ── Format B: ThinkorSwim Account Statement ("Account Trade History" section)
+    const start=lines.findIndex(l=>/account trade history/i.test(l));
+    if(start>=0){
+      let hi=-1;
+      for(let i=start+1;i<Math.min(start+6,lines.length);i++){if(/exec time/i.test(lines[i])){hi=i;break;}}
+      if(hi>=0){
+        const h=splitLine(lines[hi]).map(x=>x.toLowerCase());
+        const col=(n)=>h.findIndex(x=>x===n);
+        const cT=col("exec time"),cSd=col("side"),cQ=col("qty"),cPe=col("pos effect"),cSy=col("symbol"),cEx=col("exp"),cSt=col("strike"),cTy=col("type"),cPr=col("price");
+        for(let i=hi+1;i<lines.length;i++){
+          const l=lines[i];
+          if(!l.trim())break;
+          const r=splitLine(l);
+          const ty=(r[cTy]||"").toUpperCase();
+          if(ty!=="CALL"&&ty!=="PUT")continue;
+          const pe=(r[cPe]||"").toUpperCase();
+          const side=/SELL/i.test(r[cSd]||"")?"Sell":"Buy";
+          legs.push({date:toISO(r[cT]),time:(r[cT]||"").split(/\s+/)[1]||"",open:pe.includes("OPEN"),side,qty:Math.abs(num(r[cQ]))||1,price:num(r[cPr]),fees:0,under:(r[cSy]||"").toUpperCase(),exp:toISO(r[cEx]),strike:parseFloat(r[cSt])||0,type:ty==="CALL"?"Call":"Put"});
+        }
+      }
+    }
+  }
+  if(!legs.length)return [];
+  legs.sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time));
+  // FIFO pairing
+  const books={};const trades=[];let n=0;
+  for(const L of legs){
+    const key=`${L.under}|${L.exp}|${L.strike}|${L.type}`;
+    const bk=books[key]=books[key]||[];
+    if(L.open){bk.push({...L,left:L.qty,feesPer:L.fees/(L.qty||1)});continue;}
+    let toClose=L.qty;
+    const closeFeePer=L.fees/(L.qty||1);
+    while(toClose>0&&bk.length){
+      const o=bk[0];
+      const take=Math.min(o.left,toClose);
+      o.left-=take;toClose-=take;
+      if(o.left<=0)bk.shift();
+      const direction=o.side==="Buy"?"Long":"Short";
+      const entry=o.price,exit=L.price;
+      const gross=optionGross(entry,exit,take,direction)??0;
+      const hasActual=(o.feesPer+closeFeePer)>0;
+      const fees=hasActual?Math.round((o.feesPer+closeFeePer)*take*100)/100:optionFees(take);
+      const pnl=Math.round((gross-fees)*100)/100;
+      const hr=parseInt((o.time||"").split(":")[0])||parseInt((L.time||"").split(":")[0])||9;
+      const session=hr<10?"AM":hr<13?"Mid":hr<16?"PM":"After";
+      const t={
+        id:`opt_${Date.now()}_${n++}`,
+        date:o.date||L.date,
+        asset_type:"Options",
+        instrument:o.under,
+        option_type:o.type,
+        strike:o.strike,
+        expiration:o.exp||null,
+        direction,
+        contracts:take,
+        entry,exit,
+        fees,
+        pnl,
+        rr:"--",
+        setup:"Imported",
+        grade:"B",
+        session,
+        notes:`${o.under} ${o.exp} ${o.strike}${o.type[0]} | ${direction==="Long"?"Bought":"Sold"} ${take} @ ${entry} -> ${L.side==="Expire"?"expired":"closed"} @ ${exit} | Fees: $${fees.toFixed(2)}`,
+        result:pnl>=0?"Win":"Loss",
+      };
+      trades.push(t);
+    }
+  }
+  return trades;
+}
 // ── Theme System ──────────────────────────────────────────────────────────────
 const DARK_THEME={
   teal:"#00D4A8",blue:"#4F8EF7",purple:"#8B5CF6",spark:"#7B61FF",
   profit:"#059669",loss:"#E53E3E",
-  bg:"#0E0E10",surface:"rgba(255,255,255,0.025)",
-  border:"rgba(255,255,255,0.07)",borderTeal:"rgba(0,212,168,0.25)",
-  borderPurp:"rgba(139,92,246,0.25)",
-  text:"#F0EEF8",textMuted:"#6B6880",textDim:"#2E2C3A",
-  cardBg:"rgba(255,255,255,0.025)",
-  inputBg:"rgba(255,255,255,0.06)",
-  sidebarBg:"rgba(8,8,10,0.98)",
+  bg:"#0A0B0F",surface:"rgba(255,255,255,0.035)",
+  border:"rgba(255,255,255,0.075)",borderTeal:"rgba(0,212,168,0.28)",
+  borderPurp:"rgba(139,92,246,0.28)",
+  text:"#F2F3F8",textMuted:"#8A8DA3",textDim:"#4A4D60",
+  cardBg:"rgba(255,255,255,0.035)",
+  inputBg:"rgba(255,255,255,0.055)",
+  sidebarBg:"rgba(10,11,15,0.92)",
   isDark:true,
 };
 const LIGHT_THEME={
   teal:"#00A87D",blue:"#2B6CB0",purple:"#6B46C1",spark:"#553C9A",
   profit:"#276749",loss:"#C53030",
-  bg:"#F7F8FC",surface:"#FFFFFF",
-  border:"rgba(0,0,0,0.09)",borderTeal:"rgba(0,168,125,0.25)",
+  bg:"#F4F6FB",surface:"#FFFFFF",
+  border:"rgba(15,23,42,0.08)",borderTeal:"rgba(0,168,125,0.28)",
   borderPurp:"rgba(107,70,193,0.25)",
   text:"#1A1A2E",textMuted:"#6B7280",textDim:"#D1D5DB",
   cardBg:"#FFFFFF",
@@ -549,7 +706,7 @@ function parseGenericCSV(text){
   return trades;
 }
 
-const iS={background:"rgba(0,0,0,0.4)",border:`1px solid ${B.border}`,borderRadius:8,color:B.text,padding:"9px 12px",fontSize:13,width:"100%",outline:"none",fontFamily:"'DM Sans',sans-serif"};
+const iS={background:"rgba(0,0,0,0.4)",border:`1px solid ${B.border}`,borderRadius:8,color:B.text,padding:"9px 12px",fontSize:13,width:"100%",outline:"none",fontFamily:"'Inter',sans-serif"};
 const lS={fontSize:10,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:5,display:"block"};
 
 function TCAIcon({size=34}){
@@ -576,9 +733,9 @@ function TCAIcon({size=34}){
 }
 
 
-function StatCard({label,value,sub,accent,grad}){return(<div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:"20px 22px",position:"relative",overflow:"hidden"}}><div style={{position:"absolute",top:0,left:0,right:0,height:2,background:grad||`linear-gradient(90deg,${accent},transparent)`}}/><div style={{position:"absolute",top:-20,right:-20,width:90,height:90,background:`radial-gradient(circle,${accent}14 0%,transparent 70%)`,pointerEvents:"none"}}/><div style={{fontSize:10,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>{label}</div>{grad?<div style={{fontSize:26,fontWeight:800,background:grad,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",fontFamily:"'Space Mono',monospace",letterSpacing:-1}}>{value}</div>:<div style={{fontSize:26,fontWeight:800,color:accent,fontFamily:"'Space Mono',monospace",letterSpacing:-1}}>{value}</div>}{sub&&<div style={{fontSize:11,color:B.textMuted,marginTop:5}}>{sub}</div>}</div>);}
+function StatCard({label,value,sub,accent,grad}){return(<div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:16,padding:"20px 22px",position:"relative",overflow:"hidden",boxShadow:B.isDark?"0 1px 0 rgba(255,255,255,0.04) inset,0 8px 24px rgba(0,0,0,0.25)":"0 1px 2px rgba(15,23,42,0.05),0 6px 18px rgba(15,23,42,0.05)",backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)"}}><div style={{position:"absolute",top:0,left:20,right:20,height:1.5,borderRadius:2,background:grad||`linear-gradient(90deg,${accent},transparent)`,opacity:0.9}}/><div style={{position:"absolute",top:-30,right:-30,width:120,height:120,background:`radial-gradient(circle,${accent}1A 0%,transparent 70%)`,pointerEvents:"none"}}/><div style={{fontSize:10.5,color:B.textMuted,letterSpacing:1.6,textTransform:"uppercase",marginBottom:10,fontWeight:600}}>{label}</div>{grad?<div style={{fontSize:27,fontWeight:700,background:grad,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",fontFamily:"'JetBrains Mono','SF Mono',monospace",letterSpacing:-1,fontVariantNumeric:"tabular-nums"}}>{value}</div>:<div style={{fontSize:27,fontWeight:700,color:accent,fontFamily:"'JetBrains Mono','SF Mono',monospace",letterSpacing:-1,fontVariantNumeric:"tabular-nums"}}>{value}</div>}{sub&&<div style={{fontSize:11.5,color:B.textMuted,marginTop:6}}>{sub}</div>}</div>);}
 function Tag({label}){const c=TAG_COLOR[label]||"#666";return <span style={{fontSize:10,padding:"2px 9px",borderRadius:20,border:`1px solid ${c}44`,color:c,background:"rgba(0,0,0,0.35)",letterSpacing:0.5,fontWeight:700}}>{label}</span>;}
-const CTip=({active,payload,label})=>{if(!active||!payload?.length)return null;return(<div style={{background:"#16151C",border:`1px solid ${B.borderTeal}`,borderRadius:10,padding:"10px 16px",fontSize:12}}><div style={{color:B.textMuted,marginBottom:5}}>{label}</div>{payload.map((p,i)=>(<div key={i} style={{color:p.value>=0?B.profit:B.loss,fontFamily:"monospace",fontWeight:700}}>{p.name}: {(p.value>=0?"+":"-")+"$"+Math.abs(p.value)}</div>))}</div>);};
+const CTip=({active,payload,label})=>{if(!active||!payload?.length)return null;return(<div style={{background:"rgba(16,17,24,0.92)",backdropFilter:"blur(10px)",WebkitBackdropFilter:"blur(10px)",border:`1px solid ${B.borderTeal}`,borderRadius:12,padding:"10px 16px",fontSize:12,boxShadow:"0 12px 32px rgba(0,0,0,0.45)"}}><div style={{color:B.textMuted,marginBottom:5}}>{label}</div>{payload.map((p,i)=>(<div key={i} style={{color:p.value>=0?B.profit:B.loss,fontFamily:"monospace",fontWeight:700}}>{p.name}: {(p.value>=0?"+":"-")+"$"+Math.abs(p.value)}</div>))}</div>);};
 
 function LoginScreen(){
   const [email,setEmail]=useState("");
@@ -589,7 +746,7 @@ function LoginScreen(){
   const [success,setSuccess]=useState("");
   const [loading,setLoading]=useState(false);
 
-  const iS={width:"100%",padding:"11px 14px",borderRadius:10,border:`1px solid rgba(255,255,255,0.1)`,background:"rgba(255,255,255,0.04)",color:"#F0EEF8",fontSize:13,outline:"none",fontFamily:"'DM Sans',sans-serif"};
+  const iS={width:"100%",padding:"11px 14px",borderRadius:10,border:`1px solid rgba(255,255,255,0.1)`,background:"rgba(255,255,255,0.04)",color:"#F0EEF8",fontSize:13,outline:"none",fontFamily:"'Inter',sans-serif"};
 
   const handle=async()=>{
     if(!email.trim()||(!password.trim()&&mode!=="forgot")){setError("Please fill in all fields.");return;}
@@ -617,8 +774,8 @@ function LoginScreen(){
   };
 
   return(
-    <div style={{minHeight:"100vh",background:"#0E0D14",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'DM Sans','Segoe UI',sans-serif",padding:"20px"}}>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap');*{box-sizing:border-box;}body{margin:0;}`}</style>
+    <div style={{minHeight:"100vh",background:"#0E0D14",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Inter','Segoe UI',sans-serif",padding:"20px"}}>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');*{box-sizing:border-box;}body{margin:0;}`}</style>
       <div style={{width:"100%",maxWidth:420}}>
 
         {/* Logo */}
@@ -668,7 +825,7 @@ function LoginScreen(){
             width:"100%",marginTop:20,padding:"13px",borderRadius:11,border:"none",
             background:loading?"rgba(255,255,255,0.06)":"linear-gradient(135deg,#00D4A8,#4F8EF7)",
             color:loading?"#6B6880":"#0E0D14",cursor:loading?"not-allowed":"pointer",
-            fontSize:14,fontWeight:800,fontFamily:"'DM Sans',sans-serif",transition:"all 0.15s",
+            fontSize:14,fontWeight:800,fontFamily:"'Inter',sans-serif",transition:"all 0.15s",
           }}>
             {loading?"Please wait...":(mode==="login"?"Sign In":mode==="signup"?"Create Account":"Send Reset Email")}
           </button>
@@ -695,7 +852,7 @@ function LoginScreen(){
 
 
 function TradeFormModal({onClose,onSave,editTrade}){
-  const blank={date:new Date().toISOString().slice(0,10),account_id:"main",instrument:"MES",direction:"Long",contracts:1,entry:"",exit:"",stop_loss:"",take_profit:"",tp_category:"",pnl:"",rr:"",setup:SETUPS[0],strategy:"",grade:"A",session:"AM",notes:"",result:"Win"};
+  const blank={date:new Date().toISOString().slice(0,10),account_id:"main",asset_type:"Futures",option_type:"Call",strike:"",expiration:"",fees:"",instrument:"MES",direction:"Long",contracts:1,entry:"",exit:"",stop_loss:"",take_profit:"",tp_category:"",pnl:"",rr:"",setup:SETUPS[0],strategy:"",grade:"A",session:"AM",notes:"",result:"Win"};
   const [form,setForm]=useState(editTrade?{...editTrade}:blank);const [auto,setAuto]=useState(!editTrade);
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
   // accounts from parent - we'll read from localStorage
@@ -736,18 +893,27 @@ function TradeFormModal({onClose,onSave,editTrade}){
   const [newTpCat,setNewTpCat]=useState("");
   const saveTpCats=(cats)=>{setTpCats(cats);try{localStorage.setItem("tca_tp_categories",JSON.stringify(cats));}catch(e){}};
   useEffect(()=>{try{const l=localStorage.getItem("pref_tca_accounts_v1");if(l)setFormAccounts(JSON.parse(l));}catch(e){};},[]);
-  useEffect(()=>{if(!auto)return;const en=parseFloat(form.entry),ex=parseFloat(form.exit),qty=parseInt(form.contracts)||1;if(isNaN(en)||isNaN(ex))return;const inst=form.instrument;let tv=1,ts=0.25;if(inst==="MES"){tv=1.25;ts=0.25;}else if(inst==="ES"){tv=12.5;ts=0.25;}else if(inst==="NQ"){tv=5;ts=0.25;}else if(inst==="MNQ"){tv=0.5;ts=0.25;}else if(inst==="MGC"){tv=1;ts=0.10;}const pts=form.direction==="Long"?ex-en:en-ex;const grossPnl=Math.round((pts/ts)*tv*qty*100)/100;const commission=getCommission(inst,qty);const p=Math.round((grossPnl-commission)*100)/100;set("pnl",p);set("result",p>=0?"Win":"Loss");},[form.entry,form.exit,form.contracts,form.instrument,form.direction,auto]);
+  const [feesManual,setFeesManual]=useState(!!(editTrade&&editTrade.fees));
+  useEffect(()=>{if(!auto)return;const en=parseFloat(form.entry),ex=parseFloat(form.exit),qty=parseInt(form.contracts)||1;if(isNaN(en)||isNaN(ex))return;
+    if(form.asset_type==="Options"){const gross=optionGross(en,ex,qty,form.direction)??0;const fees=feesManual?(parseFloat(form.fees)||0):optionFees(qty);const p=Math.round((gross-fees)*100)/100;if(!feesManual)set("fees",fees);set("pnl",p);set("result",p>=0?"Win":"Loss");return;}
+    const inst=form.instrument;let tv=1,ts=0.25;if(inst==="MES"){tv=1.25;ts=0.25;}else if(inst==="ES"){tv=12.5;ts=0.25;}else if(inst==="NQ"){tv=5;ts=0.25;}else if(inst==="MNQ"){tv=0.5;ts=0.25;}else if(inst==="MGC"){tv=1;ts=0.10;}const pts=form.direction==="Long"?ex-en:en-ex;const grossPnl=Math.round((pts/ts)*tv*qty*100)/100;const commission=getCommission(inst,qty);const p=Math.round((grossPnl-commission)*100)/100;set("pnl",p);set("result",p>=0?"Win":"Loss");},[form.entry,form.exit,form.contracts,form.instrument,form.direction,form.asset_type,form.fees,feesManual,auto]);
   const [saveError,setSaveError]=useState("");
   const handleSave=()=>{
     setSaveError("");
     if(!form.date){setSaveError("Please enter a date.");return;}
     if(!form.entry&&form.entry!==0){setSaveError("Please enter an entry price.");return;}
     if(!form.exit&&form.exit!==0){setSaveError("Please enter an exit price.");return;}
+    const isOpt=form.asset_type==="Options";
+    if(isOpt){
+      if(!form.instrument){setSaveError("Please enter the underlying ticker.");return;}
+      if(!(parseFloat(form.strike)>0)){setSaveError("Please enter the strike price.");return;}
+      if(!form.expiration){setSaveError("Please enter the expiration date.");return;}
+    }
     const pnl=parseFloat(form.pnl)||0;
     onSave({...form,id:editTrade?.id||`t_${Date.now()}`,pnl,contracts:parseInt(form.contracts)||1,entry:parseFloat(form.entry)||0,exit:parseFloat(form.exit)||0,result:pnl>=0?"Win":"Loss"});
     onClose();
   };
-  return(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.82)",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(6px)"}}><div style={{background:"#13121A",border:`1px solid ${B.border}`,borderRadius:18,padding:32,width:580,maxHeight:"90vh",overflowY:"auto"}}><div style={{height:3,background:GL,borderRadius:3,marginBottom:24}}/><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:24}}><div style={{fontSize:18,fontWeight:800,color:B.text}}>{editTrade?"Edit Trade":"Log New Trade"}</div><button onClick={onClose} style={{background:"none",border:"none",color:B.textMuted,cursor:"pointer",fontSize:22}}>x</button></div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}><div><label style={lS}>Date</label><input type="date" value={form.date} onChange={e=>set("date",e.target.value)} style={iS}/></div><div><label style={lS}>Instrument</label><select value={form.instrument} onChange={e=>set("instrument",e.target.value)} style={iS}>{INSTRUMENTS.map(i=><option key={i}>{i}</option>)}</select></div><div><label style={lS}>Direction</label><div style={{display:"flex",gap:8}}>{["Long","Short"].map(d=>(<button key={d} onClick={()=>set("direction",d)} style={{flex:1,padding:"9px",borderRadius:8,border:"1px solid",cursor:"pointer",fontWeight:700,fontSize:13,borderColor:form.direction===d?(d==="Long"?"#4ade80":"#f87171"):B.border,background:form.direction===d?(d==="Long"?"rgba(74,222,128,0.1)":"rgba(248,113,113,0.1)"):"transparent",color:form.direction===d?(d==="Long"?"#4ade80":"#f87171"):B.textMuted}}>{d}</button>))}</div></div><div><label style={lS}>Contracts</label><input type="number" value={form.contracts} onChange={e=>set("contracts",e.target.value)} style={iS} min="1"/></div><div><label style={lS}>Entry Price</label><input type="number" step="0.01" value={form.entry} onChange={e=>set("entry",e.target.value)} style={iS} placeholder="e.g. 5780.25"/></div><div><label style={lS}>Exit Price</label><input type="number" step="0.01" value={form.exit} onChange={e=>set("exit",e.target.value)} style={iS} placeholder="e.g. 5794.00"/></div>
+  return(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.82)",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(6px)"}}><div style={{background:"#13121A",border:`1px solid ${B.border}`,borderRadius:18,padding:32,width:580,maxHeight:"90vh",overflowY:"auto"}}><div style={{height:3,background:GL,borderRadius:3,marginBottom:24}}/><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:24}}><div style={{fontSize:18,fontWeight:800,color:B.text}}>{editTrade?"Edit Trade":"Log New Trade"}</div><button onClick={onClose} style={{background:"none",border:"none",color:B.textMuted,cursor:"pointer",fontSize:22}}>x</button></div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}><div style={{gridColumn:"1/-1",display:"flex",gap:8}}>{["Futures","Options"].map(a=>(<button key={a} type="button" onClick={()=>{set("asset_type",a);if(a==="Options"&&["MES","ES","NQ","MNQ","MGC"].includes(form.instrument))set("instrument","SPY");if(a==="Futures"&&!INSTRUMENTS.includes(form.instrument)&&form.instrument!=="MGC")set("instrument","MES");}} style={{flex:1,padding:"9px",borderRadius:8,border:"1px solid",cursor:"pointer",fontWeight:800,fontSize:13,borderColor:form.asset_type===a?B.teal:B.border,background:form.asset_type===a?`${B.teal}14`:"transparent",color:form.asset_type===a?B.teal:B.textMuted}}>{a}</button>))}</div><div><label style={lS}>Date</label><input type="date" value={form.date} onChange={e=>set("date",e.target.value)} style={iS}/></div>{form.asset_type==="Options"?(<div><label style={lS}>Underlying</label><input list="tca-underlyings" value={form.instrument} onChange={e=>set("instrument",e.target.value.toUpperCase())} style={iS} placeholder="e.g. NVDA"/><datalist id="tca-underlyings">{OPT_UNDERLYINGS.map(u=><option key={u} value={u}/>)}</datalist></div>):(<div><label style={lS}>Instrument</label><select value={form.instrument} onChange={e=>set("instrument",e.target.value)} style={iS}>{INSTRUMENTS.map(i=><option key={i}>{i}</option>)}</select></div>)}{form.asset_type==="Options"&&(<><div><label style={lS}>Call / Put</label><div style={{display:"flex",gap:8}}>{["Call","Put"].map(o=>(<button key={o} type="button" onClick={()=>set("option_type",o)} style={{flex:1,padding:"9px",borderRadius:8,border:"1px solid",cursor:"pointer",fontWeight:700,fontSize:13,borderColor:form.option_type===o?B.blue:B.border,background:form.option_type===o?`${B.blue}18`:"transparent",color:form.option_type===o?B.blue:B.textMuted}}>{o}</button>))}</div></div><div><label style={lS}>Strike</label><input type="number" step="0.5" value={form.strike||""} onChange={e=>set("strike",e.target.value)} style={iS} placeholder="e.g. 150"/></div><div><label style={lS}>Expiration {(()=>{const d=daysToExpiry(form.date,form.expiration);return d===null?null:<span style={{color:B.teal,textTransform:"none",letterSpacing:0}}>· {d} DTE</span>;})()}</label><input type="date" value={String(form.expiration||"").slice(0,10)} onChange={e=>set("expiration",e.target.value)} style={iS}/></div></>)}<div><label style={lS}>Direction</label><div style={{display:"flex",gap:8}}>{["Long","Short"].map(d=>(<button key={d} onClick={()=>set("direction",d)} style={{flex:1,padding:"9px",borderRadius:8,border:"1px solid",cursor:"pointer",fontWeight:700,fontSize:13,borderColor:form.direction===d?(d==="Long"?"#4ade80":"#f87171"):B.border,background:form.direction===d?(d==="Long"?"rgba(74,222,128,0.1)":"rgba(248,113,113,0.1)"):"transparent",color:form.direction===d?(d==="Long"?"#4ade80":"#f87171"):B.textMuted}}>{d}</button>))}</div></div><div><label style={lS}>Contracts</label><input type="number" value={form.contracts} onChange={e=>set("contracts",e.target.value)} style={iS} min="1"/></div><div><label style={lS}>{form.asset_type==="Options"?"Entry Premium":"Entry Price"}</label><input type="number" step="0.01" value={form.entry} onChange={e=>set("entry",e.target.value)} style={iS} placeholder={form.asset_type==="Options"?"e.g. 2.45":"e.g. 5780.25"}/></div><div><label style={lS}>{form.asset_type==="Options"?"Exit Premium":"Exit Price"}</label><input type="number" step="0.01" value={form.exit} onChange={e=>set("exit",e.target.value)} style={iS} placeholder={form.asset_type==="Options"?"e.g. 3.80":"e.g. 5794.00"}/></div>{form.asset_type==="Options"&&(<div style={{gridColumn:"1/-1"}}><label style={lS}>Fees &amp; Commission <span style={{textTransform:"none",letterSpacing:0,color:B.textMuted}}>(auto: ${OPT_COMMISSION_PER_SIDE.toFixed(2)}/contract/side + est. exchange &amp; reg fees. Edit to match your statement)</span></label><input type="number" step="0.01" value={form.fees===undefined||form.fees===null?"":form.fees} onChange={e=>{setFeesManual(true);set("fees",e.target.value);}} style={iS}/></div>)}
               <div><label style={lS}>Stop Loss</label><input type="number" step="0.25" value={form.stop_loss||""} onChange={e=>set("stop_loss",e.target.value)} style={iS} placeholder="Price level"/></div>
               <div><label style={lS}>Take Profit</label><input type="number" step="0.25" value={form.take_profit||""} onChange={e=>set("take_profit",e.target.value)} style={iS} placeholder="Price level"/></div>
               <div style={{gridColumn:"1/-1"}}><label style={lS}>TP Category <button type="button" onClick={()=>setShowTpMgr(p=>!p)} style={{background:"none",border:"none",color:B.textMuted,cursor:"pointer",fontSize:10,marginLeft:4}}>⚙ edit</button></label>
@@ -852,14 +1018,17 @@ function ImportModal({onClose,onImport,existingTrades}){
         const firstLine=t.split("\n")[0].toLowerCase();
         let tr=[];
         let type="";
-        if(firstLine.includes("buyprice")||firstLine.includes("soldtimestamp")){
+        if(/account trade history/i.test(t)||/fees\s*&\s*comm/i.test(t)){
+          tr=parseOptionsBrokerCSV(t);
+          type="ThinkorSwim / Schwab Options";
+        }else if(firstLine.includes("buyprice")||firstLine.includes("soldtimestamp")){
           tr=parseTradovatePerformanceCSV(t,commissionRates);
           type="Performance CSV";
         }else{
           tr=parseTradovateOrdersCSV(t);
           type="Orders CSV";
         }
-        if(tr.length===0){setError("No valid trades found. Make sure you're uploading a Tradovate Performance.csv or Orders.csv file.");return;}
+        if(tr.length===0){setError("No valid trades found. Upload a Tradovate Performance/Orders CSV (futures) or a ThinkorSwim Account Statement / Schwab transactions CSV (options). Options import needs closed trades (both open and close legs).");return;}
         setParsed(tr);
         setFileType(type);
         setStep("preview");
@@ -873,7 +1042,9 @@ function ImportModal({onClose,onImport,existingTrades}){
 
   // Check for duplicates against existing trades
   const existingDates=new Set(existingTrades.map(t=>t.date));
-  const newTrades=parsed.filter(t=>!existingDates.has(t.date)||mode==="replace");
+  const newTrades=parsed.filter(t=>t.asset_type==="Options"
+    ?(mode==="replace"||!existingTrades.some(e=>e.asset_type==="Options"&&e.date===t.date&&e.instrument===t.instrument&&parseFloat(e.strike)===t.strike&&String(e.expiration||"").slice(0,10)===String(t.expiration||"")&&e.option_type===t.option_type&&parseFloat(e.entry)===t.entry&&parseFloat(e.exit)===t.exit&&parseInt(e.contracts)===t.contracts))
+    :(!existingDates.has(t.date)||mode==="replace"));
   const duplicates=parsed.length-newTrades.length;
 
   return(
@@ -885,7 +1056,7 @@ function ImportModal({onClose,onImport,existingTrades}){
         <div style={{padding:"24px 28px 0",display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
           <div>
             <div style={{fontSize:18,fontWeight:800,color:B.text}}>Import Trades</div>
-            <div style={{fontSize:12,color:B.textMuted,marginTop:3}}>Tradovate Performance.csv or Orders.csv</div>
+            <div style={{fontSize:12,color:B.textMuted,marginTop:3}}>Tradovate CSV (futures) · ThinkorSwim / Schwab CSV (options)</div>
           </div>
           <button onClick={onClose} style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${B.border}`,borderRadius:8,color:B.textMuted,cursor:"pointer",fontSize:18,width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
         </div>
@@ -904,7 +1075,7 @@ function ImportModal({onClose,onImport,existingTrades}){
                 <div style={{fontSize:15,fontWeight:700,color:B.text,marginBottom:6}}>Drop your Tradovate CSV here</div>
                 <div style={{fontSize:12,color:B.textMuted,marginBottom:16}}>or click to browse</div>
                 <div style={{display:"inline-flex",gap:8}}>
-                  {["Performance.csv","Orders.csv"].map(f=>(
+                  {["Performance.csv","Orders.csv","ThinkorSwim Statement","Schwab Transactions"].map(f=>(
                     <span key={f} style={{fontSize:11,padding:"3px 10px",borderRadius:20,background:`${B.teal}12`,border:`1px solid ${B.borderTeal}`,color:B.teal,fontWeight:700}}>{f}</span>
                   ))}
                 </div>
@@ -944,7 +1115,10 @@ function ImportModal({onClose,onImport,existingTrades}){
 
               {/* How to export guide */}
               <div style={{padding:16,borderRadius:12,background:"rgba(0,0,0,0.3)",border:`1px solid ${B.border}`}}>
-                <div style={{fontSize:10,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:10}}>How to export from Tradovate</div>
+                <div style={{fontSize:10,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:10}}>How to export your trades</div>
+                <div style={{fontSize:11,color:"#9CA0BC",marginBottom:12,lineHeight:1.6,padding:"8px 10px",borderRadius:8,background:"rgba(139,92,246,0.08)",border:"1px solid rgba(139,92,246,0.25)"}}>
+                  <b style={{color:"#8B5CF6"}}>Options (ThinkorSwim / Schwab):</b> In thinkorswim go to Monitor → Account Statement, set the date range, then use the ☰ menu → Export to File (CSV). Or on schwab.com go to Accounts → History → Transactions → Export. Commission uses your actual Fees &amp; Comm column when present; otherwise $0.65/contract/side + est. fees.
+                </div>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
                   <div>
                     <div style={{fontSize:11,fontWeight:700,color:B.teal,marginBottom:6}}>Performance.csv (Recommended)</div>
@@ -1046,7 +1220,9 @@ function ImportModal({onClose,onImport,existingTrades}){
                 <button onClick={onClose} style={{flex:1,padding:"11px",borderRadius:10,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:13,fontWeight:600}}>Cancel</button>
                 <button onClick={()=>{
                   const tagged=parsed.map(t=>({...t,account_id:importAccount}));
-                  const newTagged=tagged.filter(t=>!existingTrades.some(e=>e.tradovate_id&&e.tradovate_id===t.tradovate_id));
+                  const newTagged=tagged.filter(t=>!existingTrades.some(e=>
+                    (e.tradovate_id&&e.tradovate_id===t.tradovate_id)||
+                    (t.asset_type==="Options"&&e.asset_type==="Options"&&e.date===t.date&&e.instrument===t.instrument&&parseFloat(e.strike)===t.strike&&String(e.expiration||"").slice(0,10)===String(t.expiration||"")&&e.option_type===t.option_type&&parseFloat(e.entry)===t.entry&&parseFloat(e.exit)===t.exit&&parseInt(e.contracts)===t.contracts)));
                   onImport(mode==="replace"?tagged:newTagged,mode);
                   onClose();
                 }} style={{flex:2,padding:"11px",borderRadius:10,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:13,fontWeight:800}}>
@@ -1061,7 +1237,7 @@ function ImportModal({onClose,onImport,existingTrades}){
   );
 }
 
-function DeleteConfirm({trade,onConfirm,onCancel}){return(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:110,display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{background:"#13121A",border:"1px solid rgba(240,90,126,0.3)",borderRadius:16,padding:28,width:360,textAlign:"center"}}><div style={{fontSize:16,fontWeight:700,color:B.text,marginBottom:8}}>Delete Trade?</div><div style={{fontSize:13,color:B.textMuted,marginBottom:6}}>{trade.date} - {trade.instrument} - {trade.direction}</div><div style={{fontSize:15,fontWeight:700,fontFamily:"monospace",color:pnlColor(trade.pnl),marginBottom:20}}>{fmt(trade.pnl)}</div><div style={{display:"flex",gap:10,justifyContent:"center"}}><button onClick={onCancel} style={{padding:"9px 22px",borderRadius:9,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontWeight:600}}>Cancel</button><button onClick={onConfirm} style={{padding:"9px 22px",borderRadius:9,background:"rgba(240,90,126,0.15)",color:B.loss,cursor:"pointer",fontWeight:700,border:"1px solid rgba(240,90,126,0.3)"}}>Delete</button></div></div></div>);}
+function DeleteConfirm({trade,onConfirm,onCancel}){return(<div style={{position:"fixed",inset:0,background:"rgba(5,6,10,0.72)",backdropFilter:"blur(6px)",WebkitBackdropFilter:"blur(6px)",zIndex:110,display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{background:"#12131A",border:"1px solid rgba(240,90,126,0.3)",borderRadius:20,padding:30,width:380,textAlign:"center",boxShadow:"0 24px 64px rgba(0,0,0,0.55)"}}><div style={{fontSize:16,fontWeight:700,color:B.text,marginBottom:8}}>Delete Trade?</div><div style={{fontSize:13,color:B.textMuted,marginBottom:6}}>{trade.date} - {trade.instrument} - {trade.direction}</div><div style={{fontSize:15,fontWeight:700,fontFamily:"monospace",color:pnlColor(trade.pnl),marginBottom:20}}>{fmt(trade.pnl)}</div><div style={{display:"flex",gap:10,justifyContent:"center"}}><button onClick={onCancel} style={{padding:"9px 22px",borderRadius:9,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontWeight:600}}>Cancel</button><button onClick={onConfirm} style={{padding:"9px 22px",borderRadius:9,background:"rgba(240,90,126,0.15)",color:B.loss,cursor:"pointer",fontWeight:700,border:"1px solid rgba(240,90,126,0.3)"}}>Delete</button></div></div></div>);}
 
 // ── AI Day Review (inside Day Modal) ─────────────────────────────────────────
 function AIDayReview({trades, date}){
@@ -1214,7 +1390,7 @@ function DayModal({date, trades, onClose}){
               <div style={{fontSize:13,color:B.textMuted,marginBottom:2}}>{dateLabel}</div>
               <div style={{display:"flex",alignItems:"center",gap:12}}>
                 <span style={{fontSize:11,color:B.textMuted,fontWeight:600}}>Net P&L</span>
-                <span style={{fontSize:26,fontWeight:800,fontFamily:"'Space Mono',monospace",color:pnlColor(dayPnl)}}>{fmt(dayPnl)}</span>
+                <span style={{fontSize:26,fontWeight:800,fontFamily:"'JetBrains Mono','SF Mono',monospace",color:pnlColor(dayPnl)}}>{fmt(dayPnl)}</span>
               </div>
             </div>
           </div>
@@ -1253,7 +1429,7 @@ function DayModal({date, trades, onClose}){
           ].map(s=>(
             <div key={s.label} style={{padding:"12px 16px",borderRight:`1px solid ${B.border}`,borderBottom:`1px solid ${B.border}`}}>
               <div style={{fontSize:9,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:5}}>{s.label}</div>
-              <div style={{fontSize:15,fontWeight:800,color:s.color||B.text,fontFamily:"'Space Mono',monospace"}}>{s.value}</div>
+              <div style={{fontSize:15,fontWeight:800,color:s.color||B.text,fontFamily:"'JetBrains Mono','SF Mono',monospace"}}>{s.value}</div>
             </div>
           ))}
         </div>
@@ -1280,7 +1456,7 @@ function DayModal({date, trades, onClose}){
                   <div>
                     <span style={{fontSize:11,padding:"2px 8px",borderRadius:5,fontWeight:700,
                       background:`${INST_COLOR[t.instrument]||B.teal}20`,
-                      color:INST_COLOR[t.instrument]||B.teal}}>{t.instrument}</span>
+                      color:INST_COLOR[t.instrument]||B.teal}}>{tradeLabel(t)}</span>
                   </div>
                   <div style={{fontSize:12,fontWeight:700,color:t.direction==="Long"?"#4ade80":"#f87171"}}>{t.direction}</div>
                   <div style={{fontSize:12,fontFamily:"monospace",color:B.text}}>{t.entry||"--"}</div>
@@ -1337,7 +1513,7 @@ function GaugeChart({value, max=100, label, color, size=110}){
       <svg width={size} height={size*0.6} viewBox="0 0 110 62">
         <path d={`M ${cx-r} ${cy} A ${r} ${r} 0 0 1 ${cx+r} ${cy}`} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="8" strokeLinecap="round"/>
         {pct>0&&<path d={`M ${cx-r} ${cy} A ${r} ${r} 0 ${large} 1 ${endX} ${endY}`} fill="none" stroke={color} strokeWidth="8" strokeLinecap="round"/>}
-        <text x={cx} y={cy-4} textAnchor="middle" fill={color} fontSize="14" fontWeight="800" fontFamily="'Space Mono',monospace">{value}{max===100?"%":""}</text>
+        <text x={cx} y={cy-4} textAnchor="middle" fill={color} fontSize="14" fontWeight="800" fontFamily="'JetBrains Mono','SF Mono',monospace">{value}{max===100?"%":""}</text>
       </svg>
       <div style={{fontSize:10,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase"}}>{label}</div>
     </div>
@@ -1347,7 +1523,7 @@ function GaugeChart({value, max=100, label, color, size=110}){
 function StreakBadge({trades}){
   if(!trades.length)return(
     <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
-      <div style={{fontSize:28,fontWeight:800,color:B.textMuted,fontFamily:"'Space Mono',monospace"}}>--</div>
+      <div style={{fontSize:28,fontWeight:800,color:B.textMuted,fontFamily:"'JetBrains Mono','SF Mono',monospace"}}>--</div>
       <div style={{fontSize:10,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase"}}>Current Streak</div>
     </div>
   );
@@ -1379,7 +1555,7 @@ function StreakBadge({trades}){
 
   return(
     <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
-      <div style={{fontSize:36,fontWeight:800,color:isWin?B.profit:B.loss,fontFamily:"'Space Mono',monospace",lineHeight:1}}>{streak}</div>
+      <div style={{fontSize:36,fontWeight:800,color:isWin?B.profit:B.loss,fontFamily:"'JetBrains Mono','SF Mono',monospace",lineHeight:1}}>{streak}</div>
       <div style={{fontSize:10,color:isWin?B.profit:B.loss,letterSpacing:1.5,textTransform:"uppercase",fontWeight:700}}>{isWin?"🔥 Win Streak":"📉 Loss Streak"}</div>
       <div style={{display:"flex",gap:4,marginTop:4}}>
         {Array.from({length:dots}).map((_,i)=>(
@@ -1974,7 +2150,7 @@ function Journal({trades,onEdit,onDelete,onGradeUpdate,onAnalysisSave}){
       <span style={{fontSize:10,color:B.textMuted,letterSpacing:1,marginLeft:8}}>SORT</span>
       {[{k:"date",l:"Date"},{k:"pnl",l:"P&L"},{k:"grade",l:"Grade"},{k:"rr",l:"R:R"}].map(s=>(<button key={s.k} onClick={()=>{if(sort===s.k)setSortDir(d=>d==="desc"?"asc":"desc");else{setSort(s.k);setSortDir("desc");}}} style={{padding:"4px 12px",borderRadius:20,border:"1px solid",borderColor:sort===s.k?B.purple:B.border,background:sort===s.k?`${B.purple}18`:"transparent",color:sort===s.k?B.purple:B.textMuted,cursor:"pointer",fontSize:11,fontWeight:700}}>{s.l}{sort===s.k?(sortDir==="desc"?" ↓":" ↑"):""}</button>))}
     </div>
-  </div><div style={{display:"grid",gridTemplateColumns:"70px 72px 68px 52px 110px 72px 56px 56px 1fr 78px",padding:"8px 14px",fontSize:10,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",borderBottom:`1px solid ${B.border}`}}>{["Date","Symbol","Dir","Grade","Setup","P&L","R:R","Result","Notes",""].map((h,i)=><div key={i}>{h}</div>)}</div><div style={{display:"flex",flexDirection:"column",gap:4}}>{sorted.map(t=>(<div key={t.id} onClick={()=>setSelectedTrade(t)} style={{display:"grid",gridTemplateColumns:"70px 72px 68px 52px 110px 72px 56px 56px 1fr 78px",padding:"11px 14px",borderRadius:10,background:B.surface,border:`1px solid ${B.border}`,borderLeft:`3px solid ${t.result==="Win"?B.teal:B.loss}`,cursor:"pointer",transition:"background 0.15s"}} onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.04)"} onMouseLeave={e=>e.currentTarget.style.background=B.surface}><div style={{fontSize:11,color:B.textMuted}}>{t.date.slice(5)}</div><div><span style={{fontSize:11,padding:"2px 7px",borderRadius:5,fontWeight:700,background:`${INST_COLOR[t.instrument]||B.teal}20`,color:INST_COLOR[t.instrument]||B.teal}}>{t.instrument}</span></div><div style={{fontSize:12,color:t.direction==="Long"?"#4ade80":"#f87171"}}>{t.direction}</div><GradeBadge grade={t.grade||"B"} tradeId={t.id} onSave={g=>onGradeUpdate&&onGradeUpdate(t.id,g)} size="small"/><div style={{fontSize:11,color:"#9CA0BC",overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>{t.setup}</div><div style={{fontSize:13,fontWeight:800,fontFamily:"monospace",color:pnlColor(t.pnl)}}>{fmt(t.pnl)}</div><div style={{fontSize:11,fontFamily:"monospace",color:B.textMuted}}>{t.rr}</div><div style={{fontSize:11,fontWeight:700,color:t.result==="Win"?B.profit:B.loss}}>{t.result}</div><div style={{fontSize:11,color:B.textDim,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>{t.notes}</div><div style={{display:"flex",gap:5}}><button onClick={()=>onEdit(t)} style={{padding:"4px 8px",borderRadius:6,border:`1px solid ${B.blue}40`,background:`${B.blue}12`,color:B.blue,cursor:"pointer",fontSize:10,fontWeight:700}}>Edit</button><button onClick={()=>onDelete(t)} style={{padding:"4px 8px",borderRadius:6,border:`1px solid ${B.loss}40`,background:`${B.loss}12`,color:B.loss,cursor:"pointer",fontSize:10,fontWeight:700}}>Del</button></div></div>))}</div></div>);
+  </div><div style={{display:"grid",gridTemplateColumns:"70px 72px 68px 52px 110px 72px 56px 56px 1fr 78px",padding:"8px 14px",fontSize:10,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",borderBottom:`1px solid ${B.border}`}}>{["Date","Symbol","Dir","Grade","Setup","P&L","R:R","Result","Notes",""].map((h,i)=><div key={i}>{h}</div>)}</div><div style={{display:"flex",flexDirection:"column",gap:4}}>{sorted.map(t=>(<div key={t.id} onClick={()=>setSelectedTrade(t)} style={{display:"grid",gridTemplateColumns:"70px 72px 68px 52px 110px 72px 56px 56px 1fr 78px",padding:"11px 14px",borderRadius:10,background:B.surface,border:`1px solid ${B.border}`,borderLeft:`3px solid ${t.result==="Win"?B.teal:B.loss}`,cursor:"pointer",transition:"background 0.15s"}} onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.04)"} onMouseLeave={e=>e.currentTarget.style.background=B.surface}><div style={{fontSize:11,color:B.textMuted}}>{t.date.slice(5)}</div><div><span style={{fontSize:11,padding:"2px 7px",borderRadius:5,fontWeight:700,background:`${INST_COLOR[t.instrument]||B.teal}20`,color:INST_COLOR[t.instrument]||B.teal}}>{tradeLabel(t)}</span></div><div style={{fontSize:12,color:t.direction==="Long"?"#4ade80":"#f87171"}}>{t.direction}</div><GradeBadge grade={t.grade||"B"} tradeId={t.id} onSave={g=>onGradeUpdate&&onGradeUpdate(t.id,g)} size="small"/><div style={{fontSize:11,color:"#9CA0BC",overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>{t.setup}</div><div style={{fontSize:13,fontWeight:800,fontFamily:"monospace",color:pnlColor(t.pnl)}}>{fmt(t.pnl)}</div><div style={{fontSize:11,fontFamily:"monospace",color:B.textMuted}}>{t.rr}</div><div style={{fontSize:11,fontWeight:700,color:t.result==="Win"?B.profit:B.loss}}>{t.result}</div><div style={{fontSize:11,color:B.textDim,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>{t.notes}</div><div style={{display:"flex",gap:5}}><button onClick={()=>onEdit(t)} style={{padding:"4px 8px",borderRadius:6,border:`1px solid ${B.blue}40`,background:`${B.blue}12`,color:B.blue,cursor:"pointer",fontSize:10,fontWeight:700}}>Edit</button><button onClick={()=>onDelete(t)} style={{padding:"4px 8px",borderRadius:6,border:`1px solid ${B.loss}40`,background:`${B.loss}12`,color:B.loss,cursor:"pointer",fontSize:10,fontWeight:700}}>Del</button></div></div>))}</div></div>);
 }
 
 function Analytics({trades}){
@@ -1984,6 +2160,11 @@ function Analytics({trades}){
 
   // Core calculations
   const groupBy=k=>trades.reduce((m,t)=>{if(!m[t[k]])m[t[k]]={wins:0,total:0,pnl:0};m[t[k]].total++;m[t[k]].pnl+=t.pnl;if(t.result==="Win")m[t[k]].wins++;return m;},{});
+  const optTrades=trades.filter(isOptionTrade);
+  const optGroup=(fn)=>optTrades.reduce((m,t)=>{const k=fn(t);if(!m[k])m[k]={wins:0,total:0,pnl:0};m[k].total++;m[k].pnl+=t.pnl;if(t.pnl>=0)m[k].wins++;return m;},{});
+  const optByUnder=optGroup(t=>t.instrument),optByType=optGroup(t=>t.option_type||"Unknown"),optByDte=optGroup(t=>dteBucket(daysToExpiry(t.date,t.expiration))),optByDay=optGroup(t=>t.day||"?");
+  const optPremium=optTrades.reduce((a,t)=>a+(parseFloat(t.entry)||0)*100*(parseInt(t.contracts)||1),0);
+  const optReturnPct=optPremium?Math.round(optTrades.reduce((a,t)=>a+t.pnl,0)/optPremium*1000)/10:0;
   const byInst=groupBy("instrument"),bySess=groupBy("session"),byDay=groupBy("day"),byGrade=groupBy("grade"),byContracts=groupBy("contracts");
   const dOrder=["Mon","Tue","Wed","Thu","Fri"],dayData=dOrder.filter(d=>byDay[d]).map(d=>({day:d,...byDay[d]}));
   const gOrder=["A+","A","B","C","D"],gradeData=gOrder.filter(g=>byGrade[g]).map(g=>({grade:g,...byGrade[g]}));
@@ -2232,9 +2413,26 @@ function Analytics({trades}){
 
       {/* ── ROW 5: P&L by Instrument + Session ── */}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
-        <PBar label="P&L by Instrument" data={byInst} grads={[GL,GTB,GBP]}/>
+        <PBar label="P&L by Instrument / Underlying" data={byInst} grads={[GL,GTB,GBP]}/>
         <PBar label="P&L by Session" data={bySess} grads={[GTB,GBP,GL]}/>
       </div>
+
+      {/* ── OPTIONS BREAKDOWN ── */}
+      {optTrades.length>0&&(<>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginTop:6}}>
+          <div style={{fontSize:11,fontWeight:800,color:B.teal,letterSpacing:2,textTransform:"uppercase"}}>Options Analytics</div>
+          <div style={{flex:1,height:1,background:B.border}}/>
+          <div style={{fontSize:11,color:B.textMuted}}>{optTrades.length} option trades · {optReturnPct>=0?"+":""}{optReturnPct}% return on premium risked</div>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+          <PBar label="Options P&L by Underlying" data={optByUnder} grads={[GL,GTB,GBP]}/>
+          <PBar label="Options P&L by Days to Expiry" data={optByDte} grads={[GTB,GBP,GL]}/>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+          <PBar label="Calls vs Puts" data={optByType} grads={[GL,GBP]}/>
+          <PBar label="Options P&L by Day of Week" data={optByDay} grads={[GBP,GL,GTB]}/>
+        </div>
+      </>)}
 
       {/* ── ROW 6: Day of Week + Grade Performance ── */}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
@@ -2430,7 +2628,9 @@ function TradeDetailModal({trade, onClose, onEdit, onGradeUpdate, onAnalysisSave
     setAiLoading(true);
     try {
       const tradeData = {
-        instrument: trade.instrument,
+        instrument: tradeLabel(trade),
+        assetType: trade.asset_type||"Futures",
+        optionNote: isOptionTrade(trade)?`Single-leg ${trade.option_type||""} option on ${trade.instrument}, strike ${trade.strike}, expires ${String(trade.expiration||"").slice(0,10)}. Entry/exit are premium per share (x100 per contract). Fees: $${trade.fees||0}. P&L is net.`:null,
         direction: trade.direction,
         contracts: trade.contracts,
         date: trade.date,
@@ -3386,7 +3586,7 @@ function DayJournalModal({date, trades, onClose, onGradeUpdate}){
                   width:"100%",minHeight:260,background:"rgba(0,0,0,0.3)",
                   border:`1px solid ${B.border}`,borderRadius:10,
                   padding:"14px 16px",color:B.text,fontSize:13,
-                  fontFamily:"'DM Sans',sans-serif",resize:"vertical",
+                  fontFamily:"'Inter',sans-serif",resize:"vertical",
                   outline:"none",lineHeight:1.8,direction:"ltr",
                   textAlign:"left",boxSizing:"border-box",
                 }}
@@ -3429,7 +3629,7 @@ function DayJournalModal({date, trades, onClose, onGradeUpdate}){
                       }}>
                         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
                           <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                            <span style={{fontSize:11,padding:"2px 9px",borderRadius:5,fontWeight:700,background:`${INST_COLOR[t.instrument]||B.teal}20`,color:INST_COLOR[t.instrument]||B.teal}}>{t.instrument}</span>
+                            <span style={{fontSize:11,padding:"2px 9px",borderRadius:5,fontWeight:700,background:`${INST_COLOR[t.instrument]||B.teal}20`,color:INST_COLOR[t.instrument]||B.teal}}>{tradeLabel(t)}</span>
                             <span style={{fontSize:13,fontWeight:700,color:t.direction==="Long"?"#4ade80":"#f87171"}}>{t.direction}</span>
                             <span style={{fontSize:11,color:B.textMuted}}>{t.contracts} contract{t.contracts!==1?"s":""}</span>
                           </div>
@@ -4178,7 +4378,7 @@ function SessionHeatmapWidget({trades}){
                 <div style={{fontSize:10}}>
                   <span style={{padding:"1px 6px",borderRadius:4,fontWeight:700,fontSize:9,
                     background:`${INST_COLOR[t.instrument]||B.teal}20`,
-                    color:INST_COLOR[t.instrument]||B.teal}}>{t.instrument}</span>
+                    color:INST_COLOR[t.instrument]||B.teal}}>{tradeLabel(t)}</span>
                 </div>
                 <div style={{fontSize:11,color:t.direction==="Long"?"#4ade80":"#f87171",fontWeight:600}}>{t.direction} · {t.setup||"—"}</div>
                 <div style={{fontSize:12,fontWeight:800,fontFamily:"monospace",color:pnlColor(t.pnl),textAlign:"right"}}>{fmt(t.pnl)}</div>
@@ -5662,7 +5862,7 @@ const DEFAULT_PLAYBOOK = [
     id:"section_3", type:"section", title:"Risk Management Rules",
     color:"#8B5CF6", icon:"🛡️",
     lessons:[
-      {id:"l7",title:"Position Sizing",content:"MES Futures Sizing Rules:\n\n• Never risk more than 1-2% of account per trade\n• For a $10,000 account: max risk = $100-200 per trade\n• 1 MES contract = $1.25 per tick, $5 per point\n• Calculate contracts from your dollar risk, not gut feel\n\nFormula: Contracts = Dollar Risk ÷ (Stop in points × $5)"},
+      {id:"l7",title:"Position Sizing",content:"Options Sizing Rules:\n\n• Max loss on a long option = the premium paid, so size by premium, not by contracts\n• Risk 1-2% of account in total premium per trade\n• Premium at risk = entry price x 100 x contracts\n• Example: $10,000 account, 1% risk = $100 -> one contract at a $1.00 premium\n• Shorter DTE = faster theta decay, so size smaller on 0DTE and weeklies\n\nMES Futures Sizing Rules:\n\n• Never risk more than 1-2% of account per trade\n• For a $10,000 account: max risk = $100-200 per trade\n• 1 MES contract = $1.25 per tick, $5 per point\n• Calculate contracts from your dollar risk, not gut feel\n\nFormula: Contracts = Dollar Risk ÷ (Stop in points × $5)"},
       {id:"l8",title:"Daily Loss Limit",content:"Hard Rules:\n• Daily loss limit: Set before market open, never move it\n• Once hit — STOP. Log off. Walk away.\n• 3 consecutive losing days = take a day off\n• Never revenge trade. Ever.\n\nThe goal is longevity. One bad day shouldn't end your account."},
     ]
   },
@@ -5925,9 +6125,9 @@ function PlaybookLibrary({session}){
             <div style={{flex:1,padding:"24px 28px",overflowY:"auto"}}>
               {editMode&&editingLesson?.id===currentLesson?.id?(
                 <textarea value={editingLesson.content} onChange={e=>setEditingLesson(l=>({...l,content:e.target.value}))}
-                  style={{...iS,width:"100%",height:"100%",minHeight:400,resize:"none",fontSize:14,lineHeight:1.8,fontFamily:"'DM Sans',sans-serif"}}/>
+                  style={{...iS,width:"100%",height:"100%",minHeight:400,resize:"none",fontSize:14,lineHeight:1.8,fontFamily:"'Inter',sans-serif"}}/>
               ):(
-                <div style={{fontSize:14,color:"#D4D0E8",lineHeight:1.9,whiteSpace:"pre-wrap",fontFamily:"'DM Sans',sans-serif"}}>
+                <div style={{fontSize:14,color:"#D4D0E8",lineHeight:1.9,whiteSpace:"pre-wrap",fontFamily:"'Inter',sans-serif"}}>
                   {currentLesson?.content}
                 </div>
               )}
@@ -5983,7 +6183,7 @@ function PlaybookLibrary({session}){
             <div style={{marginBottom:20}}>
               <label style={lS}>Content</label>
               <textarea value={newLessonForm.content} onChange={e=>setNewLessonForm(f=>({...f,content:e.target.value}))}
-                rows={8} style={{...iS,resize:"vertical",fontSize:13,lineHeight:1.7,fontFamily:"'DM Sans',sans-serif"}} placeholder="Write your lesson content here..."/>
+                rows={8} style={{...iS,resize:"vertical",fontSize:13,lineHeight:1.7,fontFamily:"'Inter',sans-serif"}} placeholder="Write your lesson content here..."/>
             </div>
             <div style={{display:"flex",gap:8}}>
               <button onClick={()=>setShowAddLesson(false)} style={{flex:1,padding:"10px",borderRadius:9,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:13}}>Cancel</button>
@@ -6405,7 +6605,7 @@ function EconomicCalendar({isDark=true}){
   };
 
   return(
-    <div style={{display:"flex",flexDirection:"column",gap:16,fontFamily:"'DM Sans',sans-serif"}}>
+    <div style={{display:"flex",flexDirection:"column",gap:16,fontFamily:"'Inter',sans-serif"}}>
 
       {/* My Events toggle */}
       <div style={{display:"flex",justifyContent:"flex-end"}}>
@@ -6912,7 +7112,7 @@ function ProfileModal({session, onClose}){
   };
 
   const joined = session?.user?.created_at ? new Date(session.user.created_at).toLocaleDateString("en-US",{month:"long",year:"numeric"}) : "—";
-  const iS={width:"100%",padding:"10px 12px",borderRadius:9,border:`1px solid ${B.border}`,background:"rgba(0,0,0,0.3)",color:B.text,fontSize:13,outline:"none",fontFamily:"'DM Sans',sans-serif"};
+  const iS={width:"100%",padding:"10px 12px",borderRadius:9,border:`1px solid ${B.border}`,background:"rgba(0,0,0,0.3)",color:B.text,fontSize:13,outline:"none",fontFamily:"'Inter',sans-serif"};
 
   return(
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:400,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={onClose}>
@@ -7256,7 +7456,7 @@ function WeeklyReview({trades, session}){
       // Full trade list for the week with notes
       const tradeList=weekTrades.sort((a,b)=>a.date.localeCompare(b.date))
         .map(t=>{
-          const base=`${t.date} ${new Date(t.date+"T12:00:00").toLocaleDateString("en-US",{weekday:"short"})} | ${t.instrument} ${t.direction} | ${t.result} | $${t.pnl.toFixed(2)} | ${t.setup||t.strategy||"?"} | ${t.session} | Grade:${t.grade}`;
+          const base=`${t.date} ${new Date(t.date+"T12:00:00").toLocaleDateString("en-US",{weekday:"short"})} | ${tradeLabel(t)} ${t.direction} | ${t.result} | $${t.pnl.toFixed(2)} | ${t.setup||t.strategy||"?"} | ${t.session} | Grade:${t.grade}`;
           const notes=t.notes?` | Notes: ${t.notes}`:"";
           const aiVerdict=t.ai_analysis?.verdict?` | AI Verdict: ${t.ai_analysis.verdict.slice(0,120)}`:"";
           const aiLesson=t.ai_analysis?.lesson?` | AI Lesson: ${t.ai_analysis.lesson.slice(0,80)}`:"";
@@ -7264,7 +7464,7 @@ function WeeklyReview({trades, session}){
         })
         .join("\n");
 
-      const ctx=`You are TCA Coach for The Candlestick Academy, expert in MES futures and ICT methodology.
+      const ctx=`You are TCA Coach for The Candlestick Academy, expert in options trading (single-leg calls and puts on SPX/SPY and mega-cap tech like NVDA, MSFT, AMZN, TSLA, AAPL), futures (MES/MNQ/MGC) and ICT methodology. Option entry/exit values are premium per share (x100 per contract); P&L is net of commissions and fees. Consider DTE, theta decay, and call vs put when relevant.
 
 Generate a structured weekly trading debrief for the week of ${selectedWeek} to ${weekEnd}.
 
@@ -7473,7 +7673,7 @@ Write the debrief in this exact format with these four sections. Be specific —
           <div style={{fontSize:11,color:B.textMuted,letterSpacing:1.5,marginBottom:12}}>MY NOTES THIS WEEK</div>
           <textarea value={notes} onChange={e=>setNotes(e.target.value)}
             placeholder="What did you learn? What will you do differently? Any market observations..."
-            style={{width:"100%",minHeight:100,background:"rgba(0,0,0,0.3)",border:`1px solid ${B.border}`,borderRadius:10,padding:"12px 14px",color:B.text,fontSize:13,fontFamily:"'DM Sans',sans-serif",resize:"vertical",outline:"none",lineHeight:1.6}}/>
+            style={{width:"100%",minHeight:100,background:"rgba(0,0,0,0.3)",border:`1px solid ${B.border}`,borderRadius:10,padding:"12px 14px",color:B.text,fontSize:13,fontFamily:"'Inter',sans-serif",resize:"vertical",outline:"none",lineHeight:1.6}}/>
         </div>
 
         {/* Focus */}
@@ -7762,13 +7962,13 @@ function TCAChat({trades, strategies, isOpen, onClose}){
     }
 
     // Full trade history compressed — cap notes tightly to keep payload small
-    const allTrades=sorted.map(t=>`${t.date}|${t.instrument}|${t.direction==="Long"?"L":"S"}|${t.result==="Win"?"W":"L"}|$${Math.round(t.pnl*100)/100}|${(t.strategy||t.setup||"?").slice(0,15)}|${t.session}|${t.grade}${t.notes?"|"+t.notes.slice(0,20):""}`);
+    const allTrades=sorted.map(t=>`${t.date}|${tradeLabel(t)}|${t.direction==="Long"?"L":"S"}|${t.result==="Win"?"W":"L"}|$${Math.round(t.pnl*100)/100}|${(t.strategy||t.setup||"?").slice(0,15)}|${t.session}|${t.grade}${t.notes?"|"+t.notes.slice(0,20):""}`);
 
     // Recent 25 in detail, older trades summarised as aggregate stats only
     const recent25=allTrades.slice(0,25);
     const olderSummary=allTrades.length>25?` [+${allTrades.length-25} older trades included in aggregate stats above]`:"";
 
-    return `You are TCA Coach for The Candlestick Academy. Expert in MES futures + ICT methodology. Be direct, specific, reference the trader's actual numbers. Max 4 sentences unless asked for a full review or debrief.
+    return `You are TCA Coach for The Candlestick Academy. Expert in options trading (single-leg calls/puts on SPX/SPY and mega-cap tech), futures (MES/MNQ/MGC) and ICT methodology. For options trades, entry/exit are premium per share (x100 per contract), the label shows underlying, strike, C/P, expiry and DTE, and P&L is net of fees. Consider theta decay, DTE and call vs put when relevant. Be direct, specific, reference the trader's actual numbers. Max 4 sentences unless asked for a full review or debrief.
 
 OVERALL: ${trades.length} trades | $${Math.round(totalPnl*100)/100} net PnL | ${winRate}% WR | AvgW:$${avgWin} | AvgL:$${avgLoss} | PF:${Math.round(pf*100)/100}
 STREAK: Current ${streak}-trade ${streakType||"—"} streak
@@ -7777,6 +7977,7 @@ GRADES: ${Object.entries(byGrade).sort((a,b)=>["A+","A","B","C","D"].indexOf(a[0
 SESSIONS: ${Object.entries(bySession).map(([s,d])=>s+"="+d.total+"t,"+Math.round(d.wins/d.total*100)+"%WR,$"+Math.round(d.pnl)).join(" | ")}
 DAYS: ${Object.entries(byDay).map(([d,v])=>d+"="+v.total+"t,"+Math.round(v.wins/v.total*100)+"%WR,$"+Math.round(v.pnl)).join(" | ")}
 SETUPS: ${Object.entries(bySetup).sort((a,b)=>b[1].pnl-a[1].pnl).slice(0,8).map(([s,d])=>s.slice(0,15)+"="+d.total+"t,"+Math.round(d.wins/d.total*100)+"%WR,$"+Math.round(d.pnl)).join(" | ")}
+${optionsSummary(trades)}
 WEEKLY TREND: ${weeklyTrend.join(" → ")||"not enough data"}
 STRATEGIES: ${strategies.map(s=>s.name).join(", ")||"none"}
 RECENT 25 (date|inst|dir|W/L|pnl|setup|session|grade|notes):
@@ -7815,7 +8016,7 @@ ${recent25.join("\n")}${olderSummary}`;
 
   if(!isOpen)return null;
   return(
-    <div style={{position:"fixed",right:0,top:0,bottom:0,width:380,zIndex:300,background:"#13121A",borderLeft:"1px solid rgba(255,255,255,0.08)",display:"flex",flexDirection:"column",fontFamily:"'DM Sans',sans-serif"}}>
+    <div style={{position:"fixed",right:0,top:0,bottom:0,width:380,zIndex:300,background:"#13121A",borderLeft:"1px solid rgba(255,255,255,0.08)",display:"flex",flexDirection:"column",fontFamily:"'Inter',sans-serif"}}>
       <div style={{height:3,background:"linear-gradient(90deg,#00D4A8,#4F8EF7,#8B5CF6)",flexShrink:0}}/>
       <div style={{padding:"16px 18px",borderBottom:"1px solid rgba(255,255,255,0.07)",display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
         <div style={{width:34,height:34,borderRadius:"50%",background:"linear-gradient(135deg,#00D4A8,#8B5CF6)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>🧠</div>
@@ -7846,13 +8047,13 @@ ${recent25.join("\n")}${olderSummary}`;
       </div>
       {messages.length<=2&&(
         <div style={{padding:"10px 16px 0",display:"flex",flexWrap:"wrap",gap:5}}>
-          {SUGGESTIONS.map(s=><button key={s} onClick={()=>setInput(s)} style={{padding:"4px 10px",borderRadius:20,fontSize:11,cursor:"pointer",border:"1px solid rgba(0,212,168,0.25)",background:"rgba(0,212,168,0.05)",color:"#00D4A8",fontFamily:"'DM Sans',sans-serif"}}>{s}</button>)}
+          {SUGGESTIONS.map(s=><button key={s} onClick={()=>setInput(s)} style={{padding:"4px 10px",borderRadius:20,fontSize:11,cursor:"pointer",border:"1px solid rgba(0,212,168,0.25)",background:"rgba(0,212,168,0.05)",color:"#00D4A8",fontFamily:"'Inter',sans-serif"}}>{s}</button>)}
         </div>
       )}
       <div style={{padding:"12px 16px 16px",flexShrink:0}}>
         <div style={{display:"flex",gap:8,alignItems:"flex-end",background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:12,padding:"8px 8px 8px 14px"}}>
           <textarea ref={inputRef} value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send();}}} placeholder="Ask anything about your trading..." rows={1}
-            style={{flex:1,background:"none",border:"none",outline:"none",resize:"none",color:"#F0EEF8",fontSize:13,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5,maxHeight:100,overflowY:"auto"}}
+            style={{flex:1,background:"none",border:"none",outline:"none",resize:"none",color:"#F0EEF8",fontSize:13,fontFamily:"'Inter',sans-serif",lineHeight:1.5,maxHeight:100,overflowY:"auto"}}
             onInput={e=>{e.target.style.height="auto";e.target.style.height=e.target.scrollHeight+"px";}}/>
           <button onClick={send} disabled={!input.trim()||loading} style={{width:34,height:34,borderRadius:9,border:"none",flexShrink:0,background:input.trim()&&!loading?"linear-gradient(135deg,#00D4A8,#8B5CF6)":"rgba(255,255,255,0.06)",color:input.trim()&&!loading?"#0E0E10":"#6B6880",cursor:input.trim()&&!loading?"pointer":"not-allowed",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center"}}>↑</button>
         </div>
@@ -8170,7 +8371,7 @@ function BestVersionOfYou({trades}){
             <div key={t.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 14px",borderRadius:10,background:"rgba(0,0,0,0.2)"}}>
               <div style={{width:24,height:24,borderRadius:"50%",background:`${B.teal}18`,border:`1px solid ${B.teal}40`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800,color:B.teal,flexShrink:0}}>#{i+1}</div>
               <div style={{flex:1,minWidth:0}}>
-                <div style={{fontSize:12,fontWeight:700,color:B.text}}>{t.date} · {t.instrument} {t.direction} · {t.session}</div>
+                <div style={{fontSize:12,fontWeight:700,color:B.text}}>{t.date} · {tradeLabel(t)} {t.direction} · {t.session}</div>
                 <div style={{fontSize:11,color:B.textMuted,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{t.setup}{t.notes?` · ${t.notes}`:""}</div>
               </div>
               <div style={{display:"flex",gap:8,alignItems:"center",flexShrink:0}}>
@@ -8391,6 +8592,11 @@ export default function App(){
       notes:         trade.notes||"",
       tp_category:   trade.tp_category||null,
       tradovate_id:  trade.tradovate_id||null,
+      asset_type:    trade.asset_type==="Options"?"Options":"Futures",
+      option_type:   trade.asset_type==="Options"?(trade.option_type||"Call"):null,
+      strike:        trade.asset_type==="Options"?toNum(trade.strike):null,
+      expiration:    trade.asset_type==="Options"?(trade.expiration||null):null,
+      fees:          trade.asset_type==="Options"?toNum(trade.fees):null,
     };
     console.log("Saving row:", JSON.stringify(row));
     if(editTrade){
@@ -8484,15 +8690,35 @@ export default function App(){
   if(!session)return <LoginScreen/>;
   if(loading)return(<div style={{minHeight:"100vh",background:B.bg,display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{fontSize:14,color:B.textMuted}}>Loading your trades...</div></div>);
 
-  return(<div style={{minHeight:"100vh",background:B.bg,fontFamily:"'DM Sans','Segoe UI',sans-serif",color:B.text,transition:"background 0.3s,color 0.3s"}}><style>{`@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,600;0,9..40,700;0,9..40,800&family=Space+Mono:wght@400;700&display=swap');*{box-sizing:border-box;}body{margin:0;}::-webkit-scrollbar{width:4px;}::-webkit-scrollbar-track{background:transparent;}::-webkit-scrollbar-thumb{background:rgba(0,212,168,0.2);border-radius:2px;}input[type=date]::-webkit-calendar-picker-indicator{filter:invert(0.5);}select option{background:#13121A;color:#F0EEF8;}`}</style>
-    {toast&&(<div style={{position:"fixed",top:20,right:24,zIndex:200,padding:"12px 20px",borderRadius:10,background:toast.type==="error"?B.loss+"18":B.teal+"15",border:"1px solid "+(toast.type==="error"?B.loss+"40":B.teal+"40"),color:toast.type==="error"?B.loss:B.teal,fontWeight:700,fontSize:13,boxShadow:"0 8px 32px rgba(0,0,0,0.5)"}}>{toast.msg}</div>)}
+  return(<div style={{minHeight:"100vh",background:B.isDark?`radial-gradient(900px 500px at 85% -10%,rgba(139,92,246,0.10),transparent 60%),radial-gradient(800px 500px at 10% 0%,rgba(0,212,168,0.07),transparent 55%),${B.bg}`:B.bg,backgroundAttachment:"fixed",fontFamily:"'Inter','Segoe UI',sans-serif",color:B.text,transition:"background 0.3s,color 0.3s"}}><style>{`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap');
+*{box-sizing:border-box;}
+html{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;}
+body{margin:0;font-feature-settings:'cv11','ss01';}
+::selection{background:rgba(0,212,168,0.28);color:inherit;}
+::-webkit-scrollbar{width:8px;height:8px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.10);border-radius:8px;border:2px solid transparent;background-clip:padding-box;}
+::-webkit-scrollbar-thumb:hover{background:rgba(0,212,168,0.35);background-clip:padding-box;border:2px solid transparent;}
+button{transition:filter .15s ease,transform .12s ease,background .15s ease,border-color .15s ease,box-shadow .15s ease;}
+button:not(:disabled):hover{filter:brightness(1.12);}
+button:not(:disabled):active{transform:scale(0.98);}
+button:focus-visible,a:focus-visible{outline:2px solid rgba(0,212,168,0.6);outline-offset:2px;}
+input:focus,select:focus,textarea:focus{outline:none;border-color:rgba(0,212,168,0.55)!important;box-shadow:0 0 0 3px rgba(0,212,168,0.12);}
+input,select,textarea{transition:border-color .15s ease,box-shadow .15s ease;}
+input[type=date]::-webkit-calendar-picker-indicator{filter:invert(0.5);}
+select option{background:#13141A;color:#F2F3F8;}
+@keyframes tcaFadeUp{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:none;}}
+.tca-page{animation:tcaFadeUp .28s ease both;}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;}}
+`}</style>
+    {toast&&(<div style={{position:"fixed",top:20,right:24,zIndex:200,padding:"12px 20px",borderRadius:10,background:toast.type==="error"?"rgba(24,12,16,0.85)":"rgba(10,24,22,0.85)",border:"1px solid "+(toast.type==="error"?B.loss+"55":B.teal+"55"),color:toast.type==="error"?B.loss:B.teal,fontWeight:700,fontSize:13,boxShadow:"0 12px 40px rgba(0,0,0,0.45)",backdropFilter:"blur(12px)",WebkitBackdropFilter:"blur(12px)"}}>{toast.msg}</div>)}
     {showSyncModal&&<TradovateSyncModal onClose={()=>setShowSyncModal(false)} onSync={handleManualSync} syncing={syncStatus==="syncing"} accounts={accounts}/>}
     {showForm&&<TradeFormModal onClose={()=>{setShowForm(false);setEditTrade(null);}} onSave={handleSave} editTrade={editTrade}/>}
     {showImport&&<ImportModal onClose={()=>setShowImport(false)} onImport={handleImport} existingTrades={trades}/>}
     {delTrade&&<DeleteConfirm trade={delTrade} onConfirm={handleDelete} onCancel={()=>setDelTrade(null)}/>}
-    <div style={{position:"fixed",top:0,left:0,bottom:0,width:216,background:B.sidebarBg,borderRight:`1px solid ${B.border}`,display:"flex",flexDirection:"column",zIndex:100}}>
-      <div style={{padding:"22px 18px 18px",borderBottom:`1px solid ${B.border}`}}><div style={{display:"flex",alignItems:"center",gap:12}}><TCAIcon size={36}/><div><div style={{fontSize:13,fontWeight:800,background:GL,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",letterSpacing:-0.3}}>TCA Journal</div><div style={{fontSize:9,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",marginTop:1}}>Candlestick Academy</div><div style={{marginTop:4,display:"inline-block",padding:"2px 8px",borderRadius:20,background:GL,fontSize:8,fontWeight:800,letterSpacing:2,color:"#0E0E10"}}>TRADE JOURNAL</div></div></div></div>
-      <nav style={{padding:"16px 12px",flex:1}}>{NAV.map(n=>(<button key={n.id} onClick={()=>setActive(n.id)} style={{display:"flex",alignItems:"center",gap:10,width:"100%",padding:"10px 12px",borderRadius:9,border:"none",background:active===n.id?"rgba(0,212,168,0.07)":"transparent",borderLeft:active===n.id?`2px solid ${B.teal}`:"2px solid transparent",color:active===n.id?B.teal:B.textMuted,cursor:"pointer",fontSize:13,fontWeight:600,textAlign:"left",transition:"all 0.15s",marginBottom:2}}><span style={{fontSize:14}}>{n.icon}</span>{n.label}</button>))}</nav>
+    <div style={{position:"fixed",top:0,left:0,bottom:0,width:216,background:B.sidebarBg,backdropFilter:"blur(18px)",WebkitBackdropFilter:"blur(18px)",borderRight:`1px solid ${B.border}`,display:"flex",flexDirection:"column",zIndex:100,overflowY:"auto"}}>
+      <div style={{padding:"22px 18px 18px",borderBottom:`1px solid ${B.border}`}}><div style={{display:"flex",alignItems:"center",gap:12}}><TCAIcon size={36}/><div><div style={{fontSize:14,fontWeight:700,background:GL,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",letterSpacing:-0.3}}>TCA Journal</div><div style={{fontSize:9.5,color:B.textMuted,letterSpacing:1.6,textTransform:"uppercase",marginTop:2,fontWeight:500}}>Candlestick Academy</div></div></div></div>
+      <nav style={{padding:"16px 12px",flex:1}}>{NAV.map(n=>(<button key={n.id} onClick={()=>setActive(n.id)} style={{display:"flex",alignItems:"center",gap:11,width:"100%",padding:"9px 12px",borderRadius:10,border:`1px solid ${active===n.id?B.borderTeal:"transparent"}`,background:active===n.id?"linear-gradient(90deg,rgba(0,212,168,0.12),rgba(79,142,247,0.04))":"transparent",color:active===n.id?B.teal:B.textMuted,cursor:"pointer",fontSize:13,fontWeight:active===n.id?600:500,textAlign:"left",marginBottom:3,boxShadow:active===n.id?"0 0 18px rgba(0,212,168,0.08)":"none"}}><span style={{fontSize:14}}>{n.icon}</span>{n.label}</button>))}</nav>
       <div style={{padding:"16px 18px",borderTop:`1px solid ${B.border}`}}>
         <div style={{fontSize:9,color:B.textDim,letterSpacing:2,marginBottom:3}}>NY SESSION</div>
         <div style={{fontSize:13,fontFamily:"monospace",color:B.textMuted}}>{nyTime}</div>
@@ -8521,9 +8747,9 @@ export default function App(){
       </div>
     </div>
     <style>{`[contenteditable]{direction:ltr!important;text-align:left!important;unicode-bidi:embed!important;}`}</style>
-    <div style={{marginLeft:216,marginRight:chatOpen?380:0,padding:"28px 32px",minHeight:"100vh",transition:"margin-right 0.3s"}}>
+    <div style={{marginLeft:216,marginRight:chatOpen?380:0,padding:"32px 36px",minHeight:"100vh",transition:"margin-right 0.3s"}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
-        <div><h1 style={{margin:0,fontSize:20,fontWeight:800,color:B.text,letterSpacing:-0.5}}>{NAV.find(n=>n.id===active)?.label}</h1></div>
+        <div><h1 style={{margin:0,fontSize:24,fontWeight:700,color:B.text,letterSpacing:-0.8}}>{NAV.find(n=>n.id===active)?.label}</h1></div>
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
           {hasSample&&(<button onClick={()=>setTrades([])} style={{padding:"8px 14px",borderRadius:9,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:11,fontWeight:600}}>Clear Sample Data</button>)}
           <button onClick={()=>setShowReport(true)} style={{padding:"7px 14px",borderRadius:9,border:`1px solid rgba(0,212,168,0.3)`,background:"rgba(0,212,168,0.06)",color:B.teal,cursor:"pointer",fontSize:11,fontWeight:700,display:"flex",alignItems:"center",gap:5}}>📄 Export PDF</button>
@@ -8534,16 +8760,17 @@ export default function App(){
             {isDark?"☀️ Light":"🌙 Dark"}
           </button>
           <select value={activeAccount} onChange={e=>setActiveAccount(e.target.value)}
-            style={{padding:"7px 12px",borderRadius:9,border:`1px solid ${B.border}`,background:"rgba(0,0,0,0.5)",color:B.text,cursor:"pointer",fontSize:12,fontFamily:"'DM Sans',sans-serif"}}>
+            style={{padding:"8px 12px",borderRadius:10,border:`1px solid ${B.border}`,background:B.isDark?"rgba(255,255,255,0.05)":"#FFFFFF",color:B.text,cursor:"pointer",fontSize:12,fontFamily:"'Inter',sans-serif"}}>
             <option value="all">All Accounts</option>
             {accounts.map(a=>(<option key={a.id} value={a.id}>{a.label}</option>))}
           </select>
           <button onClick={()=>setShowImport(true)} style={{padding:"8px 16px",borderRadius:9,border:`1px solid ${B.blue}40`,background:`${B.blue}12`,color:B.blue,cursor:"pointer",fontSize:12,fontWeight:700}}>⬆ Import CSV</button>
           <button onClick={()=>handleClearImported()} style={{padding:"8px 14px",borderRadius:9,border:`1px solid ${B.loss}40`,background:`${B.loss}10`,color:B.loss,cursor:"pointer",fontSize:12,fontWeight:600}} title="Delete all imported trades">🗑 Clear Imports</button>
-          <button onClick={()=>{setEditTrade(null);setShowForm(true);}} style={{padding:"8px 18px",borderRadius:9,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:12,fontWeight:800}}>+ Log Trade</button>
+          <button onClick={()=>{setEditTrade(null);setShowForm(true);}} style={{padding:"9px 20px",borderRadius:10,border:"none",background:GL,color:"#07080C",cursor:"pointer",fontSize:12.5,fontWeight:700,boxShadow:"0 6px 20px rgba(0,212,168,0.25)"}}>+ Log Trade</button>
         </div>
       </div>
       {hasSample&&(<div style={{marginBottom:18,padding:"10px 16px",borderRadius:10,background:"rgba(79,142,247,0.07)",border:"1px solid rgba(79,142,247,0.2)",fontSize:12,color:B.blue,display:"flex",alignItems:"center",justifyContent:"space-between"}}><span>Viewing sample data. Import your Tradovate CSV or log a real trade to get started.</span><button onClick={()=>setTrades([])} style={{background:"none",border:"none",color:B.blue,cursor:"pointer",fontWeight:700,fontSize:12,textDecoration:"underline"}}>Clear it</button></div>)}
+      <div key={active} className="tca-page">
       {active==="overview"&&<Overview trades={activeAccount==="all"?trades:trades.filter(t=>t.account_id===activeAccount)} onGradeUpdate={handleGradeUpdate} session={session} accounts={accounts} activeAccount={activeAccount} setAccounts={setAccounts}/>}
       {active==="journal"&&<Journal trades={activeAccount==="all"?trades:trades.filter(t=>t.account_id===activeAccount)} onEdit={handleEdit} onDelete={setDelTrade} onGradeUpdate={handleGradeUpdate} onAnalysisSave={handleAnalysisSave}/>}
       {active==="analytics"&&<Analytics trades={activeAccount==="all"?trades:trades.filter(t=>t.account_id===activeAccount)}/>}
@@ -8554,6 +8781,7 @@ export default function App(){
       {active==="economiccalendar"&&<EconomicCalendar isDark={isDark}/>}
       {active==="library"&&<PlaybookLibrary session={session}/>}
       {active==="bestversion"&&<BestVersionOfYou trades={activeAccount==="all"?trades:trades.filter(t=>t.account_id===activeAccount)}/>}
+      </div>
     </div>
   <TCAChat trades={trades} strategies={strategies} isOpen={chatOpen} onClose={()=>setChatOpen(false)}/>
   {showReport&&<PDFReportModal trades={trades} session={session} onClose={()=>setShowReport(false)}/>}
