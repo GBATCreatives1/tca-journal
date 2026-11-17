@@ -305,24 +305,34 @@ const DARK_THEME={
   cardBg:"rgba(255,255,255,0.035)",
   inputBg:"rgba(255,255,255,0.055)",
   sidebarBg:"rgba(10,11,15,0.92)",
+  panel:"#13121A",deep:"#0E0E10",inset:"rgba(0,0,0,0.3)",hair:"rgba(255,255,255,0.05)",onAccent:"#0E0E10",
+  overlay:"rgba(0,0,0,0.82)",shadow:"0 8px 24px rgba(0,0,0,0.25)",
   isDark:true,
 };
+// Editorial Light: bright paper, ink text, indigo accent. "teal" stays the primary-accent token name.
 const LIGHT_THEME={
-  teal:"#00A87D",blue:"#2B6CB0",purple:"#6B46C1",spark:"#553C9A",
-  profit:"#276749",loss:"#C53030",
-  bg:"#F4F6FB",surface:"#FFFFFF",
-  border:"rgba(15,23,42,0.08)",borderTeal:"rgba(0,168,125,0.28)",
-  borderPurp:"rgba(107,70,193,0.25)",
-  text:"#1A1A2E",textMuted:"#6B7280",textDim:"#D1D5DB",
+  teal:"#3D4BFF",blue:"#0E8BD6",purple:"#7C5CFF",spark:"#5B49E8",
+  profit:"#0F9D6B",loss:"#E5484D",
+  bg:"#FBFBFD",surface:"#FFFFFF",
+  border:"rgba(14,17,22,0.09)",borderTeal:"rgba(61,75,255,0.28)",
+  borderPurp:"rgba(124,92,255,0.28)",
+  text:"#0E1116",textMuted:"#6B7280",textDim:"#A3A9B5",
   cardBg:"#FFFFFF",
-  inputBg:"rgba(0,0,0,0.04)",
-  sidebarBg:"#1E2030",
+  inputBg:"rgba(14,17,22,0.04)",
+  sidebarBg:"#FFFFFF",
+  panel:"#FFFFFF",deep:"#F3F4F8",inset:"rgba(14,17,22,0.04)",hair:"rgba(14,17,22,0.04)",onAccent:"#FFFFFF",
+  overlay:"rgba(14,17,22,0.45)",shadow:"0 1px 2px rgba(14,17,22,0.04),0 8px 24px rgba(14,17,22,0.06)",
   isDark:false,
 };
+const SERIF="'Instrument Serif',Georgia,'Times New Roman',serif";
+const SANS="'DM Sans','Inter',system-ui,sans-serif";
 let B=DARK_THEME;
-const GL="linear-gradient(135deg,#00D4A8 0%,#4F8EF7 50%,#8B5CF6 100%)";
-const GTB="linear-gradient(90deg,#00D4A8,#4F8EF7)";
-const GBP="linear-gradient(90deg,#4F8EF7,#8B5CF6)";
+const GL_DARK="linear-gradient(135deg,#00D4A8 0%,#4F8EF7 50%,#8B5CF6 100%)",GL_LIGHT="linear-gradient(135deg,#3D4BFF 0%,#6552FF 100%)";
+let GL=GL_DARK;
+const GTB_DARK="linear-gradient(90deg,#00D4A8,#4F8EF7)",GTB_LIGHT="linear-gradient(90deg,#3D4BFF,#0E8BD6)";
+let GTB=GTB_DARK;
+const GBP_DARK="linear-gradient(90deg,#4F8EF7,#8B5CF6)",GBP_LIGHT="linear-gradient(90deg,#0E8BD6,#7C5CFF)";
+let GBP=GBP_DARK;
 const INST_COLOR={MES:B.purple,SPY:B.blue,SPX:B.teal,ES:B.purple,NQ:B.blue,MNQ:"#f97316"};
 const GRADE_COLOR={"A+":B.teal,"A":"#4ade80","B":B.blue,"C":"#f97316","D":B.loss};
 const TAG_COLOR={ICT:B.purple,Strat:B.blue,Confluence:B.teal,CISD:"#f97316",OB:B.purple,FVG:B.blue,OTE:B.teal,PDH:B.blue,VWAP:B.spark,Open:"#f97316",Risky:B.loss};
@@ -706,8 +716,10 @@ function parseGenericCSV(text){
   return trades;
 }
 
-const iS={background:"rgba(0,0,0,0.4)",border:`1px solid ${B.border}`,borderRadius:8,color:B.text,padding:"9px 12px",fontSize:13,width:"100%",outline:"none",fontFamily:"'Inter',sans-serif"};
-const lS={fontSize:10,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:5,display:"block"};
+const buildIS=()=>({background:B.isDark?"rgba(0,0,0,0.4)":"#FFFFFF",border:`1px solid ${B.isDark?B.border:"rgba(14,17,22,0.14)"}`,borderRadius:10,color:B.text,padding:"10px 13px",fontSize:13,width:"100%",outline:"none",fontFamily:SANS});
+let iS=buildIS();
+const buildLS=()=>({fontSize:10,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:5,display:"block"});
+let lS=buildLS();
 
 function TCAIcon({size=34}){
   return(
@@ -733,7 +745,7 @@ function TCAIcon({size=34}){
 }
 
 
-function StatCard({label,value,sub,accent,grad}){return(<div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:16,padding:"20px 22px",position:"relative",overflow:"hidden",boxShadow:B.isDark?"0 1px 0 rgba(255,255,255,0.04) inset,0 8px 24px rgba(0,0,0,0.25)":"0 1px 2px rgba(15,23,42,0.05),0 6px 18px rgba(15,23,42,0.05)",backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)"}}><div style={{position:"absolute",top:0,left:20,right:20,height:1.5,borderRadius:2,background:grad||`linear-gradient(90deg,${accent},transparent)`,opacity:0.9}}/><div style={{position:"absolute",top:-30,right:-30,width:120,height:120,background:`radial-gradient(circle,${accent}1A 0%,transparent 70%)`,pointerEvents:"none"}}/><div style={{fontSize:10.5,color:B.textMuted,letterSpacing:1.6,textTransform:"uppercase",marginBottom:10,fontWeight:600}}>{label}</div>{grad?<div style={{fontSize:27,fontWeight:700,background:grad,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",fontFamily:"'JetBrains Mono','SF Mono',monospace",letterSpacing:-1,fontVariantNumeric:"tabular-nums"}}>{value}</div>:<div style={{fontSize:27,fontWeight:700,color:accent,fontFamily:"'JetBrains Mono','SF Mono',monospace",letterSpacing:-1,fontVariantNumeric:"tabular-nums"}}>{value}</div>}{sub&&<div style={{fontSize:11.5,color:B.textMuted,marginTop:6}}>{sub}</div>}</div>);}
+function StatCard({label,value,sub,accent,grad}){return(<div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:20,padding:"20px 22px",position:"relative",overflow:"hidden",boxShadow:B.shadow}}><div style={{fontSize:11,color:B.textMuted,letterSpacing:1.4,textTransform:"uppercase",marginBottom:8,fontWeight:600}}>{label}</div>{grad?<div style={{fontSize:38,lineHeight:1.05,background:grad,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",fontFamily:SERIF,letterSpacing:-0.5}}>{value}</div>:<div style={{fontSize:38,lineHeight:1.05,color:accent,fontFamily:SERIF,letterSpacing:-0.5}}>{value}</div>}{sub&&<div style={{fontSize:12,color:B.textMuted,marginTop:6}}>{sub}</div>}</div>);}
 function Tag({label}){const c=TAG_COLOR[label]||"#666";return <span style={{fontSize:10,padding:"2px 9px",borderRadius:20,border:`1px solid ${c}44`,color:c,background:"rgba(0,0,0,0.35)",letterSpacing:0.5,fontWeight:700}}>{label}</span>;}
 const CTip=({active,payload,label})=>{if(!active||!payload?.length)return null;return(<div style={{background:"rgba(16,17,24,0.92)",backdropFilter:"blur(10px)",WebkitBackdropFilter:"blur(10px)",border:`1px solid ${B.borderTeal}`,borderRadius:12,padding:"10px 16px",fontSize:12,boxShadow:"0 12px 32px rgba(0,0,0,0.45)"}}><div style={{color:B.textMuted,marginBottom:5}}>{label}</div>{payload.map((p,i)=>(<div key={i} style={{color:p.value>=0?B.profit:B.loss,fontFamily:"monospace",fontWeight:700}}>{p.name}: {(p.value>=0?"+":"-")+"$"+Math.abs(p.value)}</div>))}</div>);};
 
@@ -746,7 +758,7 @@ function LoginScreen(){
   const [success,setSuccess]=useState("");
   const [loading,setLoading]=useState(false);
 
-  const iS={width:"100%",padding:"11px 14px",borderRadius:10,border:`1px solid rgba(255,255,255,0.1)`,background:"rgba(255,255,255,0.04)",color:"#F0EEF8",fontSize:13,outline:"none",fontFamily:"'Inter',sans-serif"};
+  const iS={width:"100%",padding:"11px 14px",borderRadius:10,border:`1px solid ${B.isDark?"rgba(255,255,255,0.1)":"rgba(14,17,22,0.14)"}`,background:B.isDark?B.hair:"#FFFFFF",color:B.text,fontSize:13,outline:"none",fontFamily:"'DM Sans','Inter',sans-serif"};
 
   const handle=async()=>{
     if(!email.trim()||(!password.trim()&&mode!=="forgot")){setError("Please fill in all fields.");return;}
@@ -774,25 +786,25 @@ function LoginScreen(){
   };
 
   return(
-    <div style={{minHeight:"100vh",background:"#0E0D14",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Inter','Segoe UI',sans-serif",padding:"20px"}}>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');*{box-sizing:border-box;}body{margin:0;}`}</style>
+    <div style={{minHeight:"100vh",background:B.isDark?"#0E0D14":`radial-gradient(900px 420px at 80% -10%,rgba(61,75,255,0.09),transparent 62%),${B.bg}`,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Inter','Segoe UI',sans-serif",padding:"20px"}}>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap');*{box-sizing:border-box;}body{margin:0;font-family:'DM Sans','Inter',sans-serif;}`}</style>
       <div style={{width:"100%",maxWidth:420}}>
 
         {/* Logo */}
         <div style={{textAlign:"center",marginBottom:36}}>
-          <div style={{width:64,height:64,borderRadius:18,background:"linear-gradient(135deg,#00D4A8,#8B5CF6)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,margin:"0 auto 16px"}}>📈</div>
-          <div style={{fontSize:26,fontWeight:800,color:"#F0EEF8",letterSpacing:-0.5}}>TCA Journal</div>
-          <div style={{fontSize:13,color:"#6B6880",marginTop:4}}>The Candlestick Academy · Trade Smarter</div>
+          <div style={{display:"flex",justifyContent:"center",marginBottom:14}}><TCAIcon size={52}/></div>
+          <div style={{fontFamily:SERIF,fontSize:46,lineHeight:1,color:B.text,letterSpacing:-1}}>TCA <span style={{fontStyle:"italic",color:B.teal}}>Journal</span></div>
+          <div style={{fontSize:13,color:B.textMuted,marginTop:4}}>The Candlestick Academy · Trade Smarter</div>
         </div>
 
         {/* Card */}
-        <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:20,padding:"32px 28px"}}>
-          <div style={{height:3,background:"linear-gradient(90deg,#00D4A8,#4F8EF7,#8B5CF6)",borderRadius:3,margin:"-32px -28px 28px",borderRadius:"20px 20px 0 0"}}/>
+        <div style={{background:B.isDark?B.hair:"#FFFFFF",border:`1px solid ${B.border}`,borderRadius:24,padding:"32px 28px",boxShadow:B.isDark?"none":"0 1px 2px rgba(14,17,22,0.04),0 18px 48px rgba(14,17,22,0.08)"}}>
+          
 
-          <div style={{fontSize:18,fontWeight:800,color:"#F0EEF8",marginBottom:4}}>
+          <div style={{fontSize:18,fontWeight:800,color:B.text,marginBottom:4}}>
             {mode==="login"?"Welcome back":mode==="signup"?"Create your account":"Reset password"}
           </div>
-          <div style={{fontSize:12,color:"#6B6880",marginBottom:24}}>
+          <div style={{fontSize:12,color:B.textMuted,marginBottom:24}}>
             {mode==="login"?"Sign in to your TCA Journal":mode==="signup"?"Start tracking your trades today":"Enter your email to receive a reset link"}
           </div>
 
@@ -812,7 +824,7 @@ function LoginScreen(){
           {/* Forgot link */}
           {mode==="login"&&(
             <div style={{textAlign:"right",marginTop:8}}>
-              <span onClick={()=>{setMode("forgot");setError("");setSuccess("");}} style={{fontSize:11,color:"#6B6880",cursor:"pointer",textDecoration:"underline"}}>Forgot password?</span>
+              <span onClick={()=>{setMode("forgot");setError("");setSuccess("");}} style={{fontSize:11,color:B.textMuted,cursor:"pointer",textDecoration:"underline"}}>Forgot password?</span>
             </div>
           )}
 
@@ -823,15 +835,15 @@ function LoginScreen(){
           {/* Submit */}
           <button onClick={handle} disabled={loading} style={{
             width:"100%",marginTop:20,padding:"13px",borderRadius:11,border:"none",
-            background:loading?"rgba(255,255,255,0.06)":"linear-gradient(135deg,#00D4A8,#4F8EF7)",
-            color:loading?"#6B6880":"#0E0D14",cursor:loading?"not-allowed":"pointer",
-            fontSize:14,fontWeight:800,fontFamily:"'Inter',sans-serif",transition:"all 0.15s",
+            background:loading?(B.isDark?"rgba(255,255,255,0.06)":"rgba(14,17,22,0.096)"):"linear-gradient(135deg,#00D4A8,#4F8EF7)",
+            color:loading?B.textMuted:"#0E0D14",cursor:loading?"not-allowed":"pointer",
+            fontSize:14,fontWeight:800,fontFamily:"'DM Sans','Inter',sans-serif",transition:"all 0.15s",
           }}>
             {loading?"Please wait...":(mode==="login"?"Sign In":mode==="signup"?"Create Account":"Send Reset Email")}
           </button>
 
           {/* Toggle */}
-          <div style={{textAlign:"center",marginTop:20,fontSize:12,color:"#6B6880"}}>
+          <div style={{textAlign:"center",marginTop:20,fontSize:12,color:B.textMuted}}>
             {mode==="forgot"?(
               <span onClick={()=>{setMode("login");setError("");setSuccess("");}} style={{color:B.teal,cursor:"pointer",fontWeight:700}}>← Back to sign in</span>
             ):mode==="login"?(
@@ -842,7 +854,7 @@ function LoginScreen(){
           </div>
         </div>
 
-        <div style={{textAlign:"center",marginTop:20,fontSize:11,color:"rgba(255,255,255,0.15)"}}>
+        <div style={{textAlign:"center",marginTop:20,fontSize:11,color:B.textDim}}>
           By signing up you agree to use this journal for educational purposes.
         </div>
       </div>
@@ -913,7 +925,7 @@ function TradeFormModal({onClose,onSave,editTrade}){
     onSave({...form,id:editTrade?.id||`t_${Date.now()}`,pnl,contracts:parseInt(form.contracts)||1,entry:parseFloat(form.entry)||0,exit:parseFloat(form.exit)||0,result:pnl>=0?"Win":"Loss"});
     onClose();
   };
-  return(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.82)",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(6px)"}}><div style={{background:"#13121A",border:`1px solid ${B.border}`,borderRadius:18,padding:32,width:580,maxHeight:"90vh",overflowY:"auto"}}><div style={{height:3,background:GL,borderRadius:3,marginBottom:24}}/><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:24}}><div style={{fontSize:18,fontWeight:800,color:B.text}}>{editTrade?"Edit Trade":"Log New Trade"}</div><button onClick={onClose} style={{background:"none",border:"none",color:B.textMuted,cursor:"pointer",fontSize:22}}>x</button></div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}><div style={{gridColumn:"1/-1",display:"flex",gap:8}}>{["Futures","Options"].map(a=>(<button key={a} type="button" onClick={()=>{set("asset_type",a);if(a==="Options"&&["MES","ES","NQ","MNQ","MGC"].includes(form.instrument))set("instrument","SPY");if(a==="Futures"&&!INSTRUMENTS.includes(form.instrument)&&form.instrument!=="MGC")set("instrument","MES");}} style={{flex:1,padding:"9px",borderRadius:8,border:"1px solid",cursor:"pointer",fontWeight:800,fontSize:13,borderColor:form.asset_type===a?B.teal:B.border,background:form.asset_type===a?`${B.teal}14`:"transparent",color:form.asset_type===a?B.teal:B.textMuted}}>{a}</button>))}</div><div><label style={lS}>Date</label><input type="date" value={form.date} onChange={e=>set("date",e.target.value)} style={iS}/></div>{form.asset_type==="Options"?(<div><label style={lS}>Underlying</label><input list="tca-underlyings" value={form.instrument} onChange={e=>set("instrument",e.target.value.toUpperCase())} style={iS} placeholder="e.g. NVDA"/><datalist id="tca-underlyings">{OPT_UNDERLYINGS.map(u=><option key={u} value={u}/>)}</datalist></div>):(<div><label style={lS}>Instrument</label><select value={form.instrument} onChange={e=>set("instrument",e.target.value)} style={iS}>{INSTRUMENTS.map(i=><option key={i}>{i}</option>)}</select></div>)}{form.asset_type==="Options"&&(<><div><label style={lS}>Call / Put</label><div style={{display:"flex",gap:8}}>{["Call","Put"].map(o=>(<button key={o} type="button" onClick={()=>set("option_type",o)} style={{flex:1,padding:"9px",borderRadius:8,border:"1px solid",cursor:"pointer",fontWeight:700,fontSize:13,borderColor:form.option_type===o?B.blue:B.border,background:form.option_type===o?`${B.blue}18`:"transparent",color:form.option_type===o?B.blue:B.textMuted}}>{o}</button>))}</div></div><div><label style={lS}>Strike</label><input type="number" step="0.5" value={form.strike||""} onChange={e=>set("strike",e.target.value)} style={iS} placeholder="e.g. 150"/></div><div><label style={lS}>Expiration {(()=>{const d=daysToExpiry(form.date,form.expiration);return d===null?null:<span style={{color:B.teal,textTransform:"none",letterSpacing:0}}>· {d} DTE</span>;})()}</label><input type="date" value={String(form.expiration||"").slice(0,10)} onChange={e=>set("expiration",e.target.value)} style={iS}/></div></>)}<div><label style={lS}>Direction</label><div style={{display:"flex",gap:8}}>{["Long","Short"].map(d=>(<button key={d} onClick={()=>set("direction",d)} style={{flex:1,padding:"9px",borderRadius:8,border:"1px solid",cursor:"pointer",fontWeight:700,fontSize:13,borderColor:form.direction===d?(d==="Long"?"#4ade80":"#f87171"):B.border,background:form.direction===d?(d==="Long"?"rgba(74,222,128,0.1)":"rgba(248,113,113,0.1)"):"transparent",color:form.direction===d?(d==="Long"?"#4ade80":"#f87171"):B.textMuted}}>{d}</button>))}</div></div><div><label style={lS}>Contracts</label><input type="number" value={form.contracts} onChange={e=>set("contracts",e.target.value)} style={iS} min="1"/></div><div><label style={lS}>{form.asset_type==="Options"?"Entry Premium":"Entry Price"}</label><input type="number" step="0.01" value={form.entry} onChange={e=>set("entry",e.target.value)} style={iS} placeholder={form.asset_type==="Options"?"e.g. 2.45":"e.g. 5780.25"}/></div><div><label style={lS}>{form.asset_type==="Options"?"Exit Premium":"Exit Price"}</label><input type="number" step="0.01" value={form.exit} onChange={e=>set("exit",e.target.value)} style={iS} placeholder={form.asset_type==="Options"?"e.g. 3.80":"e.g. 5794.00"}/></div>{form.asset_type==="Options"&&(<div style={{gridColumn:"1/-1"}}><label style={lS}>Fees &amp; Commission <span style={{textTransform:"none",letterSpacing:0,color:B.textMuted}}>(auto: ${OPT_COMMISSION_PER_SIDE.toFixed(2)}/contract/side + est. exchange &amp; reg fees. Edit to match your statement)</span></label><input type="number" step="0.01" value={form.fees===undefined||form.fees===null?"":form.fees} onChange={e=>{setFeesManual(true);set("fees",e.target.value);}} style={iS}/></div>)}
+  return(<div style={{position:"fixed",inset:0,background:B.overlay,zIndex:100,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(6px)"}}><div style={{background:B.panel,border:`1px solid ${B.border}`,borderRadius:18,padding:32,width:580,maxHeight:"90vh",overflowY:"auto"}}><div style={{height:3,background:GL,borderRadius:3,marginBottom:24}}/><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:24}}><div style={{fontSize:18,fontWeight:800,color:B.text}}>{editTrade?"Edit Trade":"Log New Trade"}</div><button onClick={onClose} style={{background:"none",border:"none",color:B.textMuted,cursor:"pointer",fontSize:22}}>x</button></div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}><div style={{gridColumn:"1/-1",display:"flex",gap:8}}>{["Futures","Options"].map(a=>(<button key={a} type="button" onClick={()=>{set("asset_type",a);if(a==="Options"&&["MES","ES","NQ","MNQ","MGC"].includes(form.instrument))set("instrument","SPY");if(a==="Futures"&&!INSTRUMENTS.includes(form.instrument)&&form.instrument!=="MGC")set("instrument","MES");}} style={{flex:1,padding:"9px",borderRadius:8,border:"1px solid",cursor:"pointer",fontWeight:800,fontSize:13,borderColor:form.asset_type===a?B.teal:B.border,background:form.asset_type===a?`${B.teal}14`:"transparent",color:form.asset_type===a?B.teal:B.textMuted}}>{a}</button>))}</div><div><label style={lS}>Date</label><input type="date" value={form.date} onChange={e=>set("date",e.target.value)} style={iS}/></div>{form.asset_type==="Options"?(<div><label style={lS}>Underlying</label><input list="tca-underlyings" value={form.instrument} onChange={e=>set("instrument",e.target.value.toUpperCase())} style={iS} placeholder="e.g. NVDA"/><datalist id="tca-underlyings">{OPT_UNDERLYINGS.map(u=><option key={u} value={u}/>)}</datalist></div>):(<div><label style={lS}>Instrument</label><select value={form.instrument} onChange={e=>set("instrument",e.target.value)} style={iS}>{INSTRUMENTS.map(i=><option key={i}>{i}</option>)}</select></div>)}{form.asset_type==="Options"&&(<><div><label style={lS}>Call / Put</label><div style={{display:"flex",gap:8}}>{["Call","Put"].map(o=>(<button key={o} type="button" onClick={()=>set("option_type",o)} style={{flex:1,padding:"9px",borderRadius:8,border:"1px solid",cursor:"pointer",fontWeight:700,fontSize:13,borderColor:form.option_type===o?B.blue:B.border,background:form.option_type===o?`${B.blue}18`:"transparent",color:form.option_type===o?B.blue:B.textMuted}}>{o}</button>))}</div></div><div><label style={lS}>Strike</label><input type="number" step="0.5" value={form.strike||""} onChange={e=>set("strike",e.target.value)} style={iS} placeholder="e.g. 150"/></div><div><label style={lS}>Expiration {(()=>{const d=daysToExpiry(form.date,form.expiration);return d===null?null:<span style={{color:B.teal,textTransform:"none",letterSpacing:0}}>· {d} DTE</span>;})()}</label><input type="date" value={String(form.expiration||"").slice(0,10)} onChange={e=>set("expiration",e.target.value)} style={iS}/></div></>)}<div><label style={lS}>Direction</label><div style={{display:"flex",gap:8}}>{["Long","Short"].map(d=>(<button key={d} onClick={()=>set("direction",d)} style={{flex:1,padding:"9px",borderRadius:8,border:"1px solid",cursor:"pointer",fontWeight:700,fontSize:13,borderColor:form.direction===d?(d==="Long"?"#4ade80":"#f87171"):B.border,background:form.direction===d?(d==="Long"?"rgba(74,222,128,0.1)":"rgba(248,113,113,0.1)"):"transparent",color:form.direction===d?(d==="Long"?"#4ade80":"#f87171"):B.textMuted}}>{d}</button>))}</div></div><div><label style={lS}>Contracts</label><input type="number" value={form.contracts} onChange={e=>set("contracts",e.target.value)} style={iS} min="1"/></div><div><label style={lS}>{form.asset_type==="Options"?"Entry Premium":"Entry Price"}</label><input type="number" step="0.01" value={form.entry} onChange={e=>set("entry",e.target.value)} style={iS} placeholder={form.asset_type==="Options"?"e.g. 2.45":"e.g. 5780.25"}/></div><div><label style={lS}>{form.asset_type==="Options"?"Exit Premium":"Exit Price"}</label><input type="number" step="0.01" value={form.exit} onChange={e=>set("exit",e.target.value)} style={iS} placeholder={form.asset_type==="Options"?"e.g. 3.80":"e.g. 5794.00"}/></div>{form.asset_type==="Options"&&(<div style={{gridColumn:"1/-1"}}><label style={lS}>Fees &amp; Commission <span style={{textTransform:"none",letterSpacing:0,color:B.textMuted}}>(auto: ${OPT_COMMISSION_PER_SIDE.toFixed(2)}/contract/side + est. exchange &amp; reg fees. Edit to match your statement)</span></label><input type="number" step="0.01" value={form.fees===undefined||form.fees===null?"":form.fees} onChange={e=>{setFeesManual(true);set("fees",e.target.value);}} style={iS}/></div>)}
               <div><label style={lS}>Stop Loss</label><input type="number" step="0.25" value={form.stop_loss||""} onChange={e=>set("stop_loss",e.target.value)} style={iS} placeholder="Price level"/></div>
               <div><label style={lS}>Take Profit</label><input type="number" step="0.25" value={form.take_profit||""} onChange={e=>set("take_profit",e.target.value)} style={iS} placeholder="Price level"/></div>
               <div style={{gridColumn:"1/-1"}}><label style={lS}>TP Category <button type="button" onClick={()=>setShowTpMgr(p=>!p)} style={{background:"none",border:"none",color:B.textMuted,cursor:"pointer",fontSize:10,marginLeft:4}}>⚙ edit</button></label>
@@ -929,7 +941,7 @@ function TradeFormModal({onClose,onSave,editTrade}){
                   ))}
                 </div>
                 {showTpMgr&&(
-                  <div style={{marginTop:10,padding:"12px 14px",borderRadius:10,background:"rgba(0,0,0,0.3)",border:`1px solid ${B.border}`}}>
+                  <div style={{marginTop:10,padding:"12px 14px",borderRadius:10,background:B.inset,border:`1px solid ${B.border}`}}>
                     <div style={{fontSize:10,color:B.textMuted,letterSpacing:1,marginBottom:8}}>MANAGE TP CATEGORIES</div>
                     <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:10}}>
                       {tpCats.map(c=>(
@@ -941,7 +953,7 @@ function TradeFormModal({onClose,onSave,editTrade}){
                     </div>
                     <div style={{display:"flex",gap:6}}>
                       <input value={newTpCat} onChange={e=>setNewTpCat(e.target.value)} onKeyDown={e=>e.key==="Enter"&&newTpCat.trim()&&(saveTpCats([...tpCats,newTpCat.trim()]),setNewTpCat(""))} placeholder="New category..." style={{...iS,flex:1,padding:"5px 10px",fontSize:11}}/>
-                      <button type="button" onClick={()=>{if(newTpCat.trim()){saveTpCats([...tpCats,newTpCat.trim()]);setNewTpCat("");}}} style={{padding:"5px 12px",borderRadius:7,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:11,fontWeight:800}}>Add</button>
+                      <button type="button" onClick={()=>{if(newTpCat.trim()){saveTpCats([...tpCats,newTpCat.trim()]);setNewTpCat("");}}} style={{padding:"5px 12px",borderRadius:7,border:"none",background:GL,color:B.onAccent,cursor:"pointer",fontSize:11,fontWeight:800}}>Add</button>
                     </div>
                   </div>
                 )}
@@ -951,7 +963,7 @@ function TradeFormModal({onClose,onSave,editTrade}){
                   {customSetups.map(s=><option key={s} value={s}>{s}</option>)}
                 </select>
                 {showSetupMgr&&(
-                  <div style={{marginTop:8,padding:"10px 12px",borderRadius:8,background:"rgba(0,0,0,0.3)",border:`1px solid ${B.border}`}}>
+                  <div style={{marginTop:8,padding:"10px 12px",borderRadius:8,background:B.inset,border:`1px solid ${B.border}`}}>
                     <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:8}}>
                       {customSetups.map(s=>(
                         <div key={s} style={{display:"flex",alignItems:"center",gap:3,padding:"2px 8px",borderRadius:6,background:`${B.purple}10`,border:`1px solid ${B.borderPurp}`}}>
@@ -965,7 +977,7 @@ function TradeFormModal({onClose,onSave,editTrade}){
                         onKeyDown={e=>e.key==="Enter"&&newSetupName.trim()&&(saveCustomSetups([...customSetups,newSetupName.trim()]),setNewSetupName(""))}
                         placeholder="Add setup..." style={{...iS,flex:1,padding:"5px 10px",fontSize:11}}/>
                       <button type="button" onClick={()=>{if(newSetupName.trim()){saveCustomSetups([...customSetups,newSetupName.trim()]);setNewSetupName("");}}}
-                        style={{padding:"5px 12px",borderRadius:7,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:11,fontWeight:800}}>+</button>
+                        style={{padding:"5px 12px",borderRadius:7,border:"none",background:GL,color:B.onAccent,cursor:"pointer",fontSize:11,fontWeight:800}}>+</button>
                     </div>
                   </div>
                 )}
@@ -981,7 +993,7 @@ function TradeFormModal({onClose,onSave,editTrade}){
                 </select>
               </div>
               
-              <div><label style={lS}>Account</label><select value={form.account_id||"main"} onChange={e=>set("account_id",e.target.value)} style={{...iS,cursor:"pointer"}}>{formAccounts.map(a=>(<option key={a.id} value={a.id}>{a.label}</option>))}</select></div><div style={{gridColumn:"1/-1"}}><label style={lS}>Grade</label><div style={{display:"flex",gap:6}}>{GRADES.map(g=>(<button key={g} onClick={()=>set("grade",g)} style={{flex:1,padding:"7px 0",borderRadius:8,border:"1px solid",cursor:"pointer",fontWeight:800,fontSize:12,borderColor:form.grade===g?GRADE_COLOR[g]:B.border,background:form.grade===g?`${GRADE_COLOR[g]}18`:"transparent",color:form.grade===g?GRADE_COLOR[g]:B.textMuted}}>{g}</button>))}</div></div><div style={{gridColumn:"1/-1"}}><label style={lS}>Notes</label><textarea value={form.notes} onChange={e=>set("notes",e.target.value)} rows={3} style={{...iS,resize:"vertical"}} placeholder="What happened?"/></div></div><div style={{display:"flex",gap:10,marginTop:24,justifyContent:"flex-end",flexDirection:"column",alignItems:"flex-end"}}>{saveError&&<div style={{fontSize:12,color:B.loss,marginBottom:4}}>{saveError}</div>}<div style={{display:"flex",gap:10}}><button onClick={onClose} style={{padding:"10px 22px",borderRadius:10,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:13,fontWeight:600}}>Cancel</button><button onClick={handleSave} style={{padding:"10px 28px",borderRadius:10,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:13,fontWeight:800}}>{editTrade?"Save Changes":"Log Trade"}</button></div></div></div></div>);
+              <div><label style={lS}>Account</label><select value={form.account_id||"main"} onChange={e=>set("account_id",e.target.value)} style={{...iS,cursor:"pointer"}}>{formAccounts.map(a=>(<option key={a.id} value={a.id}>{a.label}</option>))}</select></div><div style={{gridColumn:"1/-1"}}><label style={lS}>Grade</label><div style={{display:"flex",gap:6}}>{GRADES.map(g=>(<button key={g} onClick={()=>set("grade",g)} style={{flex:1,padding:"7px 0",borderRadius:8,border:"1px solid",cursor:"pointer",fontWeight:800,fontSize:12,borderColor:form.grade===g?GRADE_COLOR[g]:B.border,background:form.grade===g?`${GRADE_COLOR[g]}18`:"transparent",color:form.grade===g?GRADE_COLOR[g]:B.textMuted}}>{g}</button>))}</div></div><div style={{gridColumn:"1/-1"}}><label style={lS}>Notes</label><textarea value={form.notes} onChange={e=>set("notes",e.target.value)} rows={3} style={{...iS,resize:"vertical"}} placeholder="What happened?"/></div></div><div style={{display:"flex",gap:10,marginTop:24,justifyContent:"flex-end",flexDirection:"column",alignItems:"flex-end"}}>{saveError&&<div style={{fontSize:12,color:B.loss,marginBottom:4}}>{saveError}</div>}<div style={{display:"flex",gap:10}}><button onClick={onClose} style={{padding:"10px 22px",borderRadius:10,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:13,fontWeight:600}}>Cancel</button><button onClick={handleSave} style={{padding:"10px 28px",borderRadius:10,border:"none",background:GL,color:B.onAccent,cursor:"pointer",fontSize:13,fontWeight:800}}>{editTrade?"Save Changes":"Log Trade"}</button></div></div></div></div>);
 }
 
 // Default round-trip all-in commission per contract (exchange + NFA + platform)
@@ -1048,8 +1060,8 @@ function ImportModal({onClose,onImport,existingTrades}){
   const duplicates=parsed.length-newTrades.length;
 
   return(
-    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(6px)"}}>
-      <div style={{background:"#13121A",border:`1px solid ${B.border}`,borderRadius:20,width:640,maxHeight:"88vh",overflowY:"auto"}}>
+    <div style={{position:"fixed",inset:0,background:B.overlay,zIndex:100,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(6px)"}}>
+      <div style={{background:B.panel,border:`1px solid ${B.border}`,borderRadius:20,width:640,maxHeight:"88vh",overflowY:"auto"}}>
         <div style={{height:3,background:GL,borderRadius:"20px 20px 0 0"}}/>
 
         {/* Header */}
@@ -1058,7 +1070,7 @@ function ImportModal({onClose,onImport,existingTrades}){
             <div style={{fontSize:18,fontWeight:800,color:B.text}}>Import Trades</div>
             <div style={{fontSize:12,color:B.textMuted,marginTop:3}}>Tradovate CSV (futures) · ThinkorSwim / Schwab CSV (options)</div>
           </div>
-          <button onClick={onClose} style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${B.border}`,borderRadius:8,color:B.textMuted,cursor:"pointer",fontSize:18,width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
+          <button onClick={onClose} style={{background:B.hair,border:`1px solid ${B.border}`,borderRadius:8,color:B.textMuted,cursor:"pointer",fontSize:18,width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
         </div>
 
         <div style={{padding:"0 28px 28px"}}>
@@ -1084,7 +1096,7 @@ function ImportModal({onClose,onImport,existingTrades}){
 
               {/* Commission rates */}
               <div style={{marginBottom:16,borderRadius:12,border:`1px solid ${B.border}`,overflow:"hidden"}}>
-                <button onClick={()=>setShowCommission(p=>!p)} style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"11px 14px",background:"rgba(0,0,0,0.2)",border:"none",cursor:"pointer",color:B.text}}>
+                <button onClick={()=>setShowCommission(p=>!p)} style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"11px 14px",background:B.inset,border:"none",cursor:"pointer",color:B.text}}>
                   <div style={{display:"flex",alignItems:"center",gap:8}}>
                     <span style={{fontSize:13}}>💸</span>
                     <span style={{fontSize:12,fontWeight:700}}>Commission Rates (round trip / contract)</span>
@@ -1114,16 +1126,16 @@ function ImportModal({onClose,onImport,existingTrades}){
               {error&&<div style={{padding:"12px 16px",borderRadius:10,background:`${B.loss}10`,border:`1px solid ${B.loss}30`,color:B.loss,fontSize:12,marginBottom:16}}>{error}</div>}
 
               {/* How to export guide */}
-              <div style={{padding:16,borderRadius:12,background:"rgba(0,0,0,0.3)",border:`1px solid ${B.border}`}}>
+              <div style={{padding:16,borderRadius:12,background:B.inset,border:`1px solid ${B.border}`}}>
                 <div style={{fontSize:10,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:10}}>How to export your trades</div>
-                <div style={{fontSize:11,color:"#9CA0BC",marginBottom:12,lineHeight:1.6,padding:"8px 10px",borderRadius:8,background:"rgba(139,92,246,0.08)",border:"1px solid rgba(139,92,246,0.25)"}}>
+                <div style={{fontSize:11,color:B.textMuted,marginBottom:12,lineHeight:1.6,padding:"8px 10px",borderRadius:8,background:"rgba(139,92,246,0.08)",border:"1px solid rgba(139,92,246,0.25)"}}>
                   <b style={{color:"#8B5CF6"}}>Options (ThinkorSwim / Schwab):</b> In thinkorswim go to Monitor → Account Statement, set the date range, then use the ☰ menu → Export to File (CSV). Or on schwab.com go to Accounts → History → Transactions → Export. Commission uses your actual Fees &amp; Comm column when present; otherwise $0.65/contract/side + est. fees.
                 </div>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
                   <div>
                     <div style={{fontSize:11,fontWeight:700,color:B.teal,marginBottom:6}}>Performance.csv (Recommended)</div>
                     {["Open Tradovate platform","Go to Account → Performance","Set your date range","Click Export → Performance CSV"].map((s,i)=>(
-                      <div key={i} style={{fontSize:11,color:"#9CA0BC",marginBottom:4,display:"flex",gap:6}}>
+                      <div key={i} style={{fontSize:11,color:B.textMuted,marginBottom:4,display:"flex",gap:6}}>
                         <span style={{color:B.teal,fontWeight:700,minWidth:14}}>{i+1}.</span>{s}
                       </div>
                     ))}
@@ -1131,7 +1143,7 @@ function ImportModal({onClose,onImport,existingTrades}){
                   <div>
                     <div style={{fontSize:11,fontWeight:700,color:B.blue,marginBottom:6}}>Orders.csv (Alternative)</div>
                     {["Open Tradovate platform","Go to Account → Orders","Set your date range","Click Export → Orders CSV"].map((s,i)=>(
-                      <div key={i} style={{fontSize:11,color:"#9CA0BC",marginBottom:4,display:"flex",gap:6}}>
+                      <div key={i} style={{fontSize:11,color:B.textMuted,marginBottom:4,display:"flex",gap:6}}>
                         <span style={{color:B.blue,fontWeight:700,minWidth:14}}>{i+1}.</span>{s}
                       </div>
                     ))}
@@ -1157,7 +1169,7 @@ function ImportModal({onClose,onImport,existingTrades}){
                   {label:"Win Rate",value:`${parsed.length?Math.round((wins/parsed.length)*100):0}%`,color:B.teal},
                   {label:"New Trades",value:newTrades.length,color:B.blue},
                 ].map(s=>(
-                  <div key={s.label} style={{background:"rgba(0,0,0,0.3)",borderRadius:10,padding:"12px 14px",border:`1px solid ${B.border}`,textAlign:"center"}}>
+                  <div key={s.label} style={{background:B.inset,borderRadius:10,padding:"12px 14px",border:`1px solid ${B.border}`,textAlign:"center"}}>
                     <div style={{fontSize:9,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:5}}>{s.label}</div>
                     <div style={{fontSize:18,fontWeight:800,color:s.color,fontFamily:"monospace"}}>{s.value}</div>
                   </div>
@@ -1186,11 +1198,11 @@ function ImportModal({onClose,onImport,existingTrades}){
 
               {/* Trade preview table */}
               <div style={{borderRadius:12,overflow:"hidden",border:`1px solid ${B.border}`,marginBottom:20,maxHeight:260,overflowY:"auto"}}>
-                <div style={{display:"grid",gridTemplateColumns:"90px 60px 60px 60px 90px 1fr",padding:"8px 14px",fontSize:10,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",borderBottom:`1px solid ${B.border}`,background:"rgba(0,0,0,0.5)",position:"sticky",top:0}}>
+                <div style={{display:"grid",gridTemplateColumns:"90px 60px 60px 60px 90px 1fr",padding:"8px 14px",fontSize:10,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",borderBottom:`1px solid ${B.border}`,background:B.inset,position:"sticky",top:0}}>
                   {["Date","Symbol","Dir","Qty","P&L","Notes"].map(h=><div key={h}>{h}</div>)}
                 </div>
                 {parsed.map((t,i)=>(
-                  <div key={i} style={{display:"grid",gridTemplateColumns:"90px 60px 60px 60px 90px 1fr",padding:"9px 14px",borderBottom:`1px solid ${B.border}`,fontSize:12,borderLeft:`2px solid ${t.pnl>=0?B.teal:B.loss}`,background:i%2===0?"transparent":"rgba(255,255,255,0.01)"}}>
+                  <div key={i} style={{display:"grid",gridTemplateColumns:"90px 60px 60px 60px 90px 1fr",padding:"9px 14px",borderBottom:`1px solid ${B.border}`,fontSize:12,borderLeft:`2px solid ${t.pnl>=0?B.teal:B.loss}`,background:i%2===0?"transparent":B.hair}}>
                     <div style={{color:B.textMuted}}>{t.date.slice(5)}</div>
                     <div style={{color:INST_COLOR[t.instrument]||B.teal,fontWeight:700}}>{t.instrument}</div>
                     <div style={{color:t.direction==="Long"?"#4ade80":"#f87171"}}>{t.direction}</div>
@@ -1203,7 +1215,7 @@ function ImportModal({onClose,onImport,existingTrades}){
 
               {/* Action buttons */}
                             {/* Account tagger */}
-              <div style={{marginBottom:12,padding:"12px 14px",borderRadius:10,background:"rgba(0,0,0,0.3)",border:`1px solid ${B.border}`}}>
+              <div style={{marginBottom:12,padding:"12px 14px",borderRadius:10,background:B.inset,border:`1px solid ${B.border}`}}>
                 <div style={{fontSize:10,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:8}}>Tag trades to account:</div>
                 <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                   {importAccounts.map(a=>(
@@ -1225,7 +1237,7 @@ function ImportModal({onClose,onImport,existingTrades}){
                     (t.asset_type==="Options"&&e.asset_type==="Options"&&e.date===t.date&&e.instrument===t.instrument&&parseFloat(e.strike)===t.strike&&String(e.expiration||"").slice(0,10)===String(t.expiration||"")&&e.option_type===t.option_type&&parseFloat(e.entry)===t.entry&&parseFloat(e.exit)===t.exit&&parseInt(e.contracts)===t.contracts)));
                   onImport(mode==="replace"?tagged:newTagged,mode);
                   onClose();
-                }} style={{flex:2,padding:"11px",borderRadius:10,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:13,fontWeight:800}}>
+                }} style={{flex:2,padding:"11px",borderRadius:10,border:"none",background:GL,color:B.onAccent,cursor:"pointer",fontSize:13,fontWeight:800}}>
                   Import {mode==="replace"?parsed.length:newTrades.length} Trades →
                 </button>
               </div>
@@ -1237,7 +1249,7 @@ function ImportModal({onClose,onImport,existingTrades}){
   );
 }
 
-function DeleteConfirm({trade,onConfirm,onCancel}){return(<div style={{position:"fixed",inset:0,background:"rgba(5,6,10,0.72)",backdropFilter:"blur(6px)",WebkitBackdropFilter:"blur(6px)",zIndex:110,display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{background:"#12131A",border:"1px solid rgba(240,90,126,0.3)",borderRadius:20,padding:30,width:380,textAlign:"center",boxShadow:"0 24px 64px rgba(0,0,0,0.55)"}}><div style={{fontSize:16,fontWeight:700,color:B.text,marginBottom:8}}>Delete Trade?</div><div style={{fontSize:13,color:B.textMuted,marginBottom:6}}>{trade.date} - {trade.instrument} - {trade.direction}</div><div style={{fontSize:15,fontWeight:700,fontFamily:"monospace",color:pnlColor(trade.pnl),marginBottom:20}}>{fmt(trade.pnl)}</div><div style={{display:"flex",gap:10,justifyContent:"center"}}><button onClick={onCancel} style={{padding:"9px 22px",borderRadius:9,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontWeight:600}}>Cancel</button><button onClick={onConfirm} style={{padding:"9px 22px",borderRadius:9,background:"rgba(240,90,126,0.15)",color:B.loss,cursor:"pointer",fontWeight:700,border:"1px solid rgba(240,90,126,0.3)"}}>Delete</button></div></div></div>);}
+function DeleteConfirm({trade,onConfirm,onCancel}){return(<div style={{position:"fixed",inset:0,background:B.overlay,backdropFilter:"blur(6px)",WebkitBackdropFilter:"blur(6px)",zIndex:110,display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{background:B.panel,border:"1px solid rgba(240,90,126,0.3)",borderRadius:20,padding:30,width:380,textAlign:"center",boxShadow:"0 24px 64px rgba(0,0,0,0.55)"}}><div style={{fontSize:16,fontWeight:700,color:B.text,marginBottom:8}}>Delete Trade?</div><div style={{fontSize:13,color:B.textMuted,marginBottom:6}}>{trade.date} - {trade.instrument} - {trade.direction}</div><div style={{fontSize:15,fontWeight:700,fontFamily:"monospace",color:pnlColor(trade.pnl),marginBottom:20}}>{fmt(trade.pnl)}</div><div style={{display:"flex",gap:10,justifyContent:"center"}}><button onClick={onCancel} style={{padding:"9px 22px",borderRadius:9,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontWeight:600}}>Cancel</button><button onClick={onConfirm} style={{padding:"9px 22px",borderRadius:9,background:"rgba(240,90,126,0.15)",color:B.loss,cursor:"pointer",fontWeight:700,border:"1px solid rgba(240,90,126,0.3)"}}>Delete</button></div></div></div>);}
 
 // ── AI Day Review (inside Day Modal) ─────────────────────────────────────────
 function AIDayReview({trades, date}){
@@ -1297,7 +1309,7 @@ function AIDayReview({trades, date}){
         </button>
       ):(
         <div style={{borderRadius:12,border:`1px solid ${B.border}`,overflow:"hidden"}}>
-          <div style={{padding:"12px 16px",background:"rgba(0,0,0,0.4)",display:"flex",justifyContent:"space-between",alignItems:"center",borderBottom:`1px solid ${B.border}`}}>
+          <div style={{padding:"12px 16px",background:B.inset,display:"flex",justifyContent:"space-between",alignItems:"center",borderBottom:`1px solid ${B.border}`}}>
             <div style={{fontSize:11,fontWeight:700,color:B.purple,letterSpacing:1}}>🧠 AI COACHING FEEDBACK</div>
             <button onClick={()=>setOpen(false)} style={{background:"none",border:"none",color:B.textMuted,cursor:"pointer",fontSize:16}}>×</button>
           </div>
@@ -1321,7 +1333,7 @@ function AIDayReview({trades, date}){
               {/* Coach note */}
               <div style={{padding:"12px 14px",borderRadius:10,background:"rgba(139,92,246,0.07)",border:`1px solid ${B.purple}25`,marginBottom:12}}>
                 <div style={{fontSize:9,color:B.purple,letterSpacing:1.5,textTransform:"uppercase",marginBottom:6}}>Coach Says</div>
-                <div style={{fontSize:13,color:"#C8C4D8",lineHeight:1.7,fontStyle:"italic"}}>{review.coachNote}</div>
+                <div style={{fontSize:13,color:B.isDark?"#C8C4D8":"#2B303B",lineHeight:1.7,fontStyle:"italic"}}>{review.coachNote}</div>
               </div>
 
               {/* Strength + Weakness */}
@@ -1375,9 +1387,9 @@ function DayModal({date, trades, onClose}){
   const curveData=[{time:"Open",pnl:0},...sortedTrades.map((t,i)=>{cum+=t.pnl;return{time:`T${i+1}`,pnl:cum};})];
 
   return(
-    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",zIndex:150,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(8px)"}}
+    <div style={{position:"fixed",inset:0,background:B.overlay,zIndex:150,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(8px)"}}
       onClick={onClose}>
-      <div style={{background:"#13121A",border:`1px solid ${B.border}`,borderRadius:20,width:680,maxHeight:"88vh",overflowY:"auto",position:"relative"}}
+      <div style={{background:B.panel,border:`1px solid ${B.border}`,borderRadius:20,width:680,maxHeight:"88vh",overflowY:"auto",position:"relative"}}
         onClick={e=>e.stopPropagation()}>
 
         {/* Gradient top bar */}
@@ -1394,7 +1406,7 @@ function DayModal({date, trades, onClose}){
               </div>
             </div>
           </div>
-          <button onClick={onClose} style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${B.border}`,borderRadius:8,color:B.textMuted,cursor:"pointer",fontSize:18,width:34,height:34,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
+          <button onClick={onClose} style={{background:B.hair,border:`1px solid ${B.border}`,borderRadius:8,color:B.textMuted,cursor:"pointer",fontSize:18,width:34,height:34,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
         </div>
 
         {/* Mini equity curve */}
@@ -1408,7 +1420,7 @@ function DayModal({date, trades, onClose}){
                     <stop offset="100%" stopColor={dayPnl>=0?"#00D4A8":"#F05A7E"} stopOpacity={0}/>
                   </linearGradient>
                 </defs>
-                <ReferenceLine y={0} stroke="rgba(255,255,255,0.1)"/>
+                <ReferenceLine y={0} stroke={(B.isDark?"rgba(255,255,255,0.1)":"rgba(14,17,22,0.16)")}/>
                 <Area type="monotone" dataKey="pnl" stroke={dayPnl>=0?B.teal:B.loss} strokeWidth={2} fill="url(#dayEqF)" dot={false}/>
               </AreaChart>
             </ResponsiveContainer>
@@ -1416,7 +1428,7 @@ function DayModal({date, trades, onClose}){
         )}
 
         {/* Stats row */}
-        <div style={{padding:"16px 28px",display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:1,background:"rgba(0,0,0,0.3)",margin:"16px 0 0"}}>
+        <div style={{padding:"16px 28px",display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:1,background:B.inset,margin:"16px 0 0"}}>
           {[
             {label:"Total Trades", value:dayTrades.length},
             {label:"Gross P&L",    value:fmt(dayPnl), color:pnlColor(dayPnl)},
@@ -1439,7 +1451,7 @@ function DayModal({date, trades, onClose}){
           <div style={{marginTop:20,borderRadius:12,overflow:"hidden",border:`1px solid ${B.border}`}}>
             {/* Table header */}
             <div style={{display:"grid",gridTemplateColumns:"80px 70px 70px 80px 90px 60px 1fr 60px",
-              padding:"10px 16px",background:"rgba(0,0,0,0.5)",
+              padding:"10px 16px",background:B.inset,
               fontSize:10,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",
               borderBottom:`1px solid ${B.border}`}}>
               {["Time","Ticker","Side","Entry","Exit","Qty","Setup / Notes","P&L"].map(h=><div key={h}>{h}</div>)}
@@ -1450,13 +1462,13 @@ function DayModal({date, trades, onClose}){
               <div key={t.id}>
                 <div style={{display:"grid",gridTemplateColumns:"80px 70px 70px 80px 90px 60px 1fr 60px",
                   padding:"14px 16px",borderBottom:i<dayTrades.length-1?`1px solid ${B.border}`:"none",
-                  background:i%2===0?"transparent":"rgba(255,255,255,0.01)",
+                  background:i%2===0?"transparent":B.hair,
                   borderLeft:`3px solid ${t.result==="Win"?B.teal:B.loss}`}}>
                   <div style={{fontSize:12,color:B.textMuted,fontFamily:"monospace"}}>{t.session}</div>
                   <div>
                     <span style={{fontSize:11,padding:"2px 8px",borderRadius:5,fontWeight:700,
                       background:`${INST_COLOR[t.instrument]||B.teal}20`,
-                      color:INST_COLOR[t.instrument]||B.teal}}>{tradeLabel(t)}</span>
+                      color:INST_COLOR[t.instrument]||B.teal,whiteSpace:"nowrap"}}>{tradeLabel(t)}</span>
                   </div>
                   <div style={{fontSize:12,fontWeight:700,color:t.direction==="Long"?"#4ade80":"#f87171"}}>{t.direction}</div>
                   <div style={{fontSize:12,fontFamily:"monospace",color:B.text}}>{t.entry||"--"}</div>
@@ -1468,13 +1480,13 @@ function DayModal({date, trades, onClose}){
 
                 {/* Notes row if exists */}
                 {t.notes&&(
-                  <div style={{padding:"8px 16px 12px",borderBottom:i<dayTrades.length-1?`1px solid ${B.border}`:"none",background:"rgba(0,0,0,0.2)"}}>
+                  <div style={{padding:"8px 16px 12px",borderBottom:i<dayTrades.length-1?`1px solid ${B.border}`:"none",background:B.inset}}>
                     <div style={{fontSize:11,color:B.textMuted,fontStyle:"italic"}}>📝 {t.notes}</div>
                   </div>
                 )}
 
                 {/* Grade + R:R badges */}
-                <div style={{display:"flex",gap:8,padding:"0 16px 12px",borderBottom:i<dayTrades.length-1?`1px solid ${B.border}`:"none",background:"rgba(0,0,0,0.2)"}}>
+                <div style={{display:"flex",gap:8,padding:"0 16px 12px",borderBottom:i<dayTrades.length-1?`1px solid ${B.border}`:"none",background:B.inset}}>
                   <span style={{fontSize:10,padding:"2px 10px",borderRadius:20,fontWeight:700,
                     background:`${GRADE_COLOR[t.grade]||"#aaa"}18`,border:`1px solid ${GRADE_COLOR[t.grade]||"#aaa"}30`,
                     color:GRADE_COLOR[t.grade]||"#aaa"}}>Grade: {t.grade}</span>
@@ -1511,7 +1523,7 @@ function GaugeChart({value, max=100, label, color, size=110}){
   return(
     <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
       <svg width={size} height={size*0.6} viewBox="0 0 110 62">
-        <path d={`M ${cx-r} ${cy} A ${r} ${r} 0 0 1 ${cx+r} ${cy}`} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="8" strokeLinecap="round"/>
+        <path d={`M ${cx-r} ${cy} A ${r} ${r} 0 0 1 ${cx+r} ${cy}`} fill="none" stroke={(B.isDark?"rgba(255,255,255,0.07)":"rgba(14,17,22,0.112)")} strokeWidth="8" strokeLinecap="round"/>
         {pct>0&&<path d={`M ${cx-r} ${cy} A ${r} ${r} 0 ${large} 1 ${endX} ${endY}`} fill="none" stroke={color} strokeWidth="8" strokeLinecap="round"/>}
         <text x={cx} y={cy-4} textAnchor="middle" fill={color} fontSize="14" fontWeight="800" fontFamily="'JetBrains Mono','SF Mono',monospace">{value}{max===100?"%":""}</text>
       </svg>
@@ -1621,10 +1633,10 @@ function BalanceCard({totalPnl, trades, accounts, activeAccount, setAccounts, cu
             onChange={e=>setInputVal(e.target.value)}
             onKeyDown={e=>e.key==="Enter"&&save()}
             placeholder="Starting balance..."
-            style={{flex:1,background:"rgba(255,255,255,0.04)",border:`1px solid ${B.border}`,borderRadius:7,padding:"6px 10px",color:B.text,fontSize:11,outline:"none"}}
+            style={{flex:1,background:B.hair,border:`1px solid ${B.border}`,borderRadius:7,padding:"6px 10px",color:B.text,fontSize:11,outline:"none"}}
           />
           <button onClick={save}
-            style={{padding:"6px 12px",borderRadius:7,border:"none",background:GL,color:"#0E0E10",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
+            style={{padding:"6px 12px",borderRadius:7,border:"none",background:GL,color:B.onAccent,fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
             Set
           </button>
         </div>
@@ -1633,6 +1645,165 @@ function BalanceCard({totalPnl, trades, accounts, activeAccount, setAccounts, cu
   );
 }
 
+
+// ── Editorial hero: big serif net P&L, plain-English summary, last 5 trading days ──
+function EditorialHero({trades}){
+  const money=(n,d=0)=>(n<0?"-":"")+"$"+Math.abs(n).toLocaleString("en-US",{minimumFractionDigits:d,maximumFractionDigits:d});
+  const now=new Date();
+  let ym=now.toISOString().slice(0,7);
+  let month=trades.filter(t=>(t.date||"").slice(0,7)===ym);
+  let scope="this month";
+  if(!month.length&&trades.length){
+    const last=[...trades].sort((a,b)=>(b.date||"").localeCompare(a.date||""))[0];
+    ym=(last.date||"").slice(0,7);
+    month=trades.filter(t=>(t.date||"").slice(0,7)===ym);
+    scope="in "+new Date(ym+"-15T12:00:00").toLocaleDateString("en-US",{month:"long"});
+  }
+  const monthLabel=new Date(ym+"-15T12:00:00").toLocaleDateString("en-US",{month:"long",year:"numeric"});
+  const net=month.reduce((a,t)=>a+(t.pnl||0),0);
+  const allNet=trades.reduce((a,t)=>a+(t.pnl||0),0);
+  const wins=month.filter(t=>t.pnl>=0).length;
+  const wr=month.length?Math.round(wins/month.length*100):0;
+  const grp=(fn)=>{const m={};month.forEach(t=>{const k=fn(t);if(!k)return;if(!m[k])m[k]={n:0,pnl:0,w:0};m[k].n++;m[k].pnl+=t.pnl||0;if((t.pnl||0)>=0)m[k].w++;});return Object.entries(m);};
+  const byName=grp(t=>t.instrument);
+  const bySess=grp(t=>t.session);
+  const byDte=grp(t=>isOptionTrade(t)?dteBucket(daysToExpiry(t.date,t.expiration)):null);
+  const best=[...byName].sort((a,b)=>b[1].pnl-a[1].pnl)[0];
+  const worst=[...byName].sort((a,b)=>a[1].pnl-b[1].pnl)[0];
+  const bestSess=[...bySess].filter(x=>x[1].n>=3).sort((a,b)=>(b[1].pnl/b[1].n)-(a[1].pnl/a[1].n))[0];
+  const worstDte=[...byDte].filter(x=>x[1].n>=2&&x[1].pnl<0).sort((a,b)=>a[1].pnl-b[1].pnl)[0];
+  const hl=(t)=><b style={{fontWeight:600,background:`linear-gradient(transparent 62%,${B.isDark?"rgba(0,212,168,0.25)":"#DDF5EA"} 62%)`}}>{t}</b>;
+  const parts=[];
+  parts.push(<span key="a">You are {net>=0?"up":"down"} {hl(money(Math.abs(net),2))} {scope} across {month.length} trade{month.length===1?"":"s"} with a {hl(wr+"% win rate")}.</span>);
+  if(best&&best[1].pnl>0)parts.push(<span key="b"> {best[0]} is leading, at {money(best[1].pnl)}.</span>);
+  if(bestSess)parts.push(<span key="c"> {bestSess[0]} sessions are your edge.</span>);
+  if(worstDte)parts.push(<span key="d"> {worstDte[0]} options are holding you back ({money(worstDte[1].pnl)}).</span>);
+  else if(worst&&worst[1].pnl<0&&worst!==best)parts.push(<span key="d"> {worst[0]} is costing you {money(Math.abs(worst[1].pnl))}.</span>);
+  // last 5 trading days
+  const byDay={};trades.forEach(t=>{if(!t.date)return;byDay[t.date]=(byDay[t.date]||0)+(t.pnl||0);});
+  const days=Object.keys(byDay).sort().slice(-5).map(d=>({d,pnl:byDay[d]}));
+  const maxAbs=Math.max(...days.map(x=>Math.abs(x.pnl)),1);
+  const whole=Math.trunc(Math.abs(net)),cents=(Math.abs(net)-whole).toFixed(2).slice(1);
+  return(
+    <div className="tca-hero" style={{display:"grid",gridTemplateColumns:"minmax(0,1.3fr) minmax(0,1fr)",gap:34,alignItems:"end",padding:"6px 2px 12px"}}>
+      <div style={{minWidth:0}}>
+        <div style={{fontSize:13,color:B.textMuted,fontWeight:500}}>{monthLabel} · net of fees</div>
+        <div style={{fontFamily:SERIF,fontSize:"clamp(56px,8vw,104px)",lineHeight:0.95,letterSpacing:-2,color:B.text,margin:"6px 0 12px",whiteSpace:"nowrap"}}>
+          <span style={{fontSize:"0.4em",color:B.textMuted,verticalAlign:"top",position:"relative",top:"0.28em",marginRight:4}}>{net<0?"-$":"$"}</span>{whole.toLocaleString("en-US")}<span style={{fontSize:"0.5em",color:B.textMuted}}>{cents}</span>
+        </div>
+        <p style={{margin:0,fontSize:16.5,lineHeight:1.55,color:B.isDark?"#C7CAD8":"#2B303B",maxWidth:"52ch"}}>{parts}</p>
+        <div style={{marginTop:10,fontSize:12.5,color:B.textMuted}}>All-time net <span style={{color:allNet>=0?B.profit:B.loss,fontWeight:600}}>{money(allNet,2)}</span></div>
+      </div>
+      <div>
+        <div style={{fontSize:11,letterSpacing:1.6,textTransform:"uppercase",color:B.textMuted,fontWeight:600,marginBottom:10}}>Last {days.length} trading days</div>
+        <div style={{display:"grid",gridTemplateColumns:`repeat(${Math.max(days.length,1)},1fr)`,gap:8}}>
+          {days.map(x=>{const h=Math.max(6,Math.abs(x.pnl)/maxAbs*64);const up=x.pnl>=0;
+            return(<div key={x.d} style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:16,padding:"12px 6px 10px",textAlign:"center",boxShadow:B.isDark?"none":"0 1px 2px rgba(14,17,22,0.03)"}}>
+              <div style={{fontSize:11,color:B.textMuted,fontWeight:500}}>{new Date(x.d+"T12:00:00").toLocaleDateString("en-US",{weekday:"short"})}</div>
+              <div style={{height:68,display:"flex",alignItems:"flex-end",justifyContent:"center",margin:"8px 0 6px"}}><i style={{display:"block",width:22,height:h,borderRadius:"7px 7px 3px 3px",background:up?(B.isDark?"rgba(5,150,105,0.55)":"#BFEBD6"):(B.isDark?"rgba(229,62,62,0.55)":"#FFD0D2")}}/></div>
+              <div style={{fontSize:12,fontWeight:700,color:up?B.profit:B.loss,fontFamily:"'JetBrains Mono',monospace"}}>{(up?"+":"-")+"$"+Math.abs(Math.round(x.pnl)).toLocaleString()}</div>
+            </div>);})}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Editorial overview sections: pastel stat cards, equity + "Your edge", recent trades ──
+function EditorialOverview({trades}){
+  const dk=B.isDark;
+  const money=(n,d=0)=>(n<0?"-":"+")+"$"+Math.abs(n).toLocaleString("en-US",{minimumFractionDigits:d,maximumFractionDigits:d});
+  const wins=trades.filter(t=>(t.pnl||0)>=0),losses=trades.filter(t=>(t.pnl||0)<0);
+  const wr=trades.length?Math.round(wins.length/trades.length*100):0;
+  const gw=wins.reduce((a,t)=>a+t.pnl,0),gl=Math.abs(losses.reduce((a,t)=>a+t.pnl,0));
+  const pf=gl?(gw/gl):null;
+  const avgWin=wins.length?gw/wins.length:0,avgLoss=losses.length?gl/losses.length:0;
+  const opts=trades.filter(isOptionTrade);
+  const prem=opts.reduce((a,t)=>a+(parseFloat(t.entry)||0)*100*(parseInt(t.contracts)||1),0);
+  const optNet=opts.reduce((a,t)=>a+t.pnl,0);
+  const pastel={lav:dk?"rgba(124,92,255,0.16)":"#ECEBFF",mint:dk?"rgba(15,157,107,0.16)":"#DDF5EA",peach:dk?"rgba(255,140,80,0.14)":"#FFE9DE",sky:dk?"rgba(14,139,214,0.16)":"#DFF0FF"};
+  const sub=dk?"rgba(242,243,248,0.62)":"rgba(14,17,22,0.62)";
+  const C=2*Math.PI*26,off=C*(1-wr/100);
+  const card=(bg,label,value,note,extra)=>(<div style={{background:bg,borderRadius:22,padding:"20px 22px",minWidth:0,position:"relative"}}>{extra}<div style={{fontSize:12.5,fontWeight:500,color:sub}}>{label}</div><div style={{fontFamily:SERIF,fontSize:46,letterSpacing:-1,lineHeight:1.05,marginTop:4,color:B.text}}>{value}</div><div style={{fontSize:12.5,color:sub,marginTop:6}}>{note}</div></div>);
+  // equity
+  const eq=buildEquity(trades);
+  const vals=eq.map(e=>e.equity);
+  const W=640,H=250,pl=10,pr=10,pt=26,pb=28;
+  const lo=Math.min(0,...vals),hi=Math.max(...vals,1),span=(hi-lo)||1;
+  const x=(i)=>pl+(vals.length>1?i*(W-pl-pr)/(vals.length-1):(W-pl-pr)/2),y=(v)=>H-pb-((v-lo)/span)*(H-pt-pb);
+  const P=vals.map((v,i)=>[x(i),y(v)]);
+  let d=P.length?`M${P[0][0]} ${P[0][1]}`:"";
+  for(let i=1;i<P.length;i++){const a=P[i-1],b=P[i],cx=(a[0]+b[0])/2;d+=` C${cx} ${a[1]} ${cx} ${b[1]} ${b[0]} ${b[1]}`;}
+  const last=P[P.length-1]||[0,0];
+  const acc=B.teal;
+  // edge insights
+  const grp=(fn,min=1)=>{const m={};trades.forEach(t=>{const k=fn(t);if(!k)return;if(!m[k])m[k]={n:0,w:0,pnl:0};m[k].n++;m[k].pnl+=t.pnl||0;if((t.pnl||0)>=0)m[k].w++;});return Object.entries(m).filter(e=>e[1].n>=min);};
+  const kind=(t)=>isOptionTrade(t)?`${t.instrument} ${(t.option_type||"").toLowerCase()}s`:t.instrument;
+  const insights=[];
+  const bestK=grp(kind,2).filter(e=>e[1].pnl>0).sort((a,b)=>b[1].pnl-a[1].pnl)[0]||grp(kind).filter(e=>e[1].pnl>0).sort((a,b)=>b[1].pnl-a[1].pnl)[0];
+  if(bestK)insights.push({bg:pastel.mint,title:bestK[0],text:`Green ${bestK[1].w} of ${bestK[1].n} trade${bestK[1].n===1?"":"s"}, net ${money(bestK[1].pnl)}. Your best repeatable setup.`});
+  const sess=grp(t=>t.session,2).map(([k,v])=>[k,v,v.w/v.n]).sort((a,b)=>b[2]-a[2]);
+  if(sess.length&&sess[0][2]>0.5){const rest=trades.filter(t=>t.session!==sess[0][0]);const rw=rest.length?Math.round(rest.filter(t=>(t.pnl||0)>=0).length/rest.length*100):null;insights.push({bg:pastel.sky,title:`${sess[0][0]} session`,text:`${Math.round(sess[0][2]*100)}% win rate${rw!==null?` against ${rw}% at other times`:""}.`});}
+  const worstD=grp(t=>isOptionTrade(t)?dteBucket(daysToExpiry(t.date,t.expiration)):null,2).filter(e=>e[1].pnl<0).sort((a,b)=>a[1].pnl-b[1].pnl)[0];
+  const worstK=worstD?null:grp(kind,2).filter(e=>e[1].pnl<0).sort((a,b)=>a[1].pnl-b[1].pnl)[0];
+  const w=worstD||worstK;
+  if(w)insights.push({bg:pastel.peach,title:worstD?`${w[0]} options`:w[0],text:`Net ${money(w[1].pnl)} over ${w[1].n} trades. Consider smaller size until it turns.`});
+  if(!insights.length)insights.push({bg:pastel.lav,title:"Keep logging",text:"Patterns appear after a few more trades. Your edge will show up here."});
+  const avatarPal=[["#DDF5EA","#0F7B55"],["#ECEBFF","#3D4BFF"],["#DFF0FF","#1D6FB8"],["#FFE9DE","#B5541E"],["#FFE3E4","#B4323A"]];
+  const dkAv=(c)=>dk?["rgba(255,255,255,0.08)",c[1]==="#3D4BFF"?"#8E98FF":c[1]]:c;
+  const hash=(s)=>[...String(s)].reduce((a,c)=>a+c.charCodeAt(0),0);
+  const recent=[...trades].sort((a,b)=>(b.date||"").localeCompare(a.date||"")).slice(0,6);
+  const panel={background:B.surface,border:`1px solid ${B.border}`,borderRadius:22,padding:22,boxShadow:B.shadow,minWidth:0};
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div className="tca-cards3" style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:14}}>
+        {card(pastel.lav,"Win rate",wr+"%",`${wins.length} of ${trades.length} trades`,<svg style={{position:"absolute",right:20,top:18,width:64,height:64}} viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="26" fill="none" stroke={dk?"rgba(255,255,255,0.1)":"rgba(61,75,255,0.18)"} strokeWidth="8"/><circle cx="32" cy="32" r="26" fill="none" stroke={acc} strokeWidth="8" strokeLinecap="round" strokeDasharray={C} strokeDashoffset={off} transform="rotate(-90 32 32)"/></svg>)}
+        {card(pastel.mint,"Profit factor",pf===null?(gw>0?"∞":"–"):pf.toFixed(2),`Average win ${money(avgWin)} · average loss ${money(-avgLoss)}`)}
+        {opts.length>0&&prem>0
+          ?card(pastel.peach,"Return on premium",`${optNet>=0?"+":""}${(optNet/prem*100).toFixed(1)}%`,`On $${Math.round(prem).toLocaleString()} of option premium risked`)
+          :card(pastel.peach,"Average trade",money(trades.length?trades.reduce((a,t)=>a+t.pnl,0)/trades.length:0),`Across ${trades.length} trades`)}
+      </div>
+      <div className="tca-big" style={{display:"grid",gridTemplateColumns:"minmax(0,1.6fr) minmax(0,1fr)",gap:14}}>
+        <div style={panel}>
+          <div style={{fontSize:15,fontWeight:700}}>Equity curve</div>
+          <div style={{fontSize:12.5,color:B.textMuted,marginTop:2}}>{eq.length} trade{eq.length===1?"":"s"} · net of fees</div>
+          <svg viewBox={`0 0 ${W} ${H}`} style={{width:"100%",height:"auto",display:"block",marginTop:12}} role="img" aria-label="Equity curve">
+            <defs><linearGradient id="edEq" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor={acc} stopOpacity={dk?0.3:0.22}/><stop offset="1" stopColor={acc} stopOpacity="0"/></linearGradient></defs>
+            {[lo,lo+span/2,hi].map((g,i)=>(<line key={i} x1={pl} x2={W-pr} y1={y(g)} y2={y(g)} stroke={dk?"rgba(255,255,255,0.07)":"rgba(14,17,22,0.07)"} strokeDasharray="3 5"/>))}
+            {P.length>1&&<path d={`${d} L${last[0]} ${y(lo)} L${P[0][0]} ${y(lo)}Z`} fill="url(#edEq)"/>}
+            {P.length>1&&<path d={d} fill="none" stroke={acc} strokeWidth="3" strokeLinecap="round"/>}
+            <circle cx={last[0]} cy={last[1]} r="11" fill={acc} opacity="0.15"/><circle cx={last[0]} cy={last[1]} r="5.5" fill={acc} stroke={B.panel} strokeWidth="2.5"/>
+            <text x={Math.min(last[0]-14,W-20)} y={Math.max(last[1]-4,16)} textAnchor="end" fontFamily={SERIF} fontSize="22" fill={B.text}>{"$"+Math.round(vals[vals.length-1]||0).toLocaleString()}</text>
+            {eq.length>0&&<><text x={pl} y={H-6} fontSize="11" fill={B.textMuted} fontFamily={SANS}>{eq[0].date}</text><text x={W-pr} y={H-6} textAnchor="end" fontSize="11" fill={B.textMuted} fontFamily={SANS}>{eq[eq.length-1].date}</text></>}
+          </svg>
+        </div>
+        <div style={panel}>
+          <div style={{fontSize:15,fontWeight:700}}>Your edge</div>
+          <div style={{fontSize:12.5,color:B.textMuted,marginTop:2}}>Patterns found in your trades</div>
+          <div style={{display:"flex",flexDirection:"column",gap:12,marginTop:14}}>
+            {insights.map((n,i)=>(<div key={i} style={{display:"flex",gap:12,alignItems:"flex-start",padding:"13px 14px",borderRadius:16,background:n.bg}}>
+              <div style={{width:30,height:30,borderRadius:10,background:dk?"rgba(255,255,255,0.1)":"#fff",display:"grid",placeItems:"center",fontSize:12,fontWeight:700,flexShrink:0,color:B.text}}>{String(i+1).padStart(2,"0")}</div>
+              <div style={{minWidth:0}}><div style={{fontSize:13.5,fontWeight:700,color:B.text}}>{n.title}</div><div style={{fontSize:12.5,color:sub,lineHeight:1.45,marginTop:2}}>{n.text}</div></div>
+            </div>))}
+          </div>
+        </div>
+      </div>
+      <div style={panel}>
+        <div style={{fontSize:15,fontWeight:700}}>Recent trades</div>
+        <div style={{fontSize:12.5,color:B.textMuted,marginTop:2}}>Options and futures, net of commission</div>
+        <div style={{marginTop:6}}>
+          {recent.map((t,i)=>{const pal=dkAv(avatarPal[hash(t.instrument)%avatarPal.length]);const up=(t.pnl||0)>=0;
+            return(<div key={t.id||i} style={{display:"grid",gridTemplateColumns:"44px minmax(0,1fr) auto",gap:14,alignItems:"center",padding:"13px 0",borderTop:i?`1px solid ${B.border}`:"none"}}>
+              <div style={{width:44,height:44,borderRadius:"50%",background:pal[0],color:pal[1],display:"grid",placeItems:"center",fontWeight:700,fontSize:12}}>{String(t.instrument||"?").slice(0,4)}</div>
+              <div style={{minWidth:0}}><div style={{fontSize:14,fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{tradeLabel(t)}</div>
+                <div style={{fontSize:12.5,color:B.textMuted,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{[t.setup&&t.setup!=="Imported"?t.setup:null,`${t.direction} ${t.contracts||1}`,t.entry!==undefined&&t.exit!==undefined?`${t.entry} to ${t.exit}`:null].filter(Boolean).join(" · ")}</div></div>
+              <div style={{textAlign:"right"}}><div style={{fontSize:15,fontWeight:700,color:up?B.profit:B.loss}}>{money(t.pnl||0,2)}</div><div style={{fontSize:12,color:B.textMuted}}>{(t.date||"").slice(5)}</div></div>
+            </div>);})}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function Overview({trades, onGradeUpdate, session, onEdit, accounts=[], activeAccount="all", setAccounts}){
   const wins=trades.filter(t=>t.result==="Win"),losses=trades.filter(t=>t.result==="Loss");
@@ -1820,7 +1991,7 @@ function Overview({trades, onGradeUpdate, session, onEdit, accounts=[], activeAc
                   return(
                     <div key={di} onClick={()=>setSelectedDay(ds)} style={{
                       flex:1,minHeight:60,borderRadius:8,padding:"6px 8px",
-                      background:data?(data.pnl>0?`${B.teal}12`:`${B.loss}12`):"rgba(255,255,255,0.015)",
+                      background:data?(data.pnl>0?`${B.teal}12`:`${B.loss}12`):(B.isDark?"rgba(255,255,255,0.015)":"rgba(14,17,22,0.024)"),
                       border:"1px solid "+(data?(data.pnl>0?B.teal+"35":B.loss+"35"):B.border),
                       outline:isToday?`2px solid ${B.blue}50`:"none",
                       cursor:"pointer",transition:"all 0.15s",
@@ -1843,7 +2014,7 @@ function Overview({trades, onGradeUpdate, session, onEdit, accounts=[], activeAc
           <div style={{fontSize:9,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:2}}>Weekly P&L</div>
           {weeklyPnl.map(w=>(
             <div key={w.week} style={{
-              flex:1,background:"rgba(0,0,0,0.3)",
+              flex:1,background:B.inset,
               border:"1px solid "+(w.pnl>0?B.teal+"30":w.pnl<0?B.loss+"30":B.border),
               borderRadius:8,padding:"10px 12px",
               borderLeft:`3px solid ${w.pnl>0?B.teal:w.pnl<0?B.loss:B.border}`
@@ -1864,19 +2035,19 @@ function Overview({trades, onGradeUpdate, session, onEdit, accounts=[], activeAc
       case "equity": return(
         <div style={{height:"100%",display:"flex",flexDirection:"column"}}>
           <div style={{fontSize:9,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",marginBottom:10}}>Equity Curve</div>
-          <div style={{flex:1}}><ResponsiveContainer width="100%" height="100%"><AreaChart data={equity}><defs><linearGradient id="eqOv" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#00D4A8" stopOpacity={0.25}/><stop offset="100%" stopColor="#8B5CF6" stopOpacity={0}/></linearGradient><linearGradient id="eqLOv" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stopColor="#00D4A8"/><stop offset="100%" stopColor="#8B5CF6"/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)"/><XAxis dataKey="date" tick={{fill:B.textDim,fontSize:8}} axisLine={false} tickLine={false} interval={Math.ceil(equity.length/6)}/><YAxis tick={{fill:B.textDim,fontSize:8}} axisLine={false} tickLine={false} tickFormatter={v=>`$${v}`}/><Tooltip content={<CTip/>}/><ReferenceLine y={0} stroke="rgba(255,255,255,0.07)"/><Area type="monotone" dataKey="equity" stroke="url(#eqLOv)" strokeWidth={2} fill="url(#eqOv)" name="Balance"/></AreaChart></ResponsiveContainer></div>
+          <div style={{flex:1}}><ResponsiveContainer width="100%" height="100%"><AreaChart data={equity}><defs><linearGradient id="eqOv" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#00D4A8" stopOpacity={0.25}/><stop offset="100%" stopColor="#8B5CF6" stopOpacity={0}/></linearGradient><linearGradient id="eqLOv" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stopColor="#00D4A8"/><stop offset="100%" stopColor="#8B5CF6"/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" stroke={(B.isDark?"rgba(255,255,255,0.04)":"rgba(14,17,22,0.064)")}/><XAxis dataKey="date" tick={{fill:B.textDim,fontSize:8}} axisLine={false} tickLine={false} interval={Math.ceil(equity.length/6)}/><YAxis tick={{fill:B.textDim,fontSize:8}} axisLine={false} tickLine={false} tickFormatter={v=>`$${v}`}/><Tooltip content={<CTip/>}/><ReferenceLine y={0} stroke={(B.isDark?"rgba(255,255,255,0.07)":"rgba(14,17,22,0.112)")}/><Area type="monotone" dataKey="equity" stroke="url(#eqLOv)" strokeWidth={2} fill="url(#eqOv)" name="Balance"/></AreaChart></ResponsiveContainer></div>
         </div>
       );
       case "dailypnl": return(
         <div style={{height:"100%",display:"flex",flexDirection:"column"}}>
           <div style={{fontSize:9,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",marginBottom:10}}>Daily P&L</div>
-          <div style={{flex:1}}><ResponsiveContainer width="100%" height="100%"><BarChart data={Object.entries(trades.reduce((m,t)=>{m[t.date]=(m[t.date]||0)+t.pnl;return m;},{})).sort((a,b)=>a[0].localeCompare(b[0])).map(([d,p])=>({date:d.slice(5),pnl:Math.round(p*100)/100}))}><CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false}/><XAxis dataKey="date" tick={{fill:B.textDim,fontSize:8}} axisLine={false} tickLine={false}/><YAxis tick={{fill:B.textDim,fontSize:8}} axisLine={false} tickLine={false} tickFormatter={v=>`$${v}`}/><Tooltip content={<CTip/>}/><ReferenceLine y={0} stroke="rgba(255,255,255,0.1)"/><Bar dataKey="pnl" radius={[3,3,0,0]}>{Object.entries(trades.reduce((m,t)=>{m[t.date]=(m[t.date]||0)+t.pnl;return m;},{})).map(([d,p],i)=>(<Cell key={i} fill={p>=0?B.teal:B.loss}/>))}</Bar></BarChart></ResponsiveContainer></div>
+          <div style={{flex:1}}><ResponsiveContainer width="100%" height="100%"><BarChart data={Object.entries(trades.reduce((m,t)=>{m[t.date]=(m[t.date]||0)+t.pnl;return m;},{})).sort((a,b)=>a[0].localeCompare(b[0])).map(([d,p])=>({date:d.slice(5),pnl:Math.round(p*100)/100}))}><CartesianGrid strokeDasharray="3 3" stroke={(B.isDark?"rgba(255,255,255,0.04)":"rgba(14,17,22,0.064)")} vertical={false}/><XAxis dataKey="date" tick={{fill:B.textDim,fontSize:8}} axisLine={false} tickLine={false}/><YAxis tick={{fill:B.textDim,fontSize:8}} axisLine={false} tickLine={false} tickFormatter={v=>`$${v}`}/><Tooltip content={<CTip/>}/><ReferenceLine y={0} stroke={(B.isDark?"rgba(255,255,255,0.1)":"rgba(14,17,22,0.16)")}/><Bar dataKey="pnl" radius={[3,3,0,0]}>{Object.entries(trades.reduce((m,t)=>{m[t.date]=(m[t.date]||0)+t.pnl;return m;},{})).map(([d,p],i)=>(<Cell key={i} fill={p>=0?B.teal:B.loss}/>))}</Bar></BarChart></ResponsiveContainer></div>
         </div>
       );
       case "setups": return(
         <div style={{height:"100%",display:"flex",flexDirection:"column"}}>
           <div style={{fontSize:9,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",marginBottom:10}}>Setup Performance</div>
-          <div style={{flex:1,overflowY:"auto"}}>{Object.entries(trades.reduce((m,t)=>{if(!m[t.setup])m[t.setup]={wins:0,total:0,pnl:0};m[t.setup].total++;m[t.setup].pnl+=t.pnl;if(t.result==="Win")m[t.setup].wins++;return m;},{})).sort((a,b)=>b[1].pnl-a[1].pnl).slice(0,5).map(([s,d],i)=>{const sg=[GL,GTB,GBP,GTB,GL];return(<div key={s} style={{marginBottom:10}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{fontSize:11,color:B.text}}>{s}</span><span style={{fontSize:11,fontFamily:"monospace",color:pnlColor(d.pnl),fontWeight:700}}>{fmt(d.pnl)}</span></div><div style={{height:4,background:"rgba(255,255,255,0.05)",borderRadius:2}}><div style={{height:"100%",width:Math.round((d.wins/d.total)*100)+"%",background:sg[i],borderRadius:2}}/></div><div style={{fontSize:9,color:B.textMuted,marginTop:2}}>{Math.round((d.wins/d.total)*100)}% WR · {d.total} trades</div></div>);})}</div>
+          <div style={{flex:1,overflowY:"auto"}}>{Object.entries(trades.reduce((m,t)=>{if(!m[t.setup])m[t.setup]={wins:0,total:0,pnl:0};m[t.setup].total++;m[t.setup].pnl+=t.pnl;if(t.result==="Win")m[t.setup].wins++;return m;},{})).sort((a,b)=>b[1].pnl-a[1].pnl).slice(0,5).map(([s,d],i)=>{const sg=[GL,GTB,GBP,GTB,GL];return(<div key={s} style={{marginBottom:10}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{fontSize:11,color:B.text}}>{s}</span><span style={{fontSize:11,fontFamily:"monospace",color:pnlColor(d.pnl),fontWeight:700}}>{fmt(d.pnl)}</span></div><div style={{height:4,background:B.hair,borderRadius:2}}><div style={{height:"100%",width:Math.round((d.wins/d.total)*100)+"%",background:sg[i],borderRadius:2}}/></div><div style={{fontSize:9,color:B.textMuted,marginTop:2}}>{Math.round((d.wins/d.total)*100)}% WR · {d.total} trades</div></div>);})}</div>
         </div>
       );
       case "session":    return <SessionHeatmapWidget trades={trades}/>;
@@ -1918,9 +2089,9 @@ function Overview({trades, onGradeUpdate, session, onEdit, accounts=[], activeAc
 
       {/* ── WIDGET POPOUT MODAL ── */}
       {expandedWidget&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",zIndex:150,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(6px)"}}
+        <div style={{position:"fixed",inset:0,background:B.overlay,zIndex:150,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(6px)"}}
           onClick={()=>setExpandedWidget(null)}>
-          <div style={{background:"#13121A",border:`1px solid ${B.border}`,borderRadius:20,width:"75vw",maxWidth:1100,maxHeight:"82vh",overflow:"hidden",display:"flex",flexDirection:"column"}}
+          <div style={{background:B.panel,border:`1px solid ${B.border}`,borderRadius:20,width:"75vw",maxWidth:1100,maxHeight:"82vh",overflow:"hidden",display:"flex",flexDirection:"column"}}
             onClick={e=>e.stopPropagation()}>
             {/* Popout header */}
             <div style={{height:3,background:GL,borderRadius:"20px 20px 0 0",flexShrink:0}}/>
@@ -1928,7 +2099,7 @@ function Overview({trades, onGradeUpdate, session, onEdit, accounts=[], activeAc
               <div style={{fontSize:15,fontWeight:700,color:B.text}}>
                 {{"gauges":"🎯 Performance Gauges","calendar":"[ ] Calendar","equity":"📈 Equity Curve","setups":"🏆 Setup Performance","session":"🌡️ Session Heatmap","timeof":"🕐 Time of Day","cumulative":"📉 Daily & Cumulative","drawdown":"⚠️ Drawdown","winAvg":"💹 Win% / Avg Win / Loss","duration":"⏱️ Trade Duration","leaderboard":"🥇 Setup Leaderboard","yearly":"🗓️ Yearly Calendar","progress":"✅ Progress Tracker","report":"📋 Report","aicoach":"🧠 AI Trade Coach"}[expandedWidget]||expandedWidget}
               </div>
-              <button onClick={()=>setExpandedWidget(null)} style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${B.border}`,borderRadius:8,color:B.textMuted,cursor:"pointer",fontSize:18,width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
+              <button onClick={()=>setExpandedWidget(null)} style={{background:B.hair,border:`1px solid ${B.border}`,borderRadius:8,color:B.textMuted,cursor:"pointer",fontSize:18,width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
             </div>
             {/* Popout content */}
             <div style={{flex:1,overflowY:"auto",padding:24,minHeight:400}}>
@@ -1938,149 +2109,8 @@ function Overview({trades, onGradeUpdate, session, onEdit, accounts=[], activeAc
         </div>
       )}
 
-      {/* ── PINNED STAT ROW — always visible ── */}
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr 1fr",gap:12}}>
-        {/* Account Balance */}
-        <BalanceCard
-          totalPnl={totalPnl}
-          trades={trades}
-          accounts={accounts}
-          activeAccount={activeAccount}
-          setAccounts={setAccounts}
-          currentBalance={currentBalance}
-          startingBalance={startingBalance}
-        />
-
-        {/* Win % gauge */}
-        <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"center"}}>
-          <GaugeChart value={winRate} label="Trade Win %" color={winRate>=50?B.profit:B.loss}/>
-        </div>
-        {/* Profit factor gauge */}
-        <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"center"}}>
-          <GaugeChart value={profitFactor} max={3} label="Profit Factor" color={profitFactor>=1?B.teal:B.loss}/>
-        </div>
-        {/* Day win % gauge */}
-        <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"center"}}>
-          <GaugeChart value={(()=>{const td=Object.values(calMap);const g=td.filter(d=>d.pnl>0).length;return td.length?Math.round((g/td.length)*100):0;})()} label="Day Win %" color={B.blue}/>
-        </div>
-        {/* Streak */}
-        <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"center"}}>
-          <StreakBadge trades={trades}/>
-        </div>
-      </div>
-
-      {/* Edit mode banner */}
-      {editMode&&(
-        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 16px",borderRadius:12,background:`${B.teal}08`,border:`1px solid ${B.borderTeal}`}}>
-          <div style={{display:"flex",alignItems:"center",gap:10}}>
-            <div style={{width:6,height:6,borderRadius:"50%",background:saveStatus==="saved"?B.teal:B.blue}}/>
-            <span style={{fontSize:12,color:B.teal,fontWeight:600}}>{saveStatus==="saved"?"Layout saved":"Saving..."}</span>
-            <span style={{fontSize:11,color:B.textMuted}}>· Drag to swap · Click + to add · Remove to clear</span>
-          </div>
-          <button onClick={()=>setEditMode(false)} style={{padding:"6px 16px",borderRadius:8,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:12,fontWeight:800}}>✓ Done</button>
-        </div>
-      )}
-
-      {/* ── WIDGET GRID ── 2 columns, 3 rows */}
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
-        {[0,1,2,3,4,5].map(slotIdx=>{
-          const wid=layout[slotIdx];
-          const isEmpty=!wid;
-          const isDragTarget=dragOver===slotIdx;
-          const h=SLOT_HEIGHTS[slotIdx];
-
-          return(
-            <div key={slotIdx}
-              onDragOver={e=>{e.preventDefault();setDragOver(slotIdx);}}
-              onDragLeave={()=>setDragOver(null)}
-              onDrop={e=>handleSlotDrop(e,slotIdx)}
-              style={{height:h}}
-            >
-              {isEmpty?(
-                editMode?(
-                  <div onClick={()=>setDragWidget({type:"picker",slotIdx})}
-                    style={{
-                      height:"100%",borderRadius:14,
-                      border:`2px dashed ${isDragTarget?B.teal:"rgba(255,255,255,0.15)"}`,
-                      background:isDragTarget?`${B.teal}08`:"rgba(255,255,255,0.02)",
-                      display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
-                      gap:8,cursor:"pointer",transition:"all 0.2s",
-                    }}>
-                    <div style={{width:40,height:40,borderRadius:"50%",border:"2px dashed rgba(255,255,255,0.2)",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                      <span style={{fontSize:22,color:B.textDim}}>+</span>
-                    </div>
-                    <span style={{fontSize:11,color:B.textDim}}>Click to add widget</span>
-                  </div>
-                ):null
-              ):(
-                <div style={{position:"relative",height:"100%"}}>
-                  {editMode&&(
-                    <div style={{position:"absolute",inset:0,zIndex:20,borderRadius:14,border:`2px solid ${B.teal}50`,background:"rgba(0,0,0,0.12)",display:"flex",alignItems:"flex-start",justifyContent:"flex-end",padding:10,pointerEvents:"none"}}>
-                      <div style={{display:"flex",gap:6,pointerEvents:"auto"}}>
-                        <div draggable onDragStart={e=>handleSlotDragStart(e,slotIdx)}
-                          style={{padding:"4px 10px",borderRadius:6,border:`1px solid ${B.border}`,background:"rgba(0,0,0,0.7)",color:B.textMuted,cursor:"grab",fontSize:10}}>⠿ move</div>
-                        <button onClick={()=>removeFromSlot(slotIdx)}
-                          style={{padding:"4px 10px",borderRadius:6,border:`1px solid ${B.loss}50`,background:`${B.loss}20`,color:B.loss,cursor:"pointer",fontSize:10,fontWeight:700}}>Remove</button>
-                      </div>
-                    </div>
-                  )}
-  <div
-                    onClick={()=>!editMode&&wid!=="calendar"&&setExpandedWidget(wid)}
-                    style={{height:"100%",borderRadius:14,background:B.surface,border:`1px solid ${B.border}`,padding:20,overflow:"hidden",cursor:editMode||wid==="calendar"?"default":"pointer",transition:"border-color 0.15s"}}
-                    onMouseEnter={e=>{if(!editMode&&wid!=="calendar")e.currentTarget.style.borderColor=B.teal+"60";}}
-                    onMouseLeave={e=>{e.currentTarget.style.borderColor=B.border;}}
-                  >
-                    {!editMode&&wid!=="calendar"&&<div style={{position:"absolute",top:10,right:10,zIndex:5,opacity:0,transition:"opacity 0.2s"}}
-                      onMouseEnter={e=>e.currentTarget.style.opacity=1}
-                      className="expand-hint">
-                      <div style={{padding:"2px 7px",borderRadius:5,background:"rgba(0,0,0,0.7)",border:`1px solid ${B.border}`,fontSize:9,color:B.textMuted}}>⤢ expand</div>
-                    </div>}
-                    {renderWidget(wid)}
-                  </div>
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Widget picker */}
-      {editMode&&dragWidget?.type==="picker"&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",zIndex:150,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(8px)"}}
-          onClick={()=>setDragWidget(null)}>
-          <div style={{background:"#13121A",border:`1px solid ${B.border}`,borderRadius:20,width:600,maxHeight:"80vh",overflowY:"auto"}}
-            onClick={e=>e.stopPropagation()}>
-            <div style={{height:3,background:GL,borderRadius:"20px 20px 0 0"}}/>
-            <div style={{padding:"22px 28px 0",display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
-              <div>
-                <div style={{fontSize:18,fontWeight:800,color:B.text}}>Choose a Widget</div>
-                <div style={{fontSize:12,color:B.textMuted,marginTop:3}}>Select a widget for this slot</div>
-              </div>
-              <button onClick={()=>setDragWidget(null)} style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${B.border}`,borderRadius:8,color:B.textMuted,cursor:"pointer",fontSize:18,width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
-            </div>
-            <div style={{padding:"0 28px 28px",display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-              {ALL_WIDGETS.map(w=>{
-                const placed=layout.includes(w.id);
-                return(
-                  <div key={w.id} onClick={()=>{if(!placed){addToSlot(dragWidget.slotIdx,w.id);setDragWidget(null);}}}
-                    style={{padding:"12px 14px",borderRadius:10,cursor:placed?"not-allowed":"pointer",
-                      background:placed?"rgba(255,255,255,0.02)":B.surface,
-                      border:`1px solid ${B.border}`,opacity:placed?0.4:1,
-                      display:"flex",alignItems:"center",gap:10,transition:"all 0.15s"}}
-                    onMouseEnter={e=>{if(!placed)e.currentTarget.style.borderColor=B.teal;e.currentTarget.style.background=placed?"":"rgba(0,212,168,0.05)";}}
-                    onMouseLeave={e=>{e.currentTarget.style.borderColor=B.border;e.currentTarget.style.background=placed?"rgba(255,255,255,0.02)":B.surface;}}>
-                    <span style={{fontSize:20}}>{w.icon}</span>
-                    <div>
-                      <div style={{fontSize:12,fontWeight:700,color:B.text}}>{w.label}</div>
-                      {placed&&<div style={{fontSize:10,color:B.textMuted}}>Already placed</div>}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      )}
+      <EditorialHero trades={trades}/>
+      <EditorialOverview trades={trades}/>
     </div>
   );
 }
@@ -2150,7 +2180,25 @@ function Journal({trades,onEdit,onDelete,onGradeUpdate,onAnalysisSave}){
       <span style={{fontSize:10,color:B.textMuted,letterSpacing:1,marginLeft:8}}>SORT</span>
       {[{k:"date",l:"Date"},{k:"pnl",l:"P&L"},{k:"grade",l:"Grade"},{k:"rr",l:"R:R"}].map(s=>(<button key={s.k} onClick={()=>{if(sort===s.k)setSortDir(d=>d==="desc"?"asc":"desc");else{setSort(s.k);setSortDir("desc");}}} style={{padding:"4px 12px",borderRadius:20,border:"1px solid",borderColor:sort===s.k?B.purple:B.border,background:sort===s.k?`${B.purple}18`:"transparent",color:sort===s.k?B.purple:B.textMuted,cursor:"pointer",fontSize:11,fontWeight:700}}>{s.l}{sort===s.k?(sortDir==="desc"?" ↓":" ↑"):""}</button>))}
     </div>
-  </div><div style={{display:"grid",gridTemplateColumns:"70px 72px 68px 52px 110px 72px 56px 56px 1fr 78px",padding:"8px 14px",fontSize:10,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",borderBottom:`1px solid ${B.border}`}}>{["Date","Symbol","Dir","Grade","Setup","P&L","R:R","Result","Notes",""].map((h,i)=><div key={i}>{h}</div>)}</div><div style={{display:"flex",flexDirection:"column",gap:4}}>{sorted.map(t=>(<div key={t.id} onClick={()=>setSelectedTrade(t)} style={{display:"grid",gridTemplateColumns:"70px 72px 68px 52px 110px 72px 56px 56px 1fr 78px",padding:"11px 14px",borderRadius:10,background:B.surface,border:`1px solid ${B.border}`,borderLeft:`3px solid ${t.result==="Win"?B.teal:B.loss}`,cursor:"pointer",transition:"background 0.15s"}} onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.04)"} onMouseLeave={e=>e.currentTarget.style.background=B.surface}><div style={{fontSize:11,color:B.textMuted}}>{t.date.slice(5)}</div><div><span style={{fontSize:11,padding:"2px 7px",borderRadius:5,fontWeight:700,background:`${INST_COLOR[t.instrument]||B.teal}20`,color:INST_COLOR[t.instrument]||B.teal}}>{tradeLabel(t)}</span></div><div style={{fontSize:12,color:t.direction==="Long"?"#4ade80":"#f87171"}}>{t.direction}</div><GradeBadge grade={t.grade||"B"} tradeId={t.id} onSave={g=>onGradeUpdate&&onGradeUpdate(t.id,g)} size="small"/><div style={{fontSize:11,color:"#9CA0BC",overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>{t.setup}</div><div style={{fontSize:13,fontWeight:800,fontFamily:"monospace",color:pnlColor(t.pnl)}}>{fmt(t.pnl)}</div><div style={{fontSize:11,fontFamily:"monospace",color:B.textMuted}}>{t.rr}</div><div style={{fontSize:11,fontWeight:700,color:t.result==="Win"?B.profit:B.loss}}>{t.result}</div><div style={{fontSize:11,color:B.textDim,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>{t.notes}</div><div style={{display:"flex",gap:5}}><button onClick={()=>onEdit(t)} style={{padding:"4px 8px",borderRadius:6,border:`1px solid ${B.blue}40`,background:`${B.blue}12`,color:B.blue,cursor:"pointer",fontSize:10,fontWeight:700}}>Edit</button><button onClick={()=>onDelete(t)} style={{padding:"4px 8px",borderRadius:6,border:`1px solid ${B.loss}40`,background:`${B.loss}12`,color:B.loss,cursor:"pointer",fontSize:10,fontWeight:700}}>Del</button></div></div>))}</div></div>);
+  </div><div style={{display:"grid",gridTemplateColumns:"70px 172px 60px 52px 110px 72px 56px 56px 1fr 78px",padding:"8px 14px",fontSize:10,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",borderBottom:`1px solid ${B.border}`}}>{["Date","Symbol","Dir","Grade","Setup","P&L","R:R","Result","Notes",""].map((h,i)=><div key={i}>{h}</div>)}</div><div style={{display:"flex",flexDirection:"column",gap:4}}>{sorted.map(t=>(<div key={t.id} onClick={()=>setSelectedTrade(t)} style={{display:"grid",gridTemplateColumns:"70px 172px 60px 52px 110px 72px 56px 56px 1fr 78px",padding:"11px 14px",borderRadius:10,background:B.surface,border:`1px solid ${B.border}`,borderLeft:`3px solid ${t.result==="Win"?B.teal:B.loss}`,cursor:"pointer",transition:"background 0.15s"}} onMouseEnter={e=>e.currentTarget.style.background=(B.isDark?"rgba(255,255,255,0.04)":"rgba(14,17,22,0.064)")} onMouseLeave={e=>e.currentTarget.style.background=B.surface}><div style={{fontSize:11,color:B.textMuted}}>{t.date.slice(5)}</div><div><span style={{fontSize:11,padding:"2px 7px",borderRadius:5,fontWeight:700,background:`${INST_COLOR[t.instrument]||B.teal}20`,color:INST_COLOR[t.instrument]||B.teal,whiteSpace:"nowrap"}}>{tradeLabel(t)}</span></div><div style={{fontSize:12,color:t.direction==="Long"?"#4ade80":"#f87171"}}>{t.direction}</div><GradeBadge grade={t.grade||"B"} tradeId={t.id} onSave={g=>onGradeUpdate&&onGradeUpdate(t.id,g)} size="small"/><div style={{fontSize:11,color:B.textMuted,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>{t.setup}</div><div style={{fontSize:13,fontWeight:800,fontFamily:"monospace",color:pnlColor(t.pnl)}}>{fmt(t.pnl)}</div><div style={{fontSize:11,fontFamily:"monospace",color:B.textMuted}}>{t.rr}</div><div style={{fontSize:11,fontWeight:700,color:t.result==="Win"?B.profit:B.loss}}>{t.result}</div><div style={{fontSize:11,color:B.textDim,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>{t.notes}</div><div style={{display:"flex",gap:5}}><button onClick={()=>onEdit(t)} style={{padding:"4px 8px",borderRadius:6,border:`1px solid ${B.blue}40`,background:`${B.blue}12`,color:B.blue,cursor:"pointer",fontSize:10,fontWeight:700}}>Edit</button><button onClick={()=>onDelete(t)} style={{padding:"4px 8px",borderRadius:6,border:`1px solid ${B.loss}40`,background:`${B.loss}12`,color:B.loss,cursor:"pointer",fontSize:10,fontWeight:700}}>Del</button></div></div>))}</div></div>);
+}
+
+// ── Analytics hub: Performance + Strategies in one cohesive page ──
+function AnalyticsHub({trades}){
+  const [tab,setTab]=useState(()=>{try{const t=localStorage.getItem("tca_analytics_tab");return t==="strategies"?"strategies":"performance";}catch(e){return "performance";}});
+  const pick=(t)=>{setTab(t);try{localStorage.setItem("tca_analytics_tab",t);}catch(e){}};
+  const tabs=[{id:"performance",label:"Performance",hint:"How your trading is performing"},{id:"strategies",label:"Strategies",hint:"Build your playbooks and see how each one performs"}];
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:20}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:14,flexWrap:"wrap"}}>
+        <div role="tablist" aria-label="Analytics views" style={{display:"inline-flex",gap:2,padding:4,borderRadius:999,background:B.isDark?"rgba(255,255,255,0.04)":"#FFFFFF",border:`1px solid ${B.border}`}}>
+          {tabs.map(t=>(<button key={t.id} role="tab" aria-selected={tab===t.id} onClick={()=>pick(t.id)} style={{padding:"9px 20px",borderRadius:999,border:"none",cursor:"pointer",fontSize:13,fontWeight:tab===t.id?700:500,fontFamily:SANS,background:tab===t.id?(B.isDark?B.teal:"#0E1116"):"transparent",color:tab===t.id?(B.isDark?"#0E0E10":"#FFFFFF"):B.textMuted}}>{t.label}</button>))}
+        </div>
+        <div style={{fontSize:13,color:B.textMuted}}>{tabs.find(t=>t.id===tab).hint}</div>
+      </div>
+      {tab==="performance"?<Analytics trades={trades}/>:<PlaybookView trades={trades}/>}
+    </div>
+  );
 }
 
 function Analytics({trades}){
@@ -2238,7 +2286,7 @@ function Analytics({trades}){
 
   const GRADE_COLORS={"A+":B.teal,"A":B.blue,"B":B.spark,"C":"#F59E0B","D":B.loss};
 
-  const PBar=({label,data,grads,keyField="name"})=>(<div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:22}}><div style={{fontSize:10,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",marginBottom:18}}>{label}</div>{Object.entries(data).map(([k,d],i)=>{const g=grads[i%grads.length];const maxPnl=Math.max(...Object.values(data).map(x=>Math.abs(x.pnl)),1);return(<div key={k} style={{marginBottom:16}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:7}}><span style={{fontSize:13,color:B.text,fontWeight:600}}>{k}</span><div style={{display:"flex",gap:12}}><span style={{fontSize:11,color:B.textMuted}}>{Math.round((d.wins/d.total)*100)}% WR · {d.total}t</span><span style={{fontSize:12,fontFamily:"monospace",color:pnlColor(d.pnl),fontWeight:700}}>{fmt(d.pnl)}</span></div></div><div style={{height:6,background:"rgba(255,255,255,0.05)",borderRadius:4,overflow:"hidden"}}><div style={{height:"100%",width:`${(Math.abs(d.pnl)/maxPnl)*100}%`,background:d.pnl>=0?g:GBP,borderRadius:4,transition:"width 0.8s"}}/></div></div>);})}</div>);
+  const PBar=({label,data,grads,keyField="name"})=>(<div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:22}}><div style={{fontSize:10,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",marginBottom:18}}>{label}</div>{Object.entries(data).map(([k,d],i)=>{const g=grads[i%grads.length];const maxPnl=Math.max(...Object.values(data).map(x=>Math.abs(x.pnl)),1);return(<div key={k} style={{marginBottom:16}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:7}}><span style={{fontSize:13,color:B.text,fontWeight:600}}>{k}</span><div style={{display:"flex",gap:12}}><span style={{fontSize:11,color:B.textMuted}}>{Math.round((d.wins/d.total)*100)}% WR · {d.total}t</span><span style={{fontSize:12,fontFamily:"monospace",color:pnlColor(d.pnl),fontWeight:700}}>{fmt(d.pnl)}</span></div></div><div style={{height:6,background:B.hair,borderRadius:4,overflow:"hidden"}}><div style={{height:"100%",width:`${(Math.abs(d.pnl)/maxPnl)*100}%`,background:d.pnl>=0?g:GBP,borderRadius:4,transition:"width 0.8s"}}/></div></div>);})}</div>);
 
   return(
     <div style={{display:"flex",flexDirection:"column",gap:20}}>
@@ -2266,18 +2314,18 @@ function Analytics({trades}){
                 <stop offset="100%" stopColor={B.teal} stopOpacity={0}/>
               </linearGradient>
             </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false}/>
+            <CartesianGrid strokeDasharray="3 3" stroke={(B.isDark?"rgba(255,255,255,0.04)":"rgba(14,17,22,0.064)")} vertical={false}/>
             <XAxis dataKey="month" tick={{fill:B.textDim,fontSize:10}} axisLine={false} tickLine={false}/>
             <YAxis yAxisId="l" tick={{fill:B.textDim,fontSize:9}} axisLine={false} tickLine={false} tickFormatter={v=>`$${v}`}/>
             <YAxis yAxisId="r" orientation="right" tick={{fill:B.textDim,fontSize:9}} axisLine={false} tickLine={false} tickFormatter={v=>v+"%"} domain={[0,100]}/>
             <Tooltip content={({active,payload,label})=>{
               if(!active||!payload?.length)return null;
-              return(<div style={{background:"#16151C",border:`1px solid ${B.border}`,borderRadius:8,padding:"10px 14px",fontSize:12}}>
+              return(<div style={{background:B.panel,border:`1px solid ${B.border}`,borderRadius:8,padding:"10px 14px",fontSize:12}}>
                 <div style={{color:B.textMuted,marginBottom:5}}>{label}</div>
                 {payload.map((p,i)=><div key={i} style={{color:p.color,fontFamily:"monospace"}}>{p.name}: {p.value}{p.name==="Win %"?"%":""}</div>)}
               </div>);
             }}/>
-            <ReferenceLine yAxisId="l" y={0} stroke="rgba(255,255,255,0.1)"/>
+            <ReferenceLine yAxisId="l" y={0} stroke={(B.isDark?"rgba(255,255,255,0.1)":"rgba(14,17,22,0.16)")}/>
             <Bar yAxisId="l" dataKey="pnl" name="P&L" maxBarSize={36} radius={[4,4,0,0]}>
               {monthData.map((d,i)=><Cell key={i} fill={d.pnl>=0?B.teal:B.loss} fillOpacity={0.85}/>)}
             </Bar>
@@ -2297,7 +2345,7 @@ function Analytics({trades}){
               <span style={{fontSize:13,color:B.profit,fontWeight:700}}>Avg Win: ${avgWin}</span>
               <span style={{fontSize:13,color:B.loss,fontWeight:700}}>Avg Loss: -${avgLoss}</span>
             </div>
-            <div style={{position:"relative",height:28,borderRadius:6,overflow:"hidden",background:"rgba(255,255,255,0.04)"}}>
+            <div style={{position:"relative",height:28,borderRadius:6,overflow:"hidden",background:B.hair}}>
               <div style={{position:"absolute",left:0,top:0,bottom:0,width:`${Math.min((avgWin/(avgWin+avgLoss))*100,100)}%`,background:GTB,borderRadius:6,transition:"width 0.8s"}}/>
               <div style={{position:"absolute",right:0,top:0,bottom:0,width:`${Math.min((avgLoss/(avgWin+avgLoss))*100,100)}%`,background:GBP,borderRadius:6}}/>
               <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:"#fff"}}>
@@ -2336,17 +2384,17 @@ function Analytics({trades}){
                     <stop offset="100%" stopColor={B.blue} stopOpacity={0}/>
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)"/>
+                <CartesianGrid strokeDasharray="3 3" stroke={(B.isDark?"rgba(255,255,255,0.04)":"rgba(14,17,22,0.064)")}/>
                 <XAxis dataKey="date" tick={{fill:B.textDim,fontSize:8}} axisLine={false} tickLine={false} interval={Math.ceil(rollingWR.length/6)}/>
                 <YAxis tick={{fill:B.textDim,fontSize:9}} axisLine={false} tickLine={false} tickFormatter={v=>v+"%"} domain={[0,100]}/>
                 <Tooltip content={({active,payload,label})=>{
                   if(!active||!payload?.length)return null;
-                  return(<div style={{background:"#16151C",border:`1px solid ${B.border}`,borderRadius:8,padding:"8px 12px",fontSize:12}}>
+                  return(<div style={{background:B.panel,border:`1px solid ${B.border}`,borderRadius:8,padding:"8px 12px",fontSize:12}}>
                     <div style={{color:B.textMuted}}>{label}</div>
                     <div style={{color:B.blue,fontFamily:"monospace",fontWeight:700}}>{payload[0]?.value}% WR</div>
                   </div>);
                 }}/>
-                <ReferenceLine y={50} stroke="rgba(255,255,255,0.15)" strokeDasharray="4 4"/>
+                <ReferenceLine y={50} stroke={(B.isDark?"rgba(255,255,255,0.15)":"rgba(14,17,22,0.2)")} strokeDasharray="4 4"/>
                 <ReferenceLine y={breakEvenWR} stroke={B.teal} strokeDasharray="4 4" label={{value:`BE:${breakEvenWR}%`,fill:B.teal,fontSize:9}}/>
                 <Area type="monotone" dataKey="wr" stroke={B.blue} fill="url(#rwG)" strokeWidth={2} dot={false} name="Win Rate"/>
               </AreaChart>
@@ -2363,18 +2411,18 @@ function Analytics({trades}){
           <div style={{fontSize:11,color:B.textMuted,marginBottom:14}}>Frequency of trade outcomes by P&L range</div>
           <ResponsiveContainer width="100%" height={160}>
             <BarChart data={distData} barSize={16}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false}/>
+              <CartesianGrid strokeDasharray="3 3" stroke={(B.isDark?"rgba(255,255,255,0.04)":"rgba(14,17,22,0.064)")} vertical={false}/>
               <XAxis dataKey="bucket" tick={{fill:B.textDim,fontSize:8}} axisLine={false} tickLine={false} tickFormatter={v=>`$${v}`}/>
               <YAxis tick={{fill:B.textDim,fontSize:9}} axisLine={false} tickLine={false}/>
               <Tooltip content={({active,payload})=>{
                 if(!active||!payload?.length)return null;
                 const d=payload[0]?.payload;
-                return(<div style={{background:"#16151C",border:`1px solid ${B.border}`,borderRadius:8,padding:"8px 12px",fontSize:12}}>
+                return(<div style={{background:B.panel,border:`1px solid ${B.border}`,borderRadius:8,padding:"8px 12px",fontSize:12}}>
                   <div style={{color:B.textMuted}}>Range: ~${d.bucket}</div>
                   <div style={{color:B.text,fontWeight:700}}>{d.count} trade{d.count!==1?"s":""}</div>
                 </div>);
               }}/>
-              <ReferenceLine x={0} stroke="rgba(255,255,255,0.15)"/>
+              <ReferenceLine x={0} stroke={(B.isDark?"rgba(255,255,255,0.15)":"rgba(14,17,22,0.2)")}/>
               <Bar dataKey="count" name="Trades" radius={[3,3,0,0]}>
                 {distData.map((d,i)=><Cell key={i} fill={d.bucket>=0?B.teal:B.loss} fillOpacity={0.85}/>)}
               </Bar>
@@ -2392,7 +2440,7 @@ function Analytics({trades}){
               {label:"Current Streak",  value:`${streak} ${streakType==="Win"?"W":"L"}`, color:streakType==="Win"?B.profit:B.loss, icon:streakType==="Win"?"✅":"⚠️"},
               {label:"After-Loss WR",   value:afterLossWR!==null?`${afterLossWR}%`:"—", color:afterLossWR>=50?B.profit:B.loss, icon:"🔄"},
             ].map(s=>(
-              <div key={s.label} style={{padding:"12px 14px",borderRadius:10,background:"rgba(0,0,0,0.3)",border:`1px solid ${s.color}20`}}>
+              <div key={s.label} style={{padding:"12px 14px",borderRadius:10,background:B.inset,border:`1px solid ${s.color}20`}}>
                 <div style={{fontSize:18,marginBottom:4}}>{s.icon}</div>
                 <div style={{fontSize:11,color:B.textMuted,marginBottom:4}}>{s.label}</div>
                 <div style={{fontSize:20,fontWeight:800,color:s.color,fontFamily:"monospace"}}>{s.value}</div>
@@ -2441,10 +2489,10 @@ function Analytics({trades}){
           <div style={{fontSize:10,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",marginBottom:16}}>P&L by Day of Week</div>
           <ResponsiveContainer width="100%" height={160}>
             <BarChart data={dayData} barSize={44}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false}/>
+              <CartesianGrid strokeDasharray="3 3" stroke={(B.isDark?"rgba(255,255,255,0.04)":"rgba(14,17,22,0.064)")} vertical={false}/>
               <XAxis dataKey="day" tick={{fill:B.textDim,fontSize:12}} axisLine={false} tickLine={false}/>
               <YAxis tick={{fill:B.textDim,fontSize:10}} axisLine={false} tickLine={false} tickFormatter={v=>`$${v}`}/>
-              <Tooltip content={<CTip/>}/><ReferenceLine y={0} stroke="rgba(255,255,255,0.08)"/>
+              <Tooltip content={<CTip/>}/><ReferenceLine y={0} stroke={(B.isDark?"rgba(255,255,255,0.08)":"rgba(14,17,22,0.128)")}/>
               <Bar dataKey="pnl" name="P&L" radius={[5,5,0,0]} isAnimationActive>
                 {dayData.map((d,i)=><Cell key={i} fill={d.pnl>=0?B.teal:B.loss}/>)}
               </Bar>
@@ -2471,7 +2519,7 @@ function Analytics({trades}){
                       </div>
                       <span style={{fontSize:13,fontWeight:800,fontFamily:"monospace",color:pnlColor(g.pnl)}}>{fmt(g.pnl)}</span>
                     </div>
-                    <div style={{height:5,background:"rgba(255,255,255,0.05)",borderRadius:3}}>
+                    <div style={{height:5,background:B.hair,borderRadius:3}}>
                       <div style={{height:"100%",width:`${(Math.abs(g.pnl)/maxAbs)*100}%`,background:g.pnl>=0?`linear-gradient(90deg,${color},${color}90)`:GBP,borderRadius:3,transition:"width 0.8s"}}/>
                     </div>
                   </div>
@@ -2489,7 +2537,7 @@ function Analytics({trades}){
           <div style={{fontSize:11,color:B.textMuted,marginBottom:16}}>How your performance changes as you scale</div>
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))",gap:10}}>
             {contractData.map(c=>(
-              <div key={c.contracts} style={{padding:"14px 16px",borderRadius:12,background:"rgba(0,0,0,0.3)",border:"1px solid "+(c.pnl>=0?B.teal+"25":B.border),position:"relative",overflow:"hidden"}}>
+              <div key={c.contracts} style={{padding:"14px 16px",borderRadius:12,background:B.inset,border:"1px solid "+(c.pnl>=0?B.teal+"25":B.border),position:"relative",overflow:"hidden"}}>
                 <div style={{position:"absolute",top:0,left:0,right:0,height:2,background:c.pnl>=0?GTB:GBP}}/>
                 <div style={{fontSize:22,fontWeight:800,color:B.textMuted,marginBottom:4}}>{c.contracts}<span style={{fontSize:12}}> ct</span></div>
                 <div style={{fontSize:14,fontWeight:800,fontFamily:"monospace",color:pnlColor(c.pnl),marginBottom:2}}>{fmt(c.pnl)}</div>
@@ -2526,7 +2574,7 @@ function StrategyChecklist({trade}){
     const doneCount=rules.filter((r,i)=>checked[r.id??i]===true).length;
     return(
       <div style={{padding:"0 28px",marginBottom:20}}>
-        <div style={{background:"rgba(0,0,0,0.3)",borderRadius:12,padding:"16px 20px",border:`1px solid ${B.borderPurp}`}}>
+        <div style={{background:B.inset,borderRadius:12,padding:"16px 20px",border:`1px solid ${B.borderPurp}`}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
             <div style={{fontSize:10,color:B.purple,letterSpacing:1.5,textTransform:"uppercase"}}>⚡ {strat.name} — Entry Checklist</div>
             <div style={{fontSize:11,color:doneCount===rules.length?B.teal:B.textMuted,fontWeight:700}}>{doneCount}/{rules.length}</div>
@@ -2536,9 +2584,9 @@ function StrategyChecklist({trade}){
               const id=r.id??i;
               const done=!!checked[id];
               return(
-                <div key={id} onClick={()=>toggle(id)} style={{display:"flex",alignItems:"flex-start",gap:10,cursor:"pointer",padding:"6px 0",borderBottom:"1px solid rgba(255,255,255,0.04)"}}>
+                <div key={id} onClick={()=>toggle(id)} style={{display:"flex",alignItems:"flex-start",gap:10,cursor:"pointer",padding:"6px 0",borderBottom:`1px solid ${B.border}`}}>
                   <div style={{width:16,height:16,borderRadius:4,border:`2px solid ${done?B.teal:B.border}`,background:done?B.teal:"transparent",flexShrink:0,marginTop:1,display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.15s"}}>
-                    {done&&<span style={{color:"#0E0E10",fontSize:10,fontWeight:800}}>✓</span>}
+                    {done&&<span style={{color:B.onAccent,fontSize:10,fontWeight:800}}>✓</span>}
                   </div>
                   <div style={{fontSize:12,color:done?B.textMuted:B.text,textDecoration:done?"line-through":"none",lineHeight:1.5}}>{r.text||r}</div>
                 </div>
@@ -2727,7 +2775,7 @@ function TradeDetailModal({trade, onClose, onEdit, onGradeUpdate, onAnalysisSave
   return(
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.92)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(10px)"}}
       onClick={onClose}>
-      <div style={{background:"#13121A",border:`1px solid ${B.border}`,borderRadius:20,width:680,maxHeight:"88vh",overflowY:"auto"}}
+      <div style={{background:B.panel,border:`1px solid ${B.border}`,borderRadius:20,width:680,maxHeight:"88vh",overflowY:"auto"}}
         onClick={e=>e.stopPropagation()}>
 
         {/* Top accent bar */}
@@ -2748,7 +2796,7 @@ function TradeDetailModal({trade, onClose, onEdit, onGradeUpdate, onAnalysisSave
               <div style={{fontSize:30,fontWeight:800,fontFamily:"monospace",color:pnlColor(trade.pnl)}}>{fmt(trade.pnl)}</div>
               <div style={{fontSize:11,color:B.textMuted}}>Net P&L</div>
             </div>
-            <button onClick={onClose} style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${B.border}`,borderRadius:8,color:B.textMuted,cursor:"pointer",fontSize:18,width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center",marginLeft:8}}>×</button>
+            <button onClick={onClose} style={{background:B.hair,border:`1px solid ${B.border}`,borderRadius:8,color:B.textMuted,cursor:"pointer",fontSize:18,width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center",marginLeft:8}}>×</button>
           </div>
         </div>
 
@@ -2756,7 +2804,7 @@ function TradeDetailModal({trade, onClose, onEdit, onGradeUpdate, onAnalysisSave
         <div style={{padding:"0 28px",marginBottom:20}}>
           <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:1,background:`${B.border}`,borderRadius:12,overflow:"hidden",border:`1px solid ${B.border}`}}>
             {stats.map((s,i)=>(
-              <div key={s.label} style={{padding:"14px 16px",background:"#13121A",borderRight:i%5!==4?`1px solid ${B.border}`:"none",borderBottom:i<5?`1px solid ${B.border}`:"none"}}>
+              <div key={s.label} style={{padding:"14px 16px",background:B.panel,borderRight:i%5!==4?`1px solid ${B.border}`:"none",borderBottom:i<5?`1px solid ${B.border}`:"none"}}>
                 <div style={{fontSize:9,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:6}}>{s.label}</div>
                 {s.isGrade
                   ? <GradeBadge grade={trade.grade||"B"} tradeId={trade.id} onSave={g=>{if(onGradeUpdate)onGradeUpdate(trade.id,g);}}/>
@@ -2769,7 +2817,7 @@ function TradeDetailModal({trade, onClose, onEdit, onGradeUpdate, onAnalysisSave
 
         {/* Performance visual */}
         <div style={{padding:"0 28px",marginBottom:20}}>
-          <div style={{background:"rgba(0,0,0,0.4)",borderRadius:12,padding:"16px 20px",border:`1px solid ${B.border}`}}>
+          <div style={{background:B.inset,borderRadius:12,padding:"16px 20px",border:`1px solid ${B.border}`}}>
             <div style={{fontSize:10,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:12}}>Trade Performance</div>
             <div style={{display:"flex",alignItems:"center",gap:16}}>
               {/* P&L bar visual */}
@@ -2778,7 +2826,7 @@ function TradeDetailModal({trade, onClose, onEdit, onGradeUpdate, onAnalysisSave
                   <span>Entry: {trade.entry||"--"}</span>
                   <span>Exit: {trade.exit||"--"}</span>
                 </div>
-                <div style={{height:8,background:"rgba(255,255,255,0.05)",borderRadius:4,overflow:"hidden",position:"relative"}}>
+                <div style={{height:8,background:B.hair,borderRadius:4,overflow:"hidden",position:"relative"}}>
                   <div style={{
                     position:"absolute",left:"50%",height:"100%",
                     width:pts?Math.min(Math.abs(pts)/50*50,50)+"%":"0%",
@@ -2786,7 +2834,7 @@ function TradeDetailModal({trade, onClose, onEdit, onGradeUpdate, onAnalysisSave
                     borderRadius:4,
                     transform:isWin?"translateX(0)":"translateX(-100%)",
                   }}/>
-                  <div style={{position:"absolute",left:"50%",top:0,bottom:0,width:2,background:"rgba(255,255,255,0.2)",transform:"translateX(-50%)"}}/>
+                  <div style={{position:"absolute",left:"50%",top:0,bottom:0,width:2,background:(B.isDark?"rgba(255,255,255,0.2)":"rgba(14,17,22,0.2)"),transform:"translateX(-50%)"}}/>
                 </div>
                 <div style={{display:"flex",justifyContent:"space-between",marginTop:6}}>
                   <span style={{fontSize:10,color:B.textMuted}}>{trade.contracts} contract{trade.contracts!==1?"s":""}</span>
@@ -2803,16 +2851,16 @@ function TradeDetailModal({trade, onClose, onEdit, onGradeUpdate, onAnalysisSave
         {/* Notes */}
         {trade.notes&&(
           <div style={{padding:"0 28px",marginBottom:20}}>
-            <div style={{background:"rgba(0,0,0,0.3)",borderRadius:12,padding:"16px 20px",border:`1px solid ${B.border}`}}>
+            <div style={{background:B.inset,borderRadius:12,padding:"16px 20px",border:`1px solid ${B.border}`}}>
               <div style={{fontSize:10,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:8}}>Notes</div>
-              <div style={{fontSize:13,color:"#C8C4D8",lineHeight:1.7}}>{trade.notes}</div>
+              <div style={{fontSize:13,color:B.isDark?"#C8C4D8":"#2B303B",lineHeight:1.7}}>{trade.notes}</div>
             </div>
           </div>
         )}
 
         {/* ICT Concept Tags */}
         <div style={{padding:"0 28px",marginBottom:20}}>
-          <div style={{background:"rgba(0,0,0,0.3)",borderRadius:12,padding:"16px 20px",border:`1px solid ${B.border}`}}>
+          <div style={{background:B.inset,borderRadius:12,padding:"16px 20px",border:`1px solid ${B.border}`}}>
             <div style={{fontSize:10,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:10}}>ICT Concepts Used</div>
             <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
               {ICT_CONCEPTS.map(c=>{
@@ -2847,11 +2895,11 @@ function TradeDetailModal({trade, onClose, onEdit, onGradeUpdate, onAnalysisSave
               <img src={screenshotUrl} alt="Trade chart" style={{width:"100%",maxHeight:300,objectFit:"cover",display:"block"}}/>
               <div style={{position:"absolute",top:8,right:8,display:"flex",gap:6}}>
                 <button onClick={()=>fileInputRef.current?.click()}
-                  style={{padding:"4px 10px",borderRadius:6,border:`1px solid ${B.border}`,background:"rgba(0,0,0,0.8)",color:B.textMuted,cursor:"pointer",fontSize:11}}>
+                  style={{padding:"4px 10px",borderRadius:6,border:`1px solid ${B.border}`,background:B.overlay,color:B.textMuted,cursor:"pointer",fontSize:11}}>
                   Replace
                 </button>
                 <button onClick={removeScreenshot}
-                  style={{padding:"4px 10px",borderRadius:6,border:`1px solid ${B.loss}50`,background:"rgba(0,0,0,0.8)",color:B.loss,cursor:"pointer",fontSize:11}}>
+                  style={{padding:"4px 10px",borderRadius:6,border:`1px solid ${B.loss}50`,background:B.overlay,color:B.loss,cursor:"pointer",fontSize:11}}>
                   Remove
                 </button>
               </div>
@@ -2888,7 +2936,7 @@ function TradeDetailModal({trade, onClose, onEdit, onGradeUpdate, onAnalysisSave
             </button>
           )}
           {aiLoading&&(
-            <div style={{padding:"20px",borderRadius:12,background:"rgba(0,0,0,0.3)",border:`1px solid ${B.border}`,textAlign:"center"}}>
+            <div style={{padding:"20px",borderRadius:12,background:B.inset,border:`1px solid ${B.border}`,textAlign:"center"}}>
               <div style={{fontSize:13,color:B.textMuted}}>🧠 Analyzing trade...</div>
               <div style={{marginTop:8,height:3,background:`${B.border}`,borderRadius:2,overflow:"hidden"}}>
                 <div style={{height:"100%",width:"60%",background:GL,borderRadius:2,animation:"pulse 1.5s infinite"}}/>
@@ -2896,7 +2944,7 @@ function TradeDetailModal({trade, onClose, onEdit, onGradeUpdate, onAnalysisSave
             </div>
           )}
           {aiAnalysis&&(
-            <div style={{borderRadius:12,background:"rgba(0,0,0,0.3)",border:`1px solid ${B.purple}30`,overflow:"hidden"}}>
+            <div style={{borderRadius:12,background:B.inset,border:`1px solid ${B.purple}30`,overflow:"hidden"}}>
               <div style={{padding:"12px 16px",background:`${B.purple}10`,borderBottom:`1px solid ${B.purple}20`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                 <div style={{display:"flex",alignItems:"center",gap:8}}>
                   <span>🧠</span>
@@ -2909,7 +2957,7 @@ function TradeDetailModal({trade, onClose, onEdit, onGradeUpdate, onAnalysisSave
                 </div>
               </div>
               <div style={{padding:"14px 16px",display:"flex",flexDirection:"column",gap:12}}>
-                <div style={{fontSize:12,color:"#C8C4D8",lineHeight:1.7}}>{aiAnalysis.verdict}</div>
+                <div style={{fontSize:12,color:B.isDark?"#C8C4D8":"#2B303B",lineHeight:1.7}}>{aiAnalysis.verdict}</div>
                 {aiAnalysis.strengths?.length>0&&(
                   <div>
                     <div style={{fontSize:10,color:B.profit,letterSpacing:1.5,textTransform:"uppercase",marginBottom:6}}>✅ Strengths</div>
@@ -2925,7 +2973,7 @@ function TradeDetailModal({trade, onClose, onEdit, onGradeUpdate, onAnalysisSave
                 {aiAnalysis.lesson&&(
                   <div style={{padding:"10px 14px",borderRadius:8,background:`${B.spark}10`,border:`1px solid ${B.spark}30`}}>
                     <div style={{fontSize:10,color:B.spark,letterSpacing:1.5,textTransform:"uppercase",marginBottom:4}}>💡 Key Lesson</div>
-                    <div style={{fontSize:12,color:"#C8C4D8",lineHeight:1.6}}>{aiAnalysis.lesson}</div>
+                    <div style={{fontSize:12,color:B.isDark?"#C8C4D8":"#2B303B",lineHeight:1.6}}>{aiAnalysis.lesson}</div>
                   </div>
                 )}
               </div>
@@ -3181,7 +3229,7 @@ function TemplatePanel({ date, currentNotes, onApply, onClose }) {
         <div style={{ display: "flex", gap: 8 }}>
           {view === "list" && (
             <button onClick={() => { setView("create"); setEditForm({ name: "", icon: "📝", color: B.teal, content: "" }); }}
-              style={{ padding: "5px 12px", borderRadius: 8, border: "none", background: GL, color: "#0E0E10", cursor: "pointer", fontSize: 11, fontWeight: 800 }}>
+              style={{ padding: "5px 12px", borderRadius: 8, border: "none", background: GL, color:B.onAccent, cursor: "pointer", fontSize: 11, fontWeight: 800 }}>
               + New
             </button>
           )}
@@ -3207,7 +3255,7 @@ function TemplatePanel({ date, currentNotes, onApply, onClose }) {
         <div style={{ display: "flex", flexDirection: "column", gap: 8, overflowY: "auto", flex: 1 }}>
           {templates.map(t => (
             <div key={t.id} style={{ borderRadius: 10, border: `1px solid ${B.border}`, overflow: "hidden" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", background: "rgba(0,0,0,0.3)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", background:B.inset }}>
                 <span style={{ fontSize: 18 }}>{t.icon}</span>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 13, fontWeight: 700, color: B.text }}>{t.name}</div>
@@ -3240,11 +3288,11 @@ function TemplatePanel({ date, currentNotes, onApply, onClose }) {
       {/* Preview */}
       {view === "preview" && selected && (
         <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 12 }}>
-          <div style={{ flex: 1, padding: "14px", borderRadius: 10, background: "rgba(0,0,0,0.3)", border: `1px solid ${B.border}`, overflowY: "auto", fontSize: 12, color: "#C8C4D8", lineHeight: 1.8, whiteSpace: "pre-wrap", fontFamily: "monospace" }}>
+          <div style={{ flex: 1, padding: "14px", borderRadius: 10, background:B.inset, border: `1px solid ${B.border}`, overflowY: "auto", fontSize: 12, color: "#C8C4D8", lineHeight: 1.8, whiteSpace: "pre-wrap", fontFamily: "monospace" }}>
             {selected.content.replace(/{date}/g, date)}
           </div>
           <button onClick={() => applyTemplate(selected)}
-            style={{ padding: "11px", borderRadius: 10, border: "none", background: GL, color: "#0E0E10", cursor: "pointer", fontSize: 13, fontWeight: 800 }}>
+            style={{ padding: "11px", borderRadius: 10, border: "none", background: GL, color:B.onAccent, cursor: "pointer", fontSize: 13, fontWeight: 800 }}>
             Apply This Template →
           </button>
         </div>
@@ -3290,7 +3338,7 @@ function TemplatePanel({ date, currentNotes, onApply, onClose }) {
               Cancel
             </button>
             <button onClick={handleSave}
-              style={{ flex: 2, padding: "10px", borderRadius: 10, border: "none", background: GL, color: "#0E0E10", cursor: "pointer", fontSize: 13, fontWeight: 800 }}>
+              style={{ flex: 2, padding: "10px", borderRadius: 10, border: "none", background: GL, color:B.onAccent, cursor: "pointer", fontSize: 13, fontWeight: 800 }}>
               {view === "edit" ? "Save Changes" : "Create Template"}
             </button>
           </div>
@@ -3422,9 +3470,9 @@ function DayJournalModal({date, trades, onClose, onGradeUpdate}){
   const pct=checklist.length?Math.round((completed/checklist.length)*100):0;
 
   return(
-    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",zIndex:150,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(8px)"}}
+    <div style={{position:"fixed",inset:0,background:B.overlay,zIndex:150,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(8px)"}}
       onClick={onClose}>
-      <div style={{background:"#13121A",border:`1px solid ${B.border}`,borderRadius:20,width:680,maxHeight:"90vh",overflowY:"auto"}}
+      <div style={{background:B.panel,border:`1px solid ${B.border}`,borderRadius:20,width:680,maxHeight:"90vh",overflowY:"auto"}}
         onClick={e=>e.stopPropagation()}>
         <div style={{height:3,background:dayPnl>0?GTB:dayPnl<0?"linear-gradient(90deg,#F05A7E,#8B5CF6)":GL,borderRadius:"20px 20px 0 0"}}/>
 
@@ -3441,7 +3489,7 @@ function DayJournalModal({date, trades, onClose, onGradeUpdate}){
           </div>
           <div style={{display:"flex",alignItems:"center",gap:10}}>
             {saving&&<div style={{fontSize:11,color:B.textMuted}}>Saving...</div>}
-            <button onClick={onClose} style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${B.border}`,borderRadius:8,color:B.textMuted,cursor:"pointer",fontSize:18,width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
+            <button onClick={onClose} style={{background:B.hair,border:`1px solid ${B.border}`,borderRadius:8,color:B.textMuted,cursor:"pointer",fontSize:18,width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
           </div>
         </div>
 
@@ -3474,7 +3522,7 @@ function DayJournalModal({date, trades, onClose, onGradeUpdate}){
                   <div style={{fontSize:12,color:B.textMuted}}>Pre-market preparation</div>
                   <div style={{fontSize:12,fontWeight:700,color:pct===100?B.teal:B.textMuted}}>{pct}% complete</div>
                 </div>
-                <div style={{height:6,background:"rgba(255,255,255,0.05)",borderRadius:3,overflow:"hidden"}}>
+                <div style={{height:6,background:B.hair,borderRadius:3,overflow:"hidden"}}>
                   <div style={{height:"100%",width:`${pct}%`,background:pct===100?GTB:GBP,borderRadius:3,transition:"width 0.4s"}}/>
                 </div>
                 {pct===100&&<div style={{fontSize:11,color:B.teal,marginTop:6,fontWeight:700}}>✅ Pre-market prep complete — ready to trade!</div>}
@@ -3485,7 +3533,7 @@ function DayJournalModal({date, trades, onClose, onGradeUpdate}){
                 {checklist.map((item,i)=>(
                   <div key={i} style={{
                     display:"flex",alignItems:"center",gap:10,padding:"10px 14px",borderRadius:10,
-                    background:item.checked?"rgba(0,212,168,0.06)":"rgba(255,255,255,0.02)",
+                    background:item.checked?"rgba(0,212,168,0.06)":B.hair,
                     border:"1px solid "+(item.checked?B.teal+"30":B.border),
                     transition:"all 0.2s"
                   }}>
@@ -3495,7 +3543,7 @@ function DayJournalModal({date, trades, onClose, onGradeUpdate}){
                       background:item.checked?B.teal:"transparent",flexShrink:0,
                       display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.2s",cursor:"pointer"
                     }}>
-                      {item.checked&&<span style={{color:"#0E0E10",fontSize:12,fontWeight:900}}>✓</span>}
+                      {item.checked&&<span style={{color:B.onAccent,fontSize:12,fontWeight:900}}>✓</span>}
                     </div>
                     {/* Text - click to edit inline */}
                     {editingCheck===i?(
@@ -3541,11 +3589,11 @@ function DayJournalModal({date, trades, onClose, onGradeUpdate}){
                 <input value={newItem} onChange={e=>setNewItem(e.target.value)}
                   onKeyDown={e=>e.key==="Enter"&&addItem()}
                   style={{...iS,flex:1}} placeholder="Add a checklist item..."/>
-                <button onClick={addItem} style={{padding:"9px 18px",borderRadius:8,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:12,fontWeight:800,whiteSpace:"nowrap"}}>+ Add</button>
+                <button onClick={addItem} style={{padding:"9px 18px",borderRadius:8,border:"none",background:GL,color:B.onAccent,cursor:"pointer",fontSize:12,fontWeight:800,whiteSpace:"nowrap"}}>+ Add</button>
                 <button onClick={()=>setShowCkTemplates(p=>!p)} title="Templates" style={{padding:"9px 12px",borderRadius:8,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:13}}>📋</button>
               </div>
               {showCkTemplates&&(
-                <div style={{marginTop:12,padding:"14px 16px",borderRadius:10,background:"rgba(0,0,0,0.3)",border:`1px solid ${B.border}`}}>
+                <div style={{marginTop:12,padding:"14px 16px",borderRadius:10,background:B.inset,border:`1px solid ${B.border}`}}>
                   <div style={{fontSize:11,color:B.textMuted,marginBottom:10,letterSpacing:1}}>CHECKLIST TEMPLATES</div>
                   {ckTemplates.length>0&&(
                     <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:12}}>
@@ -3564,7 +3612,7 @@ function DayJournalModal({date, trades, onClose, onGradeUpdate}){
                   {checklist.length>0&&(
                     <div style={{display:"flex",gap:8,alignItems:"center"}}>
                       <input value={newTplName} onChange={e=>setNewTplName(e.target.value)} placeholder="Template name..." style={{...iS,flex:1,padding:"6px 10px",fontSize:12}}/>
-                      <button onClick={saveAsTemplate} style={{padding:"6px 14px",borderRadius:7,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:11,fontWeight:800,whiteSpace:"nowrap"}}>Save Current</button>
+                      <button onClick={saveAsTemplate} style={{padding:"6px 14px",borderRadius:7,border:"none",background:GL,color:B.onAccent,cursor:"pointer",fontSize:11,fontWeight:800,whiteSpace:"nowrap"}}>Save Current</button>
                     </div>
                   )}
                   {ckTemplates.length===0&&checklist.length===0&&<div style={{fontSize:11,color:B.textMuted}}>Add items to your checklist first, then save as a template.</div>}
@@ -3583,16 +3631,16 @@ function DayJournalModal({date, trades, onClose, onGradeUpdate}){
                 onBlur={e=>save(e.target.value,undefined)}
                 placeholder="Write your trading notes here... What happened? What did you learn?"
                 style={{
-                  width:"100%",minHeight:260,background:"rgba(0,0,0,0.3)",
+                  width:"100%",minHeight:260,background:B.inset,
                   border:`1px solid ${B.border}`,borderRadius:10,
                   padding:"14px 16px",color:B.text,fontSize:13,
-                  fontFamily:"'Inter',sans-serif",resize:"vertical",
+                  fontFamily:"'DM Sans','Inter',sans-serif",resize:"vertical",
                   outline:"none",lineHeight:1.8,direction:"ltr",
                   textAlign:"left",boxSizing:"border-box",
                 }}
               />
               <div style={{display:"flex",justifyContent:"flex-end",marginTop:10}}>
-                <button onClick={()=>save(notes,undefined)} style={{padding:"8px 20px",borderRadius:8,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:12,fontWeight:800}}>Save Notes</button>
+                <button onClick={()=>save(notes,undefined)} style={{padding:"8px 20px",borderRadius:8,border:"none",background:GL,color:B.onAccent,cursor:"pointer",fontSize:12,fontWeight:800}}>Save Notes</button>
               </div>
             </div>
           )}
@@ -3622,14 +3670,14 @@ function DayJournalModal({date, trades, onClose, onGradeUpdate}){
                   <div style={{display:"flex",flexDirection:"column",gap:8}}>
                     {dayTrades.map((t,i)=>(
                       <div key={t.id} onClick={()=>setSelectedTrade(t)} style={{
-                        padding:"14px 16px",borderRadius:12,background:"rgba(0,0,0,0.3)",
+                        padding:"14px 16px",borderRadius:12,background:B.inset,
                         border:"1px solid "+(t.result==="Win"?B.teal+"30":B.loss+"30"),
                         borderLeft:`4px solid ${t.result==="Win"?B.teal:B.loss}`,
                         cursor:"pointer",transition:"all 0.15s"
                       }}>
                         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
                           <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                            <span style={{fontSize:11,padding:"2px 9px",borderRadius:5,fontWeight:700,background:`${INST_COLOR[t.instrument]||B.teal}20`,color:INST_COLOR[t.instrument]||B.teal}}>{tradeLabel(t)}</span>
+                            <span style={{fontSize:11,padding:"2px 9px",borderRadius:5,fontWeight:700,background:`${INST_COLOR[t.instrument]||B.teal}20`,color:INST_COLOR[t.instrument]||B.teal,whiteSpace:"nowrap"}}>{tradeLabel(t)}</span>
                             <span style={{fontSize:13,fontWeight:700,color:t.direction==="Long"?"#4ade80":"#f87171"}}>{t.direction}</span>
                             <span style={{fontSize:11,color:B.textMuted}}>{t.contracts} contract{t.contracts!==1?"s":""}</span>
                           </div>
@@ -3640,7 +3688,7 @@ function DayJournalModal({date, trades, onClose, onGradeUpdate}){
                         </div>
                         <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:8}}>
                           {[{l:"Entry",v:t.entry||"--"},{l:"Exit",v:t.exit||"--"},{l:"R:R",v:t.rr||"--"},{l:"Session",v:t.session||"--"}].map(s=>(
-                            <div key={s.l} style={{background:"rgba(255,255,255,0.03)",borderRadius:8,padding:"8px 10px"}}>
+                            <div key={s.l} style={{background:B.hair,borderRadius:8,padding:"8px 10px"}}>
                               <div style={{fontSize:9,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:3}}>{s.l}</div>
                               <div style={{fontSize:13,fontWeight:700,color:B.text,fontFamily:"monospace"}}>{String(s.v)}</div>
                             </div>
@@ -3669,7 +3717,7 @@ function DayJournalModal({date, trades, onClose, onGradeUpdate}){
               <div>
                 <label style={{display:"block",cursor:"pointer"}}>
                   <div style={{border:`2px dashed ${B.border}`,borderRadius:12,padding:"20px",textAlign:"center",
-                    background:"rgba(255,255,255,0.02)",transition:"all 0.2s"}}
+                    background:B.hair,transition:"all 0.2s"}}
                     onDragOver={e=>{e.preventDefault();e.currentTarget.style.borderColor=B.teal;}}
                     onDragLeave={e=>{e.currentTarget.style.borderColor=B.border;}}
                     onDrop={e=>{
@@ -3746,7 +3794,7 @@ function DayJournalModal({date, trades, onClose, onGradeUpdate}){
                           value={img.note}
                           onChange={e=>setChartScreenshots(prev=>prev.map(s=>s.id===img.id?{...s,note:e.target.value}:s))}
                           placeholder="Add a note — setup, bias, key level..."
-                          style={{width:"100%",background:"rgba(0,0,0,0.3)",border:`1px solid ${B.border}`,borderRadius:7,padding:"7px 10px",color:B.text,fontSize:12,outline:"none",boxSizing:"border-box"}}
+                          style={{width:"100%",background:B.inset,border:`1px solid ${B.border}`,borderRadius:7,padding:"7px 10px",color:B.text,fontSize:12,outline:"none",boxSizing:"border-box"}}
                         />
                       </div>
                     </div>
@@ -3782,8 +3830,8 @@ function DayJournalModal({date, trades, onClose, onGradeUpdate}){
                         }catch(e){setChartAIError("Analysis failed: "+e.message);}
                         setChartAILoading(false);
                       }} disabled={chartAILoading}
-                        style={{padding:"8px 16px",borderRadius:9,border:"none",background:chartAILoading?"rgba(255,255,255,0.05)":GL,
-                          color:chartAILoading?"#666":"#0E0E10",cursor:chartAILoading?"not-allowed":"pointer",fontSize:12,fontWeight:700,whiteSpace:"nowrap"}}>
+                        style={{padding:"8px 16px",borderRadius:9,border:"none",background:chartAILoading?(B.isDark?"rgba(255,255,255,0.05)":"rgba(14,17,22,0.08)"):GL,
+                          color:chartAILoading?"#666":B.onAccent,cursor:chartAILoading?"not-allowed":"pointer",fontSize:12,fontWeight:700,whiteSpace:"nowrap"}}>
                         {chartAILoading?"Analyzing...":"Analyze Charts"}
                       </button>
                     </div>
@@ -3796,7 +3844,7 @@ function DayJournalModal({date, trades, onClose, onGradeUpdate}){
                   </div>
 
                   <button onClick={()=>{save(undefined,undefined);}}
-                    style={{padding:"9px",borderRadius:9,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:12,fontWeight:700}}>
+                    style={{padding:"9px",borderRadius:9,border:"none",background:GL,color:B.onAccent,cursor:"pointer",fontSize:12,fontWeight:700}}>
                     Save Screenshots & Notes
                   </button>
                 </div>
@@ -3900,7 +3948,7 @@ function CalendarView({trades, onGradeUpdate, onEdit}){
               return(
                 <div key={di} onClick={()=>setSelectedDay(ds)} style={{
                   minHeight:72,borderRadius:10,padding:"8px 10px",
-                  background:data?(data.pnl>0?`${B.teal}10`:`${B.loss}10`):isWeekend?"rgba(255,255,255,0.005)":"rgba(255,255,255,0.015)",
+                  background:data?(data.pnl>0?`${B.teal}10`:`${B.loss}10`):isWeekend?(B.isDark?"rgba(255,255,255,0.005)":"rgba(14,17,22,0.008)"):(B.isDark?"rgba(255,255,255,0.015)":"rgba(14,17,22,0.024)"),
                   border:"1px solid "+(data?(data.pnl>0?B.teal+"35":B.loss+"35"):B.border),
                   outline:isToday?`2px solid ${B.blue}60`:"none",
                   cursor:"pointer",transition:"all 0.15s",
@@ -3922,7 +3970,7 @@ function CalendarView({trades, onGradeUpdate, onEdit}){
             {/* Weekly total */}
             <div style={{
               borderRadius:10,padding:"8px 10px",
-              background:weeklyPnl[wi]?.pnl>0?`${B.teal}08`:weeklyPnl[wi]?.pnl<0?`${B.loss}08`:"rgba(255,255,255,0.01)",
+              background:weeklyPnl[wi]?.pnl>0?`${B.teal}08`:weeklyPnl[wi]?.pnl<0?`${B.loss}08`:B.hair,
               border:"1px solid "+(weeklyPnl[wi]?.pnl>0?B.teal+"30":weeklyPnl[wi]?.pnl<0?B.loss+"30":B.border),
               display:"flex",flexDirection:"column",justifyContent:"center",alignItems:"center",minHeight:72,
             }}>
@@ -4025,9 +4073,9 @@ function PlaybookView({trades=[]}){
       {/* Header */}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
         <div>
-          <div style={{fontSize:13,color:B.textMuted}}>Build and track your personal trading strategies</div>
+          <div style={{fontFamily:SERIF,fontSize:26,color:B.text,lineHeight:1.1}}>Your strategies</div>
         </div>
-        <button onClick={()=>{setEditStrat(null);setShowForm(true);}} style={{padding:"9px 20px",borderRadius:10,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:13,fontWeight:800}}>+ Create Strategy</button>
+        <button onClick={()=>{setEditStrat(null);setShowForm(true);}} style={{padding:"10px 20px",borderRadius:999,border:"none",background:GL,color:B.onAccent,cursor:"pointer",fontSize:13,fontWeight:700}}>+ Create Strategy</button>
       </div>
 
       {/* Stats row */}
@@ -4038,12 +4086,11 @@ function PlaybookView({trades=[]}){
             {label:"Least Performing",value:strategies.map(s=>({...s,...getStratStats(s)})).sort((a,b)=>a.pnl-b.pnl)[0]?.name||"--",sub:(()=>{const mn=strategies.length?Math.min(...strategies.map(s=>getStratStats(s).pnl)):0;return strategies.length?fmt(mn):"-";})(),color:B.loss},
             {label:"Most Active",value:strategies.map(s=>({...s,...getStratStats(s)})).sort((a,b)=>b.trades-a.trades)[0]?.name||"--",sub:(()=>{const mx=strategies.length?Math.max(...strategies.map(s=>getStratStats(s).trades)):0;return `${mx} trades`;})(),color:B.blue},
             {label:"Best Win Rate",value:strategies.map(s=>({...s,...getStratStats(s)})).sort((a,b)=>b.wr-a.wr)[0]?.name||"--",sub:(()=>{const mx=strategies.length?Math.max(...strategies.map(s=>getStratStats(s).wr)):0;return `${mx}% WR`;})(),color:B.purple},
-          ].map(s=>(
-            <div key={s.label} style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:12,padding:"14px 18px",position:"relative",overflow:"hidden"}}>
-              <div style={{position:"absolute",top:0,left:0,right:0,height:2,background:`linear-gradient(90deg,${s.color},transparent)`}}/>
-              <div style={{fontSize:9,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:6}}>{s.label}</div>
-              <div style={{fontSize:13,fontWeight:700,color:B.text,marginBottom:3,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>{s.value}</div>
-              <div style={{fontSize:12,color:s.color,fontWeight:700}}>{s.sub}</div>
+          ].map((s,ci)=>(
+            <div key={s.label} style={{background:[B.isDark?"rgba(124,92,255,0.16)":"#ECEBFF",B.isDark?"rgba(229,72,77,0.14)":"#FFE9DE",B.isDark?"rgba(15,157,107,0.16)":"#DDF5EA",B.isDark?"rgba(14,139,214,0.16)":"#DFF0FF"][ci%4],borderRadius:20,padding:"18px 20px",minWidth:0}}>
+              <div style={{fontSize:12.5,fontWeight:500,color:B.isDark?"rgba(242,243,248,0.62)":"rgba(14,17,22,0.62)",marginBottom:4}}>{s.label}</div>
+              <div style={{fontFamily:SERIF,fontSize:28,lineHeight:1.1,letterSpacing:-0.5,color:B.text,marginBottom:4,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>{s.value}</div>
+              <div style={{fontSize:13,color:B.isDark?"rgba(242,243,248,0.7)":"rgba(14,17,22,0.7)",fontWeight:600}}>{s.sub}</div>
             </div>
           ))}
         </div>
@@ -4054,7 +4101,7 @@ function PlaybookView({trades=[]}){
           <TCAIcon size={56}/>
           <div style={{fontSize:16,fontWeight:700,color:B.text}}>No strategies yet</div>
           <div style={{fontSize:13,color:B.textMuted,textAlign:"center",lineHeight:1.6}}>Create your first trading strategy.<br/>Track setups, rules, and performance.</div>
-          <button onClick={()=>setShowForm(true)} style={{padding:"10px 24px",borderRadius:10,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:13,fontWeight:800,marginTop:8}}>+ Create Strategy</button>
+          <button onClick={()=>setShowForm(true)} style={{padding:"10px 24px",borderRadius:10,border:"none",background:GL,color:B.onAccent,cursor:"pointer",fontSize:13,fontWeight:800,marginTop:8}}>+ Create Strategy</button>
         </div>
       ):(
         <div style={{display:"grid",gridTemplateColumns:"280px 1fr",gap:16}}>
@@ -4065,7 +4112,7 @@ function PlaybookView({trades=[]}){
               const live=getStratStats(s);
               return(
                 <div key={s.id} onClick={()=>setSel(s)} style={{
-                  padding:"14px 16px",borderRadius:12,cursor:"pointer",
+                  padding:"14px 16px",borderRadius:16,cursor:"pointer",
                   background:sel?.id===s.id?`${B.teal}07`:B.surface,
                   border:"1px solid "+(sel?.id===s.id?B.teal+"40":B.border),
                   borderLeft:`3px solid ${sel?.id===s.id?B.teal:"transparent"}`,
@@ -4080,7 +4127,7 @@ function PlaybookView({trades=[]}){
                     <span style={{fontSize:11,color:B.textMuted,marginLeft:"auto"}}>{s.trades||0} trades</span>
                   </div>
                   {s.winRate!=null&&(
-                    <div style={{marginTop:8,height:3,background:"rgba(255,255,255,0.05)",borderRadius:2,overflow:"hidden"}}>
+                    <div style={{marginTop:8,height:3,background:B.hair,borderRadius:2,overflow:"hidden"}}>
                       <div style={{height:"100%",width:`${s.winRate}%`,background:grads[i%grads.length],borderRadius:2}}/>
                     </div>
                   )}
@@ -4092,11 +4139,11 @@ function PlaybookView({trades=[]}){
           {/* Strategy detail */}
           <div>
             {sel?(
-              <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:14,padding:28}}>
-                <div style={{height:3,background:GL,borderRadius:3,marginBottom:24}}/>
+              <div style={{background:B.surface,border:`1px solid ${B.border}`,borderRadius:22,padding:30,boxShadow:B.shadow}}>
+                
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:20}}>
                   <div>
-                    <div style={{fontSize:22,fontWeight:800,color:B.text,marginBottom:8}}>{sel.name}</div>
+                    <div style={{fontFamily:SERIF,fontSize:34,fontWeight:400,lineHeight:1.1,letterSpacing:-0.5,color:B.text,marginBottom:10}}>{sel.name}</div>
                     <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                       {sel.instruments?.map(i=>(<span key={i} style={{fontSize:11,padding:"3px 10px",borderRadius:6,background:`${B.purple}15`,color:B.purple,fontWeight:700}}>{i}</span>))}
                       {sel.tags?.split(",").filter(Boolean).map(t=>(<span key={t} style={{fontSize:11,padding:"3px 10px",borderRadius:6,background:`${B.blue}15`,color:B.blue,fontWeight:700}}>{t.trim()}</span>))}
@@ -4121,7 +4168,7 @@ function PlaybookView({trades=[]}){
                     {label:"Max Consec. Loss",value:getStratStats(sel).maxConsecLoss||"0",color:B.loss},
                     {label:"Missed Trades",value:sel.missedTrades||"0",color:B.textMuted},
                   ].map(s=>(
-                    <div key={s.label} style={{background:"rgba(0,0,0,0.3)",borderRadius:10,padding:"12px 14px",border:`1px solid ${B.border}`}}>
+                    <div key={s.label} style={{background:B.inset,borderRadius:10,padding:"12px 14px",border:`1px solid ${B.border}`}}>
                       <div style={{fontSize:9,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:5}}>{s.label}</div>
                       <div style={{fontSize:16,fontWeight:800,color:s.color,fontFamily:"monospace"}}>{s.value}</div>
                     </div>
@@ -4130,17 +4177,17 @@ function PlaybookView({trades=[]}){
 
                 {/* Description */}
                 {sel.description&&(
-                  <div style={{background:"rgba(0,0,0,0.3)",borderRadius:12,padding:18,marginBottom:16,border:`1px solid ${B.border}`}}>
+                  <div style={{background:B.inset,borderRadius:12,padding:18,marginBottom:16,border:`1px solid ${B.border}`}}>
                     <div style={{fontSize:10,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>Strategy Description</div>
-                    <p style={{fontSize:14,color:"#C8C4D8",lineHeight:1.8,margin:0}}>{sel.description}</p>
+                    <p style={{fontSize:14,color:B.isDark?"#C8C4D8":"#2B303B",lineHeight:1.8,margin:0}}>{sel.description}</p>
                   </div>
                 )}
 
                 {/* Rules */}
                 {sel.rules&&(
-                  <div style={{background:"rgba(0,0,0,0.3)",borderRadius:12,padding:18,border:`1px solid ${B.border}`}}>
+                  <div style={{background:B.inset,borderRadius:12,padding:18,border:`1px solid ${B.border}`}}>
                     <div style={{fontSize:10,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>Entry Rules</div>
-                    <p style={{fontSize:14,color:"#C8C4D8",lineHeight:1.8,margin:0,whiteSpace:"pre-line"}}>{sel.rules}</p>
+                    <p style={{fontSize:14,color:B.isDark?"#C8C4D8":"#2B303B",lineHeight:1.8,margin:0,whiteSpace:"pre-line"}}>{sel.rules}</p>
                   </div>
                 )}
               </div>
@@ -4170,8 +4217,8 @@ function StrategyForm({strat, onSave, onClose}){
     onSave({...form,id:strat?.id||`s_${Date.now()}`,pnl:parseFloat(form.pnl)||0,winRate:parseFloat(form.winRate)||0,trades:parseInt(form.trades)||0,avgWin:parseFloat(form.avgWin)||0,avgLoss:parseFloat(form.avgLoss)||0});
   };
   return(
-    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(6px)"}}>
-      <div style={{background:"#13121A",border:`1px solid ${B.border}`,borderRadius:18,padding:32,width:600,maxHeight:"90vh",overflowY:"auto"}}>
+    <div style={{position:"fixed",inset:0,background:B.overlay,zIndex:100,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(6px)"}}>
+      <div style={{background:B.panel,border:`1px solid ${B.border}`,borderRadius:18,padding:32,width:600,maxHeight:"90vh",overflowY:"auto"}}>
         <div style={{height:3,background:GL,borderRadius:3,marginBottom:24}}/>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:24}}>
           <div style={{fontSize:18,fontWeight:800,color:B.text}}>{strat?"Edit Strategy":"Create Strategy"}</div>
@@ -4240,7 +4287,7 @@ function StrategyForm({strat, onSave, onClose}){
         </div>
         <div style={{display:"flex",gap:10,marginTop:24,justifyContent:"flex-end"}}>
           <button onClick={onClose} style={{padding:"10px 22px",borderRadius:10,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:13,fontWeight:600}}>Cancel</button>
-          <button onClick={handleSave} style={{padding:"10px 28px",borderRadius:10,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:13,fontWeight:800}}>{strat?"Save Changes":"Create Strategy"}</button>
+          <button onClick={handleSave} style={{padding:"10px 28px",borderRadius:10,border:"none",background:GL,color:B.onAccent,cursor:"pointer",fontSize:13,fontWeight:800}}>{strat?"Save Changes":"Create Strategy"}</button>
         </div>
       </div>
     </div>
@@ -4283,7 +4330,7 @@ function TimeOfDayWidget({trades}){
               <div style={{
                 width:"100%",height:barH,borderRadius:4,
                 background:h.pnl>0?`${B.teal}${Math.round(40+pct*180).toString(16)}`:
-                           h.pnl<0?`${B.loss}${Math.round(40+pct*180).toString(16)}`:"rgba(255,255,255,0.05)",
+                           h.pnl<0?`${B.loss}${Math.round(40+pct*180).toString(16)}`:B.hair,
                 transition:"height 0.6s ease",position:"relative"
               }}/>
               <div style={{fontSize:8,color:B.textMuted,textAlign:"center"}}>{h.hour}</div>
@@ -4351,7 +4398,7 @@ function SessionHeatmapWidget({trades}){
                   <div style={{fontSize:10,color:B.textMuted}}>{d.wins}W / {d.count-d.wins}L</div>
                 </div>
               </div>
-              <div style={{marginTop:8,height:4,background:"rgba(255,255,255,0.05)",borderRadius:2,overflow:"hidden"}}>
+              <div style={{marginTop:8,height:4,background:B.hair,borderRadius:2,overflow:"hidden"}}>
                 <div style={{height:"100%",width:`${d.wr}%`,background:d.pnl>0?GTB:GBP,borderRadius:2,transition:"width 0.8s"}}/>
               </div>
             </div>
@@ -4378,7 +4425,7 @@ function SessionHeatmapWidget({trades}){
                 <div style={{fontSize:10}}>
                   <span style={{padding:"1px 6px",borderRadius:4,fontWeight:700,fontSize:9,
                     background:`${INST_COLOR[t.instrument]||B.teal}20`,
-                    color:INST_COLOR[t.instrument]||B.teal}}>{tradeLabel(t)}</span>
+                    color:INST_COLOR[t.instrument]||B.teal,whiteSpace:"nowrap"}}>{tradeLabel(t)}</span>
                 </div>
                 <div style={{fontSize:11,color:t.direction==="Long"?"#4ade80":"#f87171",fontWeight:600}}>{t.direction} · {t.setup||"—"}</div>
                 <div style={{fontSize:12,fontWeight:800,fontFamily:"monospace",color:pnlColor(t.pnl),textAlign:"right"}}>{fmt(t.pnl)}</div>
@@ -4408,7 +4455,7 @@ function SetupLeaderboardWidget({trades}){
         {ranked.map((s,i)=>(
           <div key={s.name} style={{
             display:"flex",alignItems:"center",gap:12,padding:"10px 14px",borderRadius:10,
-            background:i===0?"rgba(0,212,168,0.07)":i===ranked.length-1?"rgba(240,90,126,0.05)":"rgba(255,255,255,0.02)",
+            background:i===0?"rgba(0,212,168,0.07)":i===ranked.length-1?"rgba(240,90,126,0.05)":B.hair,
             border:"1px solid "+(i===0?B.borderTeal:i===ranked.length-1?B.loss+"20":B.border)
           }}>
             <div style={{fontSize:18,width:24,textAlign:"center"}}>{medals[i]||`#${i+1}`}</div>
@@ -4486,7 +4533,7 @@ function AICoachWidget({trades, session}){
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
         <div style={{fontSize:11,color:B.textMuted,letterSpacing:2,textTransform:"uppercase"}}>🧠 AI Trade Coach</div>
         {!loading&&(
-          <button onClick={analyze} style={{padding:"6px 14px",borderRadius:8,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:11,fontWeight:800}}>
+          <button onClick={analyze} style={{padding:"6px 14px",borderRadius:8,border:"none",background:GL,color:B.onAccent,cursor:"pointer",fontSize:11,fontWeight:800}}>
             {analysis?"Re-analyze":"Analyze My Trades"}
           </button>
         )}
@@ -4500,7 +4547,7 @@ function AICoachWidget({trades, session}){
             Spots patterns, flags psychology issues,<br/>
             gives you a concrete action plan.
           </div>
-          <button onClick={analyze} style={{padding:"10px 24px",borderRadius:10,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:13,fontWeight:800,marginTop:8}}>
+          <button onClick={analyze} style={{padding:"10px 24px",borderRadius:10,border:"none",background:GL,color:B.onAccent,cursor:"pointer",fontSize:13,fontWeight:800,marginTop:8}}>
             Analyze My Trades →
           </button>
         </div>
@@ -4523,7 +4570,7 @@ function AICoachWidget({trades, session}){
       {analysis&&(
         <div style={{flex:1,display:"flex",flexDirection:"column",gap:12,overflowY:"auto"}}>
           {/* Score */}
-          <div style={{display:"flex",alignItems:"center",gap:16,padding:"14px 16px",borderRadius:12,background:"rgba(0,0,0,0.3)",border:`1px solid ${B.border}`}}>
+          <div style={{display:"flex",alignItems:"center",gap:16,padding:"14px 16px",borderRadius:12,background:B.inset,border:`1px solid ${B.border}`}}>
             <div style={{textAlign:"center"}}>
               <div style={{fontSize:32,fontWeight:800,background:GL,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",fontFamily:"monospace"}}>{analysis.score||analysis.overallScore||0}</div>
               <div style={{fontSize:9,color:B.textMuted,letterSpacing:1}}>/ 100</div>
@@ -4586,7 +4633,7 @@ function AICoachWidget({trades, session}){
             <div style={{display:"flex",flexDirection:"column",gap:8}}>
               {analysis.actions?.map((a,i)=>(
                 <div key={i} style={{padding:"12px 14px",borderRadius:10,
-                  background:"rgba(0,0,0,0.3)",
+                  background:B.inset,
                   border:`1px solid ${priorityColor[a.priority]||B.blue}30`,
                   borderLeft:`3px solid ${priorityColor[a.priority]||B.blue}`}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
@@ -4625,7 +4672,7 @@ function WinAvgWidget({trades}){
       <div style={{fontSize:11,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",marginBottom:10}}>Win% / Avg Win / Avg Loss</div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:14}}>
         {[{l:"Win %",v:latest.wr+"%",c:B.teal},{l:"Avg Win",v:"$"+latest.avgWin,c:B.profit},{l:"Avg Loss",v:"$"+Math.abs(latest.avgLoss),c:B.loss}].map(s=>(
-          <div key={s.l} style={{background:"rgba(0,0,0,0.3)",borderRadius:8,padding:"10px",textAlign:"center"}}>
+          <div key={s.l} style={{background:B.inset,borderRadius:8,padding:"10px",textAlign:"center"}}>
             <div style={{fontSize:9,color:B.textMuted,letterSpacing:1,textTransform:"uppercase",marginBottom:4}}>{s.l}</div>
             <div style={{fontSize:16,fontWeight:800,color:s.c,fontFamily:"monospace"}}>{s.v}</div>
           </div>
@@ -4636,10 +4683,10 @@ function WinAvgWidget({trades}){
           <defs>
             <linearGradient id="wrG" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={B.teal} stopOpacity={0.25}/><stop offset="100%" stopColor={B.teal} stopOpacity={0}/></linearGradient>
           </defs>
-          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)"/>
+          <CartesianGrid strokeDasharray="3 3" stroke={(B.isDark?"rgba(255,255,255,0.04)":"rgba(14,17,22,0.064)")}/>
           <XAxis dataKey="date" tick={{fill:B.textDim,fontSize:9}} axisLine={false} tickLine={false} interval={Math.ceil(data.length/5)}/>
           <YAxis tick={{fill:B.textDim,fontSize:9}} axisLine={false} tickLine={false} tickFormatter={v=>v+"%"}/>
-          <Tooltip content={({active,payload,label})=>{if(!active||!payload?.length)return null;return(<div style={{background:"#16151C",border:`1px solid ${B.border}`,borderRadius:8,padding:"8px 12px",fontSize:11}}><div style={{color:B.textMuted,marginBottom:4}}>{label}</div>{payload.map((p,i)=>(<div key={i} style={{color:p.color}}>{p.name}: {p.value}{p.name==="Win %"?"%":""}</div>))}</div>);}}/>
+          <Tooltip content={({active,payload,label})=>{if(!active||!payload?.length)return null;return(<div style={{background:B.panel,border:`1px solid ${B.border}`,borderRadius:8,padding:"8px 12px",fontSize:11}}><div style={{color:B.textMuted,marginBottom:4}}>{label}</div>{payload.map((p,i)=>(<div key={i} style={{color:p.color}}>{p.name}: {p.value}{p.name==="Win %"?"%":""}</div>))}</div>);}}/>
           <Area type="monotone" dataKey="wr" stroke={B.teal} fill="url(#wrG)" strokeWidth={2} name="Win %" dot={false}/>
         </AreaChart>
       </ResponsiveContainer>
@@ -4661,11 +4708,11 @@ function TradeTimeWidget({trades}){
       <div style={{fontSize:11,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",marginBottom:16}}>Trade Time Performance</div>
       <ResponsiveContainer width="100%" height={160}>
         <BarChart data={data} barSize={18}>
-          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false}/>
+          <CartesianGrid strokeDasharray="3 3" stroke={(B.isDark?"rgba(255,255,255,0.04)":"rgba(14,17,22,0.064)")} vertical={false}/>
           <XAxis dataKey="hour" tick={{fill:B.textDim,fontSize:9}} axisLine={false} tickLine={false}/>
           <YAxis tick={{fill:B.textDim,fontSize:9}} axisLine={false} tickLine={false} tickFormatter={v=>"$"+v}/>
-          <Tooltip content={({active,payload,label})=>{if(!active||!payload?.length)return null;const d=payload[0]?.payload;return(<div style={{background:"#16151C",border:`1px solid ${B.border}`,borderRadius:8,padding:"8px 12px",fontSize:11}}><div style={{color:B.textMuted}}>{label}</div><div style={{color:pnlColor(d.pnl),fontFamily:"monospace",fontWeight:700}}>{fmt(d.pnl)}</div><div style={{color:B.textMuted}}>{d.trades} trades</div></div>);}}/>
-          <ReferenceLine y={0} stroke="rgba(255,255,255,0.1)"/>
+          <Tooltip content={({active,payload,label})=>{if(!active||!payload?.length)return null;const d=payload[0]?.payload;return(<div style={{background:B.panel,border:`1px solid ${B.border}`,borderRadius:8,padding:"8px 12px",fontSize:11}}><div style={{color:B.textMuted}}>{label}</div><div style={{color:pnlColor(d.pnl),fontFamily:"monospace",fontWeight:700}}>{fmt(d.pnl)}</div><div style={{color:B.textMuted}}>{d.trades} trades</div></div>);}}/>
+          <ReferenceLine y={0} stroke={(B.isDark?"rgba(255,255,255,0.1)":"rgba(14,17,22,0.16)")}/>
           <Bar dataKey="pnl" radius={[4,4,0,0]}>
             {data.map((d,i)=>(<Cell key={i} fill={d.pnl>=0?B.teal:B.loss} fillOpacity={d.trades>0?0.9:0.15}/>))}
           </Bar>
@@ -4673,7 +4720,7 @@ function TradeTimeWidget({trades}){
       </ResponsiveContainer>
       <div style={{display:"flex",gap:6,marginTop:8,flexWrap:"wrap"}}>
         {data.filter(d=>d.trades>0).sort((a,b)=>b.pnl-a.pnl).slice(0,2).map((d,i)=>(
-          <span key={d.hour} style={{fontSize:10,padding:"3px 10px",borderRadius:20,background:i===0?`${B.teal}15`:"rgba(255,255,255,0.04)",border:`1px solid ${i===0?B.borderTeal:B.border}`,color:i===0?B.teal:B.textMuted}}>Best: {d.hour} {fmt(d.pnl)}</span>
+          <span key={d.hour} style={{fontSize:10,padding:"3px 10px",borderRadius:20,background:i===0?`${B.teal}15`:B.hair,border:`1px solid ${i===0?B.borderTeal:B.border}`,color:i===0?B.teal:B.textMuted}}>Best: {d.hour} {fmt(d.pnl)}</span>
         ))}
       </div>
     </div>
@@ -4706,7 +4753,7 @@ function TradeDurationWidget({trades}){
                 <span style={{fontSize:13,fontWeight:700,fontFamily:"monospace",color:pnlColor(d.pnl),minWidth:70,textAlign:"right"}}>{d.total?fmt(d.pnl):"--"}</span>
               </div>
             </div>
-            <div style={{height:6,background:"rgba(255,255,255,0.05)",borderRadius:3,overflow:"hidden"}}>
+            <div style={{height:6,background:B.hair,borderRadius:3,overflow:"hidden"}}>
               <div style={{height:"100%",width:d.total?(Math.abs(d.pnl)/maxAbs*100)+"%":"0%",background:d.pnl>=0?GTB:GBP,borderRadius:3,transition:"width 0.8s"}}/>
             </div>
           </div>
@@ -4729,12 +4776,12 @@ function DailyCumulativeWidget({trades}){
       <ResponsiveContainer width="100%" height={180}>
         <ComposedChart data={data}>
           <defs><linearGradient id="cumG" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={B.blue} stopOpacity={0.2}/><stop offset="100%" stopColor={B.blue} stopOpacity={0}/></linearGradient></defs>
-          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)"/>
+          <CartesianGrid strokeDasharray="3 3" stroke={(B.isDark?"rgba(255,255,255,0.04)":"rgba(14,17,22,0.064)")}/>
           <XAxis dataKey="date" tick={{fill:B.textDim,fontSize:9}} axisLine={false} tickLine={false} interval={Math.ceil(data.length/7)}/>
           <YAxis yAxisId="l" tick={{fill:B.textDim,fontSize:9}} axisLine={false} tickLine={false} tickFormatter={v=>"$"+v}/>
           <YAxis yAxisId="r" orientation="right" tick={{fill:B.textDim,fontSize:9}} axisLine={false} tickLine={false} tickFormatter={v=>"$"+v}/>
-          <Tooltip content={({active,payload,label})=>{if(!active||!payload?.length)return null;return(<div style={{background:"#16151C",border:`1px solid ${B.border}`,borderRadius:8,padding:"8px 12px",fontSize:11}}><div style={{color:B.textMuted,marginBottom:4}}>{label}</div>{payload.map((p,i)=>(<div key={i} style={{color:p.color,fontFamily:"monospace"}}>{p.name}: ${Math.abs(p.value)}</div>))}</div>);}}/>
-          <ReferenceLine yAxisId="l" y={0} stroke="rgba(255,255,255,0.1)"/>
+          <Tooltip content={({active,payload,label})=>{if(!active||!payload?.length)return null;return(<div style={{background:B.panel,border:`1px solid ${B.border}`,borderRadius:8,padding:"8px 12px",fontSize:11}}><div style={{color:B.textMuted,marginBottom:4}}>{label}</div>{payload.map((p,i)=>(<div key={i} style={{color:p.color,fontFamily:"monospace"}}>{p.name}: ${Math.abs(p.value)}</div>))}</div>);}}/>
+          <ReferenceLine yAxisId="l" y={0} stroke={(B.isDark?"rgba(255,255,255,0.1)":"rgba(14,17,22,0.16)")}/>
           <Bar yAxisId="l" dataKey="daily" name="Daily" maxBarSize={18} radius={[3,3,0,0]}>
             {data.map((d,i)=>(<Cell key={i} fill={d.daily>=0?B.teal:B.loss} fillOpacity={0.8}/>))}
           </Bar>
@@ -4760,11 +4807,11 @@ function DrawdownWidget({trades}){
       <ResponsiveContainer width="100%" height={160}>
         <AreaChart data={data}>
           <defs><linearGradient id="ddG" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={B.loss} stopOpacity={0.3}/><stop offset="100%" stopColor={B.loss} stopOpacity={0}/></linearGradient></defs>
-          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)"/>
+          <CartesianGrid strokeDasharray="3 3" stroke={(B.isDark?"rgba(255,255,255,0.04)":"rgba(14,17,22,0.064)")}/>
           <XAxis dataKey="date" tick={{fill:B.textDim,fontSize:9}} axisLine={false} tickLine={false} interval={Math.ceil(data.length/7)}/>
           <YAxis tick={{fill:B.textDim,fontSize:9}} axisLine={false} tickLine={false} tickFormatter={v=>v+"%"}/>
-          <Tooltip content={({active,payload,label})=>{if(!active||!payload?.length)return null;return(<div style={{background:"#16151C",border:`1px solid ${B.border}`,borderRadius:8,padding:"8px 12px",fontSize:11}}><div style={{color:B.textMuted}}>{label}</div><div style={{color:B.loss,fontFamily:"monospace"}}>{payload[0]?.value?.toFixed(1)}%</div></div>);}}/>
-          <ReferenceLine y={0} stroke="rgba(255,255,255,0.1)"/>
+          <Tooltip content={({active,payload,label})=>{if(!active||!payload?.length)return null;return(<div style={{background:B.panel,border:`1px solid ${B.border}`,borderRadius:8,padding:"8px 12px",fontSize:11}}><div style={{color:B.textMuted}}>{label}</div><div style={{color:B.loss,fontFamily:"monospace"}}>{payload[0]?.value?.toFixed(1)}%</div></div>);}}/>
+          <ReferenceLine y={0} stroke={(B.isDark?"rgba(255,255,255,0.1)":"rgba(14,17,22,0.16)")}/>
           <Area type="monotone" dataKey="dd" stroke={B.loss} fill="url(#ddG)" strokeWidth={2} dot={false} name="Drawdown"/>
         </AreaChart>
       </ResponsiveContainer>
@@ -4802,7 +4849,7 @@ function YearlyCalendarWidget({trades}){
                 if(!dy)return <div key={di} style={{width:11,height:11}}/>;
                 const pnl=dayMap[dy.date];
                 const intensity=pnl?Math.min(Math.abs(pnl)/maxAbs,1):0;
-                const bg=pnl>0?`rgba(0,212,168,${0.12+intensity*0.75})`:pnl<0?`rgba(240,90,126,${0.12+intensity*0.75})`:"rgba(255,255,255,0.04)";
+                const bg=pnl>0?`rgba(0,212,168,${0.12+intensity*0.75})`:pnl<0?`rgba(240,90,126,${0.12+intensity*0.75})`:B.hair;
                 return(<div key={di} title={dy.date+(pnl?" "+fmt(pnl):"")} style={{width:11,height:11,borderRadius:2,background:bg,cursor:pnl?"pointer":"default"}}/>);
               })}
             </div>
@@ -4863,20 +4910,20 @@ function ProgressTrackerWidget({trades}){
       </div>
       <div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",gap:6,marginBottom:10}}>
         {rules.map(r=>(
-          <div key={r.id} onClick={()=>toggle(r.id)} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",borderRadius:9,cursor:"pointer",background:todayChecks[r.id]?`${r.color}08`:"rgba(255,255,255,0.02)",border:`1px solid ${todayChecks[r.id]?r.color+"30":B.border}`,transition:"all 0.2s"}}>
+          <div key={r.id} onClick={()=>toggle(r.id)} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",borderRadius:9,cursor:"pointer",background:todayChecks[r.id]?`${r.color}08`:B.hair,border:`1px solid ${todayChecks[r.id]?r.color+"30":B.border}`,transition:"all 0.2s"}}>
             <div style={{width:18,height:18,borderRadius:5,border:`2px solid ${todayChecks[r.id]?r.color:B.textMuted}`,background:todayChecks[r.id]?r.color:"transparent",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
-              {todayChecks[r.id]&&<span style={{color:"#0E0E10",fontSize:11,fontWeight:900}}>✓</span>}
+              {todayChecks[r.id]&&<span style={{color:B.onAccent,fontSize:11,fontWeight:900}}>✓</span>}
             </div>
             <div style={{fontSize:12,color:todayChecks[r.id]?B.textMuted:B.text,textDecoration:todayChecks[r.id]?"line-through":"none",flex:1}}>{r.text}</div>
           </div>
         ))}
       </div>
-      <div style={{height:5,background:"rgba(255,255,255,0.05)",borderRadius:3,overflow:"hidden",marginBottom:10}}>
+      <div style={{height:5,background:B.hair,borderRadius:3,overflow:"hidden",marginBottom:10}}>
         <div style={{height:"100%",width:todayScore+"%",background:GL,borderRadius:3,transition:"width 0.5s"}}/>
       </div>
       <div style={{display:"flex",gap:6}}>
         <input value={newRule} onChange={e=>setNewRule(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addRule()} style={{...iS,flex:1,fontSize:11,padding:"7px 10px"}} placeholder="Add a trading rule..."/>
-        <button onClick={addRule} style={{padding:"7px 14px",borderRadius:8,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:12,fontWeight:800}}>+</button>
+        <button onClick={addRule} style={{padding:"7px 14px",borderRadius:8,border:"none",background:GL,color:B.onAccent,cursor:"pointer",fontSize:12,fontWeight:800}}>+</button>
       </div>
     </div>
   );
@@ -4923,19 +4970,19 @@ function ReportWidget({trades}){
             {ALL_METRICS.map(m=>(
               <div key={m.id} onClick={()=>toggle(m.id)} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",borderRadius:8,cursor:"pointer",background:selected.includes(m.id)?`${B.teal}10`:"transparent",border:`1px solid ${selected.includes(m.id)?B.borderTeal:B.border}`}}>
                 <div style={{width:16,height:16,borderRadius:4,border:`2px solid ${selected.includes(m.id)?B.teal:B.textMuted}`,background:selected.includes(m.id)?B.teal:"transparent",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                  {selected.includes(m.id)&&<span style={{color:"#0E0E10",fontSize:10,fontWeight:900}}>✓</span>}
+                  {selected.includes(m.id)&&<span style={{color:B.onAccent,fontSize:10,fontWeight:900}}>✓</span>}
                 </div>
                 <span style={{fontSize:12,color:B.text,flex:1}}>{m.label}</span>
                 <span style={{fontSize:11,fontFamily:"monospace",color:B.textMuted}}>{m.fn(trades)}</span>
               </div>
             ))}
           </div>
-          <button onClick={()=>setShowPicker(false)} style={{marginTop:10,width:"100%",padding:"8px",borderRadius:8,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:12,fontWeight:800}}>Done</button>
+          <button onClick={()=>setShowPicker(false)} style={{marginTop:10,width:"100%",padding:"8px",borderRadius:8,border:"none",background:GL,color:B.onAccent,cursor:"pointer",fontSize:12,fontWeight:800}}>Done</button>
         </div>
       ):(
         <div style={{display:"flex",flexDirection:"column",gap:12}}>
           {selMetrics.map((m,i)=>(
-            <div key={m.id} style={{background:"rgba(0,0,0,0.3)",borderRadius:12,padding:"16px 20px",border:`1px solid ${B.border}`,position:"relative",overflow:"hidden"}}>
+            <div key={m.id} style={{background:B.inset,borderRadius:12,padding:"16px 20px",border:`1px solid ${B.border}`,position:"relative",overflow:"hidden"}}>
               <div style={{position:"absolute",top:0,left:0,right:0,height:2,background:grads[i]}}/>
               <div style={{fontSize:9,color:B.textMuted,letterSpacing:2,textTransform:"uppercase",marginBottom:6}}>{m.label}</div>
               <div style={{fontSize:26,fontWeight:800,background:grads[i],WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",fontFamily:"monospace"}}>{m.fn(trades)}</div>
@@ -5138,7 +5185,7 @@ function ResourcesPage({session}){
             <div style={{fontSize:12,color:B.textMuted}}>{videos.length} video{videos.length!==1?"s":""} saved</div>
           </div>
         </div>
-        <button onClick={()=>setShowAdd(p=>!p)} style={{padding:"8px 18px",borderRadius:9,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:12,fontWeight:800}}>
+        <button onClick={()=>setShowAdd(p=>!p)} style={{padding:"8px 18px",borderRadius:9,border:"none",background:GL,color:B.onAccent,cursor:"pointer",fontSize:12,fontWeight:800}}>
           {showAdd?"✕ Cancel":"+ Add Video"}
         </button>
       </div>
@@ -5147,9 +5194,9 @@ function ResourcesPage({session}){
       {showAdd&&(
         <div style={{padding:20,borderRadius:14,background:B.surface,border:`1px solid ${B.borderTeal}`}}>
           {/* Tabs */}
-          <div style={{display:"flex",gap:4,marginBottom:16,background:"rgba(0,0,0,0.2)",borderRadius:9,padding:4}}>
+          <div style={{display:"flex",gap:4,marginBottom:16,background:B.inset,borderRadius:9,padding:4}}>
             {[{id:"youtube",label:"🎬 YouTube URL"},{id:"upload",label:"📁 Upload File"}].map(t=>(
-              <button key={t.id} onClick={()=>{setAddTab(t.id);setVideoUploadError("");}} style={{flex:1,padding:"7px 0",borderRadius:7,border:"none",background:addTab===t.id?"rgba(255,255,255,0.08)":"transparent",color:addTab===t.id?B.text:B.textMuted,cursor:"pointer",fontSize:12,fontWeight:addTab===t.id?700:500}}>{t.label}</button>
+              <button key={t.id} onClick={()=>{setAddTab(t.id);setVideoUploadError("");}} style={{flex:1,padding:"7px 0",borderRadius:7,border:"none",background:addTab===t.id?(B.isDark?"rgba(255,255,255,0.08)":"rgba(14,17,22,0.128)"):"transparent",color:addTab===t.id?B.text:B.textMuted,cursor:"pointer",fontSize:12,fontWeight:addTab===t.id?700:500}}>{t.label}</button>
             ))}
           </div>
 
@@ -5174,7 +5221,7 @@ function ResourcesPage({session}){
               </div>
               <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
                 <button onClick={()=>setShowAdd(false)} style={{padding:"8px 16px",borderRadius:8,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:12}}>Cancel</button>
-                <button onClick={addVideo} style={{padding:"8px 24px",borderRadius:8,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:12,fontWeight:800}}>Save Video</button>
+                <button onClick={addVideo} style={{padding:"8px 24px",borderRadius:8,border:"none",background:GL,color:B.onAccent,cursor:"pointer",fontSize:12,fontWeight:800}}>Save Video</button>
               </div>
             </>
           ):(
@@ -5189,7 +5236,7 @@ function ResourcesPage({session}){
                   <input value={newDesc} onChange={e=>setNewDesc(e.target.value)} style={iS} placeholder="What does this recording cover?"/>
                 </div>
                 <label style={{display:"block",cursor:uploadingVideo?"default":"pointer"}}>
-                  <div style={{border:`2px dashed ${B.border}`,borderRadius:12,padding:"28px",textAlign:"center",background:"rgba(255,255,255,0.02)",transition:"border-color 0.2s"}}
+                  <div style={{border:`2px dashed ${B.border}`,borderRadius:12,padding:"28px",textAlign:"center",background:B.hair,transition:"border-color 0.2s"}}
                     onDragOver={e=>{e.preventDefault();if(!uploadingVideo)e.currentTarget.style.borderColor=B.teal;}}
                     onDragLeave={e=>{e.currentTarget.style.borderColor=B.border;}}
                     onDrop={e=>{
@@ -5221,7 +5268,7 @@ function ResourcesPage({session}){
           <div style={{fontSize:12,color:B.textMuted,textAlign:"center",lineHeight:1.6}}>
             Add YouTube videos or upload recordings<br/>to build your personal educational library
           </div>
-          <button onClick={()=>setShowAdd(true)} style={{marginTop:4,padding:"10px 24px",borderRadius:9,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:13,fontWeight:800}}>+ Add Your First Video</button>
+          <button onClick={()=>setShowAdd(true)} style={{marginTop:4,padding:"10px 24px",borderRadius:9,border:"none",background:GL,color:B.onAccent,cursor:"pointer",fontSize:13,fontWeight:800}}>+ Add Your First Video</button>
         </div>
       ):(
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(360px,1fr))",gap:18}}>
@@ -5243,7 +5290,7 @@ function ResourcesPage({session}){
                       <input value={editingVideo.title} onChange={e=>setEditingVideo(x=>({...x,title:e.target.value}))} style={{...iS,fontSize:13,padding:"6px 10px"}} placeholder="Video title"/>
                       <input value={editingVideo.desc} onChange={e=>setEditingVideo(x=>({...x,desc:e.target.value}))} style={{...iS,fontSize:11,padding:"5px 10px"}} placeholder="Description (optional)"/>
                       <div style={{display:"flex",gap:6}}>
-                        <button onClick={()=>{saveVideos(videos.map((vid,j)=>j===i?{...vid,title:editingVideo.title,desc:editingVideo.desc}:vid));setEditingVideo(null);}} style={{padding:"4px 12px",borderRadius:6,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:11,fontWeight:700}}>Save</button>
+                        <button onClick={()=>{saveVideos(videos.map((vid,j)=>j===i?{...vid,title:editingVideo.title,desc:editingVideo.desc}:vid));setEditingVideo(null);}} style={{padding:"4px 12px",borderRadius:6,border:"none",background:GL,color:B.onAccent,cursor:"pointer",fontSize:11,fontWeight:700}}>Save</button>
                         <button onClick={()=>setEditingVideo(null)} style={{padding:"4px 10px",borderRadius:6,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:11}}>Cancel</button>
                       </div>
                     </div>
@@ -5279,7 +5326,7 @@ function ResourcesPage({session}){
             <div style={{fontSize:12,color:B.textMuted}}>{pdfs.length} document{pdfs.length!==1?"s":""} saved</div>
           </div>
         </div>
-        <button onClick={()=>{setShowAddPdf(p=>!p);setPdfError("");}} style={{padding:"8px 18px",borderRadius:9,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:12,fontWeight:800}}>
+        <button onClick={()=>{setShowAddPdf(p=>!p);setPdfError("");}} style={{padding:"8px 18px",borderRadius:9,border:"none",background:GL,color:B.onAccent,cursor:"pointer",fontSize:12,fontWeight:800}}>
           {showAddPdf?"✕ Cancel":"+ Add PDF"}
         </button>
       </div>
@@ -5293,7 +5340,7 @@ function ResourcesPage({session}){
             <input value={pdfTitle} onChange={e=>setPdfTitle(e.target.value)} style={iS} placeholder="e.g. ICT Glossary, MES Playbook Cheat Sheet"/>
           </div>
           <label style={{display:"block",cursor:uploadingPdf?"default":"pointer"}}>
-            <div style={{border:`2px dashed ${B.border}`,borderRadius:12,padding:"24px",textAlign:"center",background:"rgba(255,255,255,0.02)",transition:"all 0.2s"}}
+            <div style={{border:`2px dashed ${B.border}`,borderRadius:12,padding:"24px",textAlign:"center",background:B.hair,transition:"all 0.2s"}}
               onDragOver={e=>{e.preventDefault();if(!uploadingPdf)e.currentTarget.style.borderColor=B.teal;}}
               onDragLeave={e=>{e.currentTarget.style.borderColor=B.border;}}
               onDrop={e=>{
@@ -5322,7 +5369,7 @@ function ResourcesPage({session}){
           <div style={{fontSize:12,color:B.textMuted,textAlign:"center",lineHeight:1.6}}>
             Upload PDF guides, cheat sheets, or playbooks<br/>to build your personal document library
           </div>
-          <button onClick={()=>setShowAddPdf(true)} style={{marginTop:4,padding:"10px 24px",borderRadius:9,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:13,fontWeight:800}}>+ Add Your First PDF</button>
+          <button onClick={()=>setShowAddPdf(true)} style={{marginTop:4,padding:"10px 24px",borderRadius:9,border:"none",background:GL,color:B.onAccent,cursor:"pointer",fontSize:13,fontWeight:800}}>+ Add Your First PDF</button>
         </div>
       ):(
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
@@ -5401,7 +5448,7 @@ function DailyGoalsWidget({trades, session}){
       </div>
 
       {showEdit&&(
-        <div style={{padding:14,borderRadius:10,background:"rgba(0,0,0,0.4)",border:`1px solid ${B.border}`}}>
+        <div style={{padding:14,borderRadius:10,background:B.inset,border:`1px solid ${B.border}`}}>
           {[{key:"profitTarget",label:"Profit Target ($)",min:0},{key:"maxLoss",label:"Max Loss ($)",min:-9999},{key:"maxTrades",label:"Max Trades",min:1}].map(f=>(
             <div key={f.key} style={{marginBottom:10}}>
               <label style={lS}>{f.label}</label>
@@ -5410,7 +5457,7 @@ function DailyGoalsWidget({trades, session}){
           ))}
           <div style={{display:"flex",gap:8}}>
             <button onClick={()=>setShowEdit(false)} style={{flex:1,padding:"7px",borderRadius:8,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:12}}>Cancel</button>
-            <button onClick={()=>{saveGoals(draft);setShowEdit(false);}} style={{flex:2,padding:"7px",borderRadius:8,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:12,fontWeight:800}}>Save</button>
+            <button onClick={()=>{saveGoals(draft);setShowEdit(false);}} style={{flex:2,padding:"7px",borderRadius:8,border:"none",background:GL,color:B.onAccent,cursor:"pointer",fontSize:12,fontWeight:800}}>Save</button>
           </div>
         </div>
       )}
@@ -5421,7 +5468,7 @@ function DailyGoalsWidget({trades, session}){
           <span style={{fontSize:12,color:B.text}}>Profit Target</span>
           <span style={{fontSize:12,fontFamily:"monospace",color:hitTarget?B.profit:pnlColor(todayPnl),fontWeight:700}}>{fmt(todayPnl)} / ${goals.profitTarget}</span>
         </div>
-        <div style={{height:8,background:"rgba(255,255,255,0.05)",borderRadius:4,overflow:"hidden"}}>
+        <div style={{height:8,background:B.hair,borderRadius:4,overflow:"hidden"}}>
           <div style={{height:"100%",width:`${pnlPct*100}%`,background:hitTarget?"linear-gradient(90deg,#00D4A8,#4F8EF7)":GTB,borderRadius:4,transition:"width 0.5s"}}/>
         </div>
         {hitTarget&&<div style={{fontSize:10,color:B.profit,marginTop:4,fontWeight:700}}>🎯 Target reached!</div>}
@@ -5433,7 +5480,7 @@ function DailyGoalsWidget({trades, session}){
           <span style={{fontSize:12,color:atMaxLoss?B.loss:B.text}}>Max Loss Limit</span>
           <span style={{fontSize:12,fontFamily:"monospace",color:atMaxLoss?B.loss:B.textMuted,fontWeight:700}}>{fmt(todayPnl)} / ${goals.maxLoss}</span>
         </div>
-        <div style={{height:8,background:"rgba(255,255,255,0.05)",borderRadius:4,overflow:"hidden"}}>
+        <div style={{height:8,background:B.hair,borderRadius:4,overflow:"hidden"}}>
           <div style={{height:"100%",width:`${lossPct*100}%`,background:atMaxLoss?GBP:`rgba(240,90,126,0.4)`,borderRadius:4,transition:"width 0.5s"}}/>
         </div>
         {atMaxLoss&&<div style={{fontSize:10,color:B.loss,marginTop:4,fontWeight:700}}>🛑 Max loss hit — stop trading for today</div>}
@@ -5445,7 +5492,7 @@ function DailyGoalsWidget({trades, session}){
           <span style={{fontSize:12,color:atMaxTrades?B.spark:B.text}}>Trades Taken</span>
           <span style={{fontSize:12,fontFamily:"monospace",color:atMaxTrades?B.spark:B.textMuted,fontWeight:700}}>{tradeCount} / {goals.maxTrades}</span>
         </div>
-        <div style={{height:8,background:"rgba(255,255,255,0.05)",borderRadius:4,overflow:"hidden"}}>
+        <div style={{height:8,background:B.hair,borderRadius:4,overflow:"hidden"}}>
           <div style={{height:"100%",width:`${tradePct*100}%`,background:atMaxTrades?"linear-gradient(90deg,#F59E0B,#EF4444)":"linear-gradient(90deg,#4F8EF7,#8B5CF6)",borderRadius:4,transition:"width 0.5s"}}/>
         </div>
         {atMaxTrades&&<div style={{fontSize:10,color:B.spark,marginTop:4,fontWeight:700}}>⚠️ Max trades reached</div>}
@@ -5453,7 +5500,7 @@ function DailyGoalsWidget({trades, session}){
 
       {/* Today summary */}
       {todayTrades.length>0&&(
-        <div style={{padding:"10px 14px",borderRadius:10,background:"rgba(0,0,0,0.3)",border:`1px solid ${B.border}`,marginTop:"auto"}}>
+        <div style={{padding:"10px 14px",borderRadius:10,background:B.inset,border:`1px solid ${B.border}`,marginTop:"auto"}}>
           <div style={{fontSize:10,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:6}}>Today</div>
           <div style={{display:"flex",gap:16}}>
             {[{l:"P&L",v:fmt(todayPnl),c:pnlColor(todayPnl)},{l:"Trades",v:tradeCount,c:B.text},{l:"Win %",v:todayTrades.length?Math.round(todayTrades.filter(t=>t.result==="Win").length/todayTrades.length*100)+"%":"--",c:B.blue}].map(s=>(
@@ -5518,7 +5565,7 @@ function ApexTrackerWidget({trades, session}){
       </div>
 
       {showEdit&&(
-        <div style={{padding:14,borderRadius:10,background:"rgba(0,0,0,0.4)",border:`1px solid ${B.border}`}}>
+        <div style={{padding:14,borderRadius:10,background:B.inset,border:`1px solid ${B.border}`}}>
           {[
             {key:"accountSize",label:"Account Size"},
             {key:"profitTarget",label:"Profit Target"},
@@ -5537,13 +5584,13 @@ function ApexTrackerWidget({trades, session}){
           </div>
           <div style={{display:"flex",gap:8,marginTop:8}}>
             <button onClick={()=>setShowEdit(false)} style={{flex:1,padding:"7px",borderRadius:8,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:11}}>Cancel</button>
-            <button onClick={()=>{setConfig(draft);save(draft,startingBalance);setShowEdit(false);}} style={{flex:2,padding:"7px",borderRadius:8,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:11,fontWeight:800}}>Save</button>
+            <button onClick={()=>{setConfig(draft);save(draft,startingBalance);setShowEdit(false);}} style={{flex:2,padding:"7px",borderRadius:8,border:"none",background:GL,color:B.onAccent,cursor:"pointer",fontSize:11,fontWeight:800}}>Save</button>
           </div>
         </div>
       )}
 
       {/* Account balance */}
-      <div style={{padding:"10px 14px",borderRadius:10,background:"rgba(0,0,0,0.3)",border:`1px solid ${B.border}`}}>
+      <div style={{padding:"10px 14px",borderRadius:10,background:B.inset,border:`1px solid ${B.border}`}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
           <div><div style={{fontSize:9,color:B.textMuted,letterSpacing:1}}>ACCOUNT BALANCE</div><div style={{fontSize:20,fontWeight:800,fontFamily:"monospace",color:pnlColor(totalPnl)}}>${Math.round(currentBalance).toLocaleString()}</div></div>
           <div style={{textAlign:"right"}}><div style={{fontSize:9,color:B.textMuted}}>TOTAL P&L</div><div style={{fontSize:16,fontWeight:700,fontFamily:"monospace",color:pnlColor(totalPnl)}}>{fmt(totalPnl)}</div></div>
@@ -5561,7 +5608,7 @@ function ApexTrackerWidget({trades, session}){
             <span style={{fontSize:11,color:g.ok?g.color:B.text}}>{g.label}</span>
             <span style={{fontSize:11,fontFamily:"monospace",color:g.ok?g.color:B.textMuted}}>{g.current} / {g.target}</span>
           </div>
-          <div style={{height:6,background:"rgba(255,255,255,0.05)",borderRadius:3,overflow:"hidden"}}>
+          <div style={{height:6,background:B.hair,borderRadius:3,overflow:"hidden"}}>
             <div style={{height:"100%",width:`${g.pct*100}%`,background:g.ok?g.color:`${g.color}60`,borderRadius:3,transition:"width 0.5s"}}/>
           </div>
           {g.ok&&<div style={{fontSize:10,color:g.color,marginTop:3,fontWeight:700}}>{g.okMsg}</div>}
@@ -5636,7 +5683,7 @@ function ICTTaggerWidget({trades, session}){
       ):(
         <div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",gap:6}}>
           {ranked.slice(0,8).map(([concept,s])=>(
-            <div key={concept} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",borderRadius:8,background:"rgba(0,0,0,0.3)",border:"1px solid "+(s.pnl>0?B.teal+"25":B.loss+"25")}}>
+            <div key={concept} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",borderRadius:8,background:B.inset,border:"1px solid "+(s.pnl>0?B.teal+"25":B.loss+"25")}}>
               <div style={{flex:1}}>
                 <div style={{fontSize:12,fontWeight:700,color:B.text}}>{concept}</div>
                 <div style={{fontSize:10,color:B.textMuted}}>{s.total} trades · {Math.round((s.wins/s.total)*100)}% WR</div>
@@ -5734,7 +5781,7 @@ function EmotionalTrackerWidget({trades, session}){
               const s=moodStats[m.id];
               const avgPnl=s.days?Math.round(s.pnl/s.days):0;
               return(
-                <div key={m.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",borderRadius:8,background:"rgba(0,0,0,0.3)",border:"1px solid "+(s.pnl>0?m.color+"30":"B.border")}}>
+                <div key={m.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",borderRadius:8,background:B.inset,border:"1px solid "+(s.pnl>0?m.color+"30":"B.border")}}>
                   <span style={{fontSize:16}}>{m.emoji}</span>
                   <div style={{flex:1}}>
                     <div style={{fontSize:12,fontWeight:700,color:B.text}}>{m.label}</div>
@@ -5816,7 +5863,7 @@ function AchievementsWidget({trades, session}){
         <div style={{fontSize:10,color:B.textMuted,letterSpacing:1,marginBottom:6}}>In Progress</div>
         <div style={{display:"flex",flexDirection:"column",gap:8}}>
           {locked.slice(0,4).map(a=>(
-            <div key={a.id} style={{padding:"10px 12px",borderRadius:10,background:"rgba(0,0,0,0.3)",border:`1px solid ${B.border}`}}>
+            <div key={a.id} style={{padding:"10px 12px",borderRadius:10,background:B.inset,border:`1px solid ${B.border}`}}>
               <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
                 <span style={{fontSize:16,opacity:0.4}}>{a.icon}</span>
                 <div style={{flex:1}}>
@@ -5825,7 +5872,7 @@ function AchievementsWidget({trades, session}){
                 </div>
                 <span style={{fontSize:11,fontFamily:"monospace",color:B.textMuted}}>{Math.round((a.progress||0)*100)}%</span>
               </div>
-              <div style={{height:4,background:"rgba(255,255,255,0.05)",borderRadius:2}}>
+              <div style={{height:4,background:B.hair,borderRadius:2}}>
                 <div style={{height:"100%",width:`${(a.progress||0)*100}%`,background:"linear-gradient(90deg,#4F8EF7,#8B5CF6)",borderRadius:2,transition:"width 0.8s"}}/>
               </div>
             </div>
@@ -5875,330 +5922,6 @@ const DEFAULT_PLAYBOOK = [
   },
 ];
 
-function PlaybookLibrary({session}){
-  const SKEY="tca_playbook_v1";
-  const [sections,setSections]=useState(DEFAULT_PLAYBOOK);
-  const [selectedSection,setSelectedSection]=useState(null);
-  const [selectedLesson,setSelectedLesson]=useState(null);
-  const [editMode,setEditMode]=useState(false);
-  const [editingLesson,setEditingLesson]=useState(null);
-  const [editingSection,setEditingSection]=useState(null);
-  const [showAddSection,setShowAddSection]=useState(false);
-  const [showAddLesson,setShowAddLesson]=useState(false);
-  const [newSectionForm,setNewSectionForm]=useState({title:"",icon:"📖",color:"#00D4A8"});
-  const [newLessonForm,setNewLessonForm]=useState({title:"",content:""});
-  const [saveStatus,setSaveStatus]=useState("saved");
-  const [loaded,setLoaded]=useState(false);
-
-  const SECTION_COLORS=["#00D4A8","#4F8EF7","#8B5CF6","#F59E0B","#F05A7E","#10B981"];
-  const SECTION_ICONS=["🎯","📚","🛡️","🌅","📊","💡","⚡","🔥","🧠","✅"];
-
-  useEffect(()=>{
-    try{const l=localStorage.getItem("pref_"+SKEY);if(l){const v=JSON.parse(l);setSections(v);}}catch(e){}
-    if(session?.user?.id)(async()=>{
-      try{
-        const{data}=await supabase.from("user_preferences").select("value").eq("key",SKEY).single();
-        if(data?.value){const v=JSON.parse(data.value);setSections(v);localStorage.setItem("pref_"+SKEY,data.value);}
-      }catch(e){}
-      setLoaded(true);
-    })();
-    else setLoaded(true);
-  },[session]);
-
-  const save=async(newSections)=>{
-    setSections(newSections);setSaveStatus("saving");
-    const val=JSON.stringify(newSections);
-    localStorage.setItem("pref_"+SKEY,val);
-    if(session?.user?.id)try{
-      await supabase.from("user_preferences").upsert({user_id:session.user.id,key:SKEY,value:val,updated_at:new Date().toISOString()},{onConflict:"user_id,key"});
-      setSaveStatus("saved");
-    }catch(e){setSaveStatus("unsaved");}
-    else setSaveStatus("saved");
-  };
-
-  const addSection=()=>{
-    if(!newSectionForm.title.trim())return;
-    const newSec={id:`s_${Date.now()}`,type:"section",title:newSectionForm.title,color:newSectionForm.color,icon:newSectionForm.icon,lessons:[]};
-    save([...sections,newSec]);
-    setNewSectionForm({title:"",icon:"📖",color:"#00D4A8"});
-    setShowAddSection(false);
-  };
-
-  const deleteSection=(id)=>{
-    if(!confirm("Delete this section and all its lessons?"))return;
-    save(sections.filter(s=>s.id!==id));
-    if(selectedSection?.id===id){setSelectedSection(null);setSelectedLesson(null);}
-  };
-
-  const addLesson=()=>{
-    if(!newLessonForm.title.trim()||!selectedSection)return;
-    const newLesson={id:`l_${Date.now()}`,title:newLessonForm.title,content:newLessonForm.content};
-    const updated=sections.map(s=>s.id===selectedSection.id?{...s,lessons:[...s.lessons,newLesson]}:s);
-    save(updated);
-    const updatedSection=updated.find(s=>s.id===selectedSection.id);
-    setSelectedSection(updatedSection);
-    setNewLessonForm({title:"",content:""});
-    setShowAddLesson(false);
-  };
-
-  const saveLesson=(sectionId,lessonId,updates)=>{
-    const updated=sections.map(s=>s.id===sectionId?{...s,lessons:s.lessons.map(l=>l.id===lessonId?{...l,...updates}:l)}:s);
-    save(updated);
-    const updatedSection=updated.find(s=>s.id===sectionId);
-    setSelectedSection(updatedSection);
-    setSelectedLesson(updatedSection?.lessons.find(l=>l.id===lessonId));
-  };
-
-  const deleteLesson=(sectionId,lessonId)=>{
-    const updated=sections.map(s=>s.id===sectionId?{...s,lessons:s.lessons.filter(l=>l.id!==lessonId)}:s);
-    save(updated);
-    setSelectedSection(updated.find(s=>s.id===sectionId));
-    if(selectedLesson?.id===lessonId)setSelectedLesson(null);
-  };
-
-  const currentLesson=selectedSection&&selectedLesson?
-    sections.find(s=>s.id===selectedSection.id)?.lessons.find(l=>l.id===selectedLesson.id):null;
-
-  return(
-    <div style={{display:"flex",height:"calc(100vh - 160px)",gap:0,borderRadius:14,overflow:"hidden",border:`1px solid ${B.border}`}}>
-
-      {/* Left sidebar - sections */}
-      <div style={{width:240,background:"rgba(0,0,0,0.4)",borderRight:`1px solid ${B.border}`,display:"flex",flexDirection:"column",flexShrink:0}}>
-        {/* Header */}
-        <div style={{padding:"16px 16px 12px",borderBottom:`1px solid ${B.border}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-          <div>
-            <div style={{fontSize:13,fontWeight:800,background:GL,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>TCA Playbook</div>
-            <div style={{fontSize:9,color:B.textMuted,marginTop:1}}>{sections.reduce((a,s)=>a+s.lessons.length,0)} lessons</div>
-          </div>
-          <div style={{display:"flex",gap:4}}>
-            <button onClick={()=>setEditMode(e=>!e)} style={{padding:"4px 8px",borderRadius:6,border:`1px solid ${editMode?B.teal:B.border}`,background:editMode?`${B.teal}15`:"transparent",color:editMode?B.teal:B.textMuted,cursor:"pointer",fontSize:10}}>
-              {editMode?"✓ Done":"✏"}
-            </button>
-          </div>
-        </div>
-
-        {/* Section list */}
-        <div style={{flex:1,overflowY:"auto",padding:"8px"}}>
-          {sections.map(s=>(
-            <div key={s.id}>
-              <div onClick={()=>{setSelectedSection(s);setSelectedLesson(null);}}
-                style={{
-                  padding:"10px 12px",borderRadius:9,cursor:"pointer",marginBottom:4,
-                  background:selectedSection?.id===s.id?`${s.color}15`:"transparent",
-                  border:`1px solid ${selectedSection?.id===s.id?s.color+"40":B.border}`,
-                  transition:"all 0.15s",
-                }}>
-                <div style={{display:"flex",alignItems:"center",gap:8}}>
-                  <span style={{fontSize:14}}>{s.icon}</span>
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontSize:12,fontWeight:700,color:selectedSection?.id===s.id?s.color:B.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{s.title}</div>
-                    <div style={{fontSize:10,color:B.textMuted}}>{s.lessons.length} lesson{s.lessons.length!==1?"s":""}</div>
-                  </div>
-                  {editMode&&<button onClick={e=>{e.stopPropagation();deleteSection(s.id);}}
-                    style={{background:"none",border:"none",color:B.loss,cursor:"pointer",fontSize:12,padding:"0 2px"}}>×</button>}
-                </div>
-              </div>
-
-              {/* Lessons list under selected section */}
-              {selectedSection?.id===s.id&&s.lessons.map(l=>(
-                <div key={l.id} onClick={()=>setSelectedLesson(l)}
-                  style={{
-                    padding:"7px 12px 7px 32px",borderRadius:7,cursor:"pointer",marginBottom:2,
-                    background:selectedLesson?.id===l.id?`${s.color}10`:"transparent",
-                    borderLeft:`2px solid ${selectedLesson?.id===l.id?s.color:"transparent"}`,
-                    transition:"all 0.15s",
-                  }}>
-                  <div style={{display:"flex",alignItems:"center",gap:6}}>
-                    <div style={{fontSize:11,color:selectedLesson?.id===l.id?s.color:B.textMuted,flex:1,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{l.title}</div>
-                    {editMode&&<button onClick={e=>{e.stopPropagation();deleteLesson(s.id,l.id);}}
-                      style={{background:"none",border:"none",color:B.loss,cursor:"pointer",fontSize:11,padding:"0 2px",flexShrink:0}}>×</button>}
-                  </div>
-                </div>
-              ))}
-
-              {selectedSection?.id===s.id&&editMode&&(
-                <button onClick={()=>setShowAddLesson(true)}
-                  style={{width:"100%",padding:"6px",borderRadius:7,border:`1px dashed ${s.color}40`,background:"transparent",color:s.color,cursor:"pointer",fontSize:10,marginBottom:8}}>
-                  + Add Lesson
-                </button>
-              )}
-            </div>
-          ))}
-
-          {editMode&&(
-            <button onClick={()=>setShowAddSection(true)}
-              style={{width:"100%",padding:"10px",borderRadius:9,border:`2px dashed ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:11,marginTop:4}}>
-              + New Section
-            </button>
-          )}
-        </div>
-
-        {/* Save status */}
-        {saveStatus!=="saved"&&(
-          <div style={{padding:"8px 16px",borderTop:`1px solid ${B.border}`,fontSize:10,color:B.textMuted,textAlign:"center"}}>
-            {saveStatus==="saving"?"Saving...":"Unsaved changes"}
-          </div>
-        )}
-      </div>
-
-      {/* Main content area */}
-      <div style={{flex:1,background:B.bg,display:"flex",flexDirection:"column",minWidth:0}}>
-        {!selectedSection?(
-          <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,padding:40}}>
-            <div style={{fontSize:48}}>📚</div>
-            <div style={{fontSize:18,fontWeight:800,color:B.text,textAlign:"center"}}>TCA Playbook Library</div>
-            <div style={{fontSize:13,color:B.textMuted,textAlign:"center",maxWidth:400,lineHeight:1.7}}>
-              Your complete reference for The Candlestick Academy methodology.<br/>
-              Select a section from the sidebar to start learning.
-            </div>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:10,marginTop:8,width:"100%",maxWidth:500}}>
-              {sections.map(s=>(
-                <div key={s.id} onClick={()=>setSelectedSection(s)} style={{padding:"14px 16px",borderRadius:12,border:`1px solid ${s.color}30`,background:`${s.color}08`,cursor:"pointer",transition:"all 0.15s"}}
-                  onMouseEnter={e=>{e.currentTarget.style.background=`${s.color}15`;}}
-                  onMouseLeave={e=>{e.currentTarget.style.background=`${s.color}08`;}}>
-                  <div style={{fontSize:20,marginBottom:6}}>{s.icon}</div>
-                  <div style={{fontSize:12,fontWeight:700,color:s.color}}>{s.title}</div>
-                  <div style={{fontSize:10,color:B.textMuted,marginTop:2}}>{s.lessons.length} lessons</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        ):!selectedLesson?(
-          <div style={{flex:1,padding:32,overflowY:"auto"}}>
-            <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:24}}>
-              <span style={{fontSize:28}}>{selectedSection.icon}</span>
-              <div>
-                <div style={{fontSize:20,fontWeight:800,color:selectedSection.color}}>{selectedSection.title}</div>
-                <div style={{fontSize:12,color:B.textMuted}}>{selectedSection.lessons.length} lessons</div>
-              </div>
-            </div>
-            <div style={{display:"flex",flexDirection:"column",gap:10}}>
-              {selectedSection.lessons.map((l,i)=>(
-                <div key={l.id} onClick={()=>setSelectedLesson(l)} style={{padding:"16px 20px",borderRadius:12,background:B.surface,border:`1px solid ${B.border}`,cursor:"pointer",transition:"all 0.15s",display:"flex",alignItems:"center",gap:14}}
-                  onMouseEnter={e=>{e.currentTarget.style.borderColor=selectedSection.color+"60";}}
-                  onMouseLeave={e=>{e.currentTarget.style.borderColor=B.border;}}>
-                  <div style={{width:28,height:28,borderRadius:"50%",background:`${selectedSection.color}20`,border:`1px solid ${selectedSection.color}40`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:800,color:selectedSection.color,flexShrink:0}}>{i+1}</div>
-                  <div style={{flex:1}}>
-                    <div style={{fontSize:14,fontWeight:700,color:B.text}}>{l.title}</div>
-                    <div style={{fontSize:11,color:B.textMuted,marginTop:2}}>{l.content.slice(0,80)}...</div>
-                  </div>
-                  <span style={{color:B.textDim,fontSize:16}}>›</span>
-                </div>
-              ))}
-              {selectedSection.lessons.length===0&&(
-                <div style={{textAlign:"center",padding:"40px 0",color:B.textMuted,fontSize:13}}>
-                  No lessons yet. Click ✏ Edit to add your first lesson.
-                </div>
-              )}
-            </div>
-          </div>
-        ):(
-          <div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0}}>
-            {/* Lesson header */}
-            <div style={{padding:"20px 28px 16px",borderBottom:`1px solid ${B.border}`,flexShrink:0,display:"flex",alignItems:"center",gap:12}}>
-              <button onClick={()=>setSelectedLesson(null)} style={{background:"none",border:`1px solid ${B.border}`,borderRadius:7,color:B.textMuted,cursor:"pointer",fontSize:12,padding:"4px 10px"}}>← Back</button>
-              <div style={{flex:1}}>
-                {editMode&&editingLesson?.id===currentLesson?.id?(
-                  <input value={editingLesson.title} onChange={e=>setEditingLesson(l=>({...l,title:e.target.value}))}
-                    style={{...iS,fontSize:16,fontWeight:700,width:"100%"}}/>
-                ):(
-                  <div style={{fontSize:16,fontWeight:700,color:B.text}}>{currentLesson?.title}</div>
-                )}
-                <div style={{fontSize:11,color:selectedSection.color,marginTop:2}}>{selectedSection.icon} {selectedSection.title}</div>
-              </div>
-              {editMode&&(
-                editingLesson?.id===currentLesson?.id?(
-                  <div style={{display:"flex",gap:6}}>
-                    <button onClick={()=>{saveLesson(selectedSection.id,currentLesson.id,{title:editingLesson.title,content:editingLesson.content});setEditingLesson(null);}}
-                      style={{padding:"6px 14px",borderRadius:7,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:12,fontWeight:800}}>Save</button>
-                    <button onClick={()=>setEditingLesson(null)}
-                      style={{padding:"6px 10px",borderRadius:7,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:12}}>Cancel</button>
-                  </div>
-                ):(
-                  <button onClick={()=>setEditingLesson({...currentLesson})}
-                    style={{padding:"6px 14px",borderRadius:7,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:12}}>✏ Edit</button>
-                )
-              )}
-            </div>
-
-            {/* Lesson content */}
-            <div style={{flex:1,padding:"24px 28px",overflowY:"auto"}}>
-              {editMode&&editingLesson?.id===currentLesson?.id?(
-                <textarea value={editingLesson.content} onChange={e=>setEditingLesson(l=>({...l,content:e.target.value}))}
-                  style={{...iS,width:"100%",height:"100%",minHeight:400,resize:"none",fontSize:14,lineHeight:1.8,fontFamily:"'Inter',sans-serif"}}/>
-              ):(
-                <div style={{fontSize:14,color:"#D4D0E8",lineHeight:1.9,whiteSpace:"pre-wrap",fontFamily:"'Inter',sans-serif"}}>
-                  {currentLesson?.content}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Add Section Modal */}
-      {showAddSection&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(8px)"}}
-          onClick={()=>setShowAddSection(false)}>
-          <div style={{background:"#13121A",border:`1px solid ${B.border}`,borderRadius:18,padding:28,width:420}} onClick={e=>e.stopPropagation()}>
-            <div style={{height:3,background:GL,borderRadius:"18px 18px 0 0",margin:"-28px -28px 20px"}}/>
-            <div style={{fontSize:16,fontWeight:800,color:B.text,marginBottom:20}}>New Section</div>
-            <div style={{marginBottom:12}}>
-              <label style={lS}>Section Title</label>
-              <input value={newSectionForm.title} onChange={e=>setNewSectionForm(f=>({...f,title:e.target.value}))} style={iS} placeholder="e.g. Advanced ICT Concepts"/>
-            </div>
-            <div style={{marginBottom:12}}>
-              <label style={lS}>Icon</label>
-              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                {SECTION_ICONS.map(icon=>(<button key={icon} onClick={()=>setNewSectionForm(f=>({...f,icon}))}
-                  style={{width:34,height:34,borderRadius:8,border:`2px solid ${newSectionForm.icon===icon?B.teal:B.border}`,background:newSectionForm.icon===icon?`${B.teal}15`:"transparent",cursor:"pointer",fontSize:16}}>{icon}</button>))}
-              </div>
-            </div>
-            <div style={{marginBottom:20}}>
-              <label style={lS}>Color</label>
-              <div style={{display:"flex",gap:6}}>
-                {SECTION_COLORS.map(c=>(<button key={c} onClick={()=>setNewSectionForm(f=>({...f,color:c}))}
-                  style={{width:26,height:26,borderRadius:"50%",border:`3px solid ${newSectionForm.color===c?"#fff":"transparent"}`,background:c,cursor:"pointer"}}/>))}
-              </div>
-            </div>
-            <div style={{display:"flex",gap:8}}>
-              <button onClick={()=>setShowAddSection(false)} style={{flex:1,padding:"10px",borderRadius:9,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:13}}>Cancel</button>
-              <button onClick={addSection} style={{flex:2,padding:"10px",borderRadius:9,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:13,fontWeight:800}}>Create Section</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Add Lesson Modal */}
-      {showAddLesson&&selectedSection&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(8px)"}}
-          onClick={()=>setShowAddLesson(false)}>
-          <div style={{background:"#13121A",border:`1px solid ${B.border}`,borderRadius:18,padding:28,width:560}} onClick={e=>e.stopPropagation()}>
-            <div style={{height:3,background:GL,borderRadius:"18px 18px 0 0",margin:"-28px -28px 20px"}}/>
-            <div style={{fontSize:16,fontWeight:800,color:B.text,marginBottom:20}}>New Lesson — {selectedSection.title}</div>
-            <div style={{marginBottom:12}}>
-              <label style={lS}>Lesson Title</label>
-              <input value={newLessonForm.title} onChange={e=>setNewLessonForm(f=>({...f,title:e.target.value}))} style={iS} placeholder="e.g. Entry Triggers"/>
-            </div>
-            <div style={{marginBottom:20}}>
-              <label style={lS}>Content</label>
-              <textarea value={newLessonForm.content} onChange={e=>setNewLessonForm(f=>({...f,content:e.target.value}))}
-                rows={8} style={{...iS,resize:"vertical",fontSize:13,lineHeight:1.7,fontFamily:"'Inter',sans-serif"}} placeholder="Write your lesson content here..."/>
-            </div>
-            <div style={{display:"flex",gap:8}}>
-              <button onClick={()=>setShowAddLesson(false)} style={{flex:1,padding:"10px",borderRadius:9,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:13}}>Cancel</button>
-              <button onClick={addLesson} style={{flex:2,padding:"10px",borderRadius:9,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:13,fontWeight:800}}>Add Lesson</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-
-
-// ── Recurring Patterns AI ─────────────────────────────────────────────────────
 function RecurringPatternsWidget({trades, session}){
   const userId = session?.user?.id||"guest";
   const RP_CACHE = "tca_patterns_"+userId;
@@ -6315,7 +6038,7 @@ function RecurringPatternsWidget({trades, session}){
         <div style={{display:"flex",alignItems:"center",gap:8}}>
           {lastRun&&<span style={{fontSize:9,color:B.textDim}}>Last: {lastRun}</span>}
           <button onClick={runAnalysis} disabled={loading||!trades.length}
-            style={{padding:"5px 12px",borderRadius:8,border:"none",background:loading?B.border:GL,color:loading?"#666":"#0E0E10",cursor:loading?"not-allowed":"pointer",fontSize:11,fontWeight:700}}>
+            style={{padding:"5px 12px",borderRadius:8,border:"none",background:loading?B.border:GL,color:loading?"#666":B.onAccent,cursor:loading?"not-allowed":"pointer",fontSize:11,fontWeight:700}}>
             {loading?"Analyzing...":"Run Analysis"}
           </button>
         </div>
@@ -6329,7 +6052,7 @@ function RecurringPatternsWidget({trades, session}){
             Scans all your trades to find behavioral patterns, timing edges, and repeated mistakes you might not notice.
           </div>
           <button onClick={runAnalysis} disabled={!trades.length}
-            style={{padding:"10px 24px",borderRadius:10,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:13,fontWeight:800,marginTop:4}}>
+            style={{padding:"10px 24px",borderRadius:10,border:"none",background:GL,color:B.onAccent,cursor:"pointer",fontSize:13,fontWeight:800,marginTop:4}}>
             🔍 Analyze My Patterns
           </button>
         </div>
@@ -6348,7 +6071,7 @@ function RecurringPatternsWidget({trades, session}){
       {analysis&&(
         <div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",gap:12}}>
           {/* Summary score */}
-          <div style={{padding:"14px 16px",borderRadius:12,background:"rgba(0,0,0,0.3)",border:`1px solid ${B.border}`,display:"flex",alignItems:"center",gap:14}}>
+          <div style={{padding:"14px 16px",borderRadius:12,background:B.inset,border:`1px solid ${B.border}`,display:"flex",alignItems:"center",gap:14}}>
             <div style={{textAlign:"center"}}>
               <div style={{fontSize:32,fontWeight:800,background:GL,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",fontFamily:"monospace"}}>{analysis.score||""}</div>
               <div style={{fontSize:9,color:B.textMuted}}>/100</div>
@@ -6567,13 +6290,13 @@ function EconomicCalendar({isDark=true}){
   const IMPACT_COLORS={high:"#E53E3E",medium:"#D97706",low:"#6B7280"};
   const bg=isDark?"#0E0E10":"#FFFFFF";
   const rowBg=isDark?"#13121A":"#F7F8FC";
-  const rowHover=isDark?"rgba(255,255,255,0.03)":"rgba(0,0,0,0.02)";
-  const border=isDark?"rgba(255,255,255,0.07)":"rgba(0,0,0,0.09)";
+  const rowHover=isDark?(B.isDark?"rgba(255,255,255,0.03)":"rgba(14,17,22,0.048)"):"rgba(0,0,0,0.02)";
+  const border=isDark?(B.isDark?"rgba(255,255,255,0.07)":"rgba(14,17,22,0.112)"):"rgba(0,0,0,0.09)";
   const textPrimary=isDark?"#F0EEF8":"#1A1A2E";
   const textMuted=isDark?"#6B6880":"#6B7280";
   const textDim=isDark?"#2E2C3A":"#D1D5DB";
   const headerBg=isDark?"#13121A":"#F1F3F9";
-  const dayHeaderBg=isDark?"rgba(255,255,255,0.03)":"rgba(0,0,0,0.04)";
+  const dayHeaderBg=isDark?(B.isDark?"rgba(255,255,255,0.03)":"rgba(14,17,22,0.048)"):"rgba(0,0,0,0.04)";
   const posColor=isDark?"#00D4A8":"#059669";
   const negColor=isDark?"#F05A7E":"#C53030";
 
@@ -6605,7 +6328,7 @@ function EconomicCalendar({isDark=true}){
   };
 
   return(
-    <div style={{display:"flex",flexDirection:"column",gap:16,fontFamily:"'Inter',sans-serif"}}>
+    <div style={{display:"flex",flexDirection:"column",gap:16,fontFamily:"'DM Sans','Inter',sans-serif"}}>
 
       {/* My Events toggle */}
       <div style={{display:"flex",justifyContent:"flex-end"}}>
@@ -6665,7 +6388,7 @@ function EconomicCalendar({isDark=true}){
         <div style={{display:"flex",flexDirection:"column",gap:12}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <div style={{fontSize:12,color:B.textMuted}}>Manually track events alongside your trades</div>
-            <button onClick={()=>setShowAdd(p=>!p)} style={{padding:"7px 16px",borderRadius:8,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:12,fontWeight:800}}>{showAdd?"✕ Cancel":"+ Add Event"}</button>
+            <button onClick={()=>setShowAdd(p=>!p)} style={{padding:"7px 16px",borderRadius:8,border:"none",background:GL,color:B.onAccent,cursor:"pointer",fontSize:12,fontWeight:800}}>{showAdd?"✕ Cancel":"+ Add Event"}</button>
           </div>
           {showAdd&&(
             <div style={{padding:18,borderRadius:14,background:B.surface,border:`1px solid ${B.borderTeal}`}}>
@@ -6680,7 +6403,7 @@ function EconomicCalendar({isDark=true}){
               </div>
               <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
                 <button onClick={()=>setShowAdd(false)} style={{padding:"8px 16px",borderRadius:8,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:12}}>Cancel</button>
-                <button onClick={addManual} style={{padding:"8px 24px",borderRadius:8,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:12,fontWeight:800}}>Save Event</button>
+                <button onClick={addManual} style={{padding:"8px 24px",borderRadius:8,border:"none",background:GL,color:B.onAccent,cursor:"pointer",fontSize:12,fontWeight:800}}>Save Event</button>
               </div>
             </div>
           )}
@@ -6689,7 +6412,7 @@ function EconomicCalendar({isDark=true}){
               <div style={{fontSize:36}}>📋</div>
               <div style={{fontSize:14,fontWeight:700,color:B.text}}>No manual events yet</div>
               <div style={{fontSize:12,color:B.textMuted,textAlign:"center"}}>Track specific events you want to watch around your trades</div>
-              <button onClick={()=>setShowAdd(true)} style={{padding:"9px 20px",borderRadius:9,border:"none",background:GL,color:"#0E0E10",cursor:"pointer",fontSize:12,fontWeight:800}}>+ Add First Event</button>
+              <button onClick={()=>setShowAdd(true)} style={{padding:"9px 20px",borderRadius:9,border:"none",background:GL,color:B.onAccent,cursor:"pointer",fontSize:12,fontWeight:800}}>+ Add First Event</button>
             </div>
           ):(
             <div style={{display:"flex",flexDirection:"column",gap:6}}>
@@ -7000,11 +6723,11 @@ function PDFReportModal({trades, session, onClose}){
   const count = filteredTrades().length;
   const previewPnl = filteredTrades().reduce((a,t)=>a+t.pnl,0);
 
-  const iS={padding:"8px 12px",borderRadius:9,border:`1px solid ${B.border}`,background:"rgba(0,0,0,0.3)",color:B.text,fontSize:12,outline:"none",width:"100%"};
+  const iS={padding:"8px 12px",borderRadius:9,border:`1px solid ${B.border}`,background:B.inset,color:B.text,fontSize:12,outline:"none",width:"100%"};
 
   return(
-    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",zIndex:400,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={onClose}>
-      <div style={{background:"#13121A",border:`1px solid ${B.border}`,borderRadius:20,width:"100%",maxWidth:480,padding:28}} onClick={e=>e.stopPropagation()}>
+    <div style={{position:"fixed",inset:0,background:B.overlay,zIndex:400,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={onClose}>
+      <div style={{background:B.panel,border:`1px solid ${B.border}`,borderRadius:20,width:"100%",maxWidth:480,padding:28}} onClick={e=>e.stopPropagation()}>
         <div style={{height:3,background:"linear-gradient(90deg,#00D4A8,#4F8EF7,#8B5CF6)",borderRadius:"20px 20px 0 0",margin:"-28px -28px 24px"}}/>
 
         {/* Header */}
@@ -7070,8 +6793,8 @@ function PDFReportModal({trades, session, onClose}){
         <div style={{display:"flex",gap:10}}>
           <button onClick={onClose} style={{flex:1,padding:"11px",borderRadius:10,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:13}}>Cancel</button>
           <button onClick={generatePDF} disabled={generating||count===0} style={{flex:2,padding:"11px",borderRadius:10,border:"none",
-            background:count===0?"rgba(255,255,255,0.05)":generating?"rgba(0,212,168,0.3)":"linear-gradient(135deg,#00D4A8,#4F8EF7)",
-            color:count===0||generating?"#6B6880":"#0E0E10",cursor:count===0?"not-allowed":"pointer",fontSize:13,fontWeight:800}}>
+            background:count===0?(B.isDark?"rgba(255,255,255,0.05)":"rgba(14,17,22,0.08)"):generating?"rgba(0,212,168,0.3)":"linear-gradient(135deg,#00D4A8,#4F8EF7)",
+            color:count===0||generating?"#6B6880":B.onAccent,cursor:count===0?"not-allowed":"pointer",fontSize:13,fontWeight:800}}>
             {generating?"Generating...":count===0?"No trades in range":`📄 Generate PDF (${count} trades)`}
           </button>
         </div>
@@ -7112,16 +6835,16 @@ function ProfileModal({session, onClose}){
   };
 
   const joined = session?.user?.created_at ? new Date(session.user.created_at).toLocaleDateString("en-US",{month:"long",year:"numeric"}) : "—";
-  const iS={width:"100%",padding:"10px 12px",borderRadius:9,border:`1px solid ${B.border}`,background:"rgba(0,0,0,0.3)",color:B.text,fontSize:13,outline:"none",fontFamily:"'Inter',sans-serif"};
+  const iS={width:"100%",padding:"10px 12px",borderRadius:9,border:`1px solid ${B.border}`,background:B.inset,color:B.text,fontSize:13,outline:"none",fontFamily:"'DM Sans','Inter',sans-serif"};
 
   return(
-    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:400,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={onClose}>
-      <div style={{background:"#13121A",border:`1px solid ${B.border}`,borderRadius:20,width:440,padding:28,maxHeight:"90vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
+    <div style={{position:"fixed",inset:0,background:B.overlay,zIndex:400,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={onClose}>
+      <div style={{background:B.panel,border:`1px solid ${B.border}`,borderRadius:20,width:440,padding:28,maxHeight:"90vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
         <div style={{height:3,background:"linear-gradient(90deg,#00D4A8,#8B5CF6)",borderRadius:"20px 20px 0 0",margin:"-28px -28px 24px"}}/>
 
         {/* Avatar + header */}
         <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:24}}>
-          <div style={{width:52,height:52,borderRadius:"50%",background:"linear-gradient(135deg,#00D4A8,#8B5CF6)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,fontWeight:800,color:"#0E0E10",flexShrink:0}}>
+          <div style={{width:52,height:52,borderRadius:"50%",background:"linear-gradient(135deg,#00D4A8,#8B5CF6)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,fontWeight:800,color:B.onAccent,flexShrink:0}}>
             {(name||session?.user?.email||"?")[0].toUpperCase()}
           </div>
           <div>
@@ -7137,7 +6860,7 @@ function ProfileModal({session, onClose}){
           <input value={name} onChange={e=>setName(e.target.value)} placeholder="Your name" style={iS}/>
         </div>
 
-        <button onClick={saveProfile} disabled={loading} style={{width:"100%",padding:"10px",borderRadius:9,border:"none",background:"linear-gradient(135deg,#00D4A8,#4F8EF7)",color:"#0E0E10",cursor:"pointer",fontSize:13,fontWeight:700,marginBottom:16}}>
+        <button onClick={saveProfile} disabled={loading} style={{width:"100%",padding:"10px",borderRadius:9,border:"none",background:"linear-gradient(135deg,#00D4A8,#4F8EF7)",color:B.onAccent,cursor:"pointer",fontSize:13,fontWeight:700,marginBottom:16}}>
           {loading?"Saving...":"Save Changes"}
         </button>
 
@@ -7150,7 +6873,7 @@ function ProfileModal({session, onClose}){
           {pwMode&&(
             <div style={{display:"flex",gap:8,marginTop:8}}>
               <input value={newPw} onChange={e=>setNewPw(e.target.value)} placeholder="New password (8+ chars)" type="password" style={{...iS,flex:1}}/>
-              <button onClick={changePassword} style={{padding:"10px 14px",borderRadius:9,border:"none",background:B.teal,color:"#0E0E10",cursor:"pointer",fontSize:12,fontWeight:700,flexShrink:0}}>Save</button>
+              <button onClick={changePassword} style={{padding:"10px 14px",borderRadius:9,border:"none",background:B.teal,color:B.onAccent,cursor:"pointer",fontSize:12,fontWeight:700,flexShrink:0}}>Save</button>
             </div>
           )}
         </div>
@@ -7225,7 +6948,7 @@ function AdminPanel({onClose}){
 
   return(
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.9)",zIndex:400,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={onClose}>
-      <div style={{background:"#13121A",border:`1px solid ${B.border}`,borderRadius:20,width:"90%",maxWidth:900,maxHeight:"88vh",display:"flex",flexDirection:"column",overflow:"hidden"}} onClick={e=>e.stopPropagation()}>
+      <div style={{background:B.panel,border:`1px solid ${B.border}`,borderRadius:20,width:"90%",maxWidth:900,maxHeight:"88vh",display:"flex",flexDirection:"column",overflow:"hidden"}} onClick={e=>e.stopPropagation()}>
         
         {/* Header */}
         <div style={{height:3,background:"linear-gradient(90deg,#FFB700,#FF6B35)",flexShrink:0}}/>
@@ -7236,7 +6959,7 @@ function AdminPanel({onClose}){
           </div>
           <div style={{display:"flex",gap:8,alignItems:"center"}}>
             <div style={{padding:"5px 12px",borderRadius:20,background:"rgba(255,183,0,0.1)",border:"1px solid rgba(255,183,0,0.2)",fontSize:11,color:"#FFB700",fontWeight:700}}>{users.length} students</div>
-            <button onClick={onClose} style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${B.border}`,borderRadius:8,color:B.textMuted,cursor:"pointer",width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>×</button>
+            <button onClick={onClose} style={{background:B.hair,border:`1px solid ${B.border}`,borderRadius:8,color:B.textMuted,cursor:"pointer",width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>×</button>
           </div>
         </div>
 
@@ -7244,7 +6967,7 @@ function AdminPanel({onClose}){
           {/* User list */}
           <div style={{width:280,borderRight:`1px solid ${B.border}`,display:"flex",flexDirection:"column",flexShrink:0}}>
             <div style={{padding:"12px 16px",borderBottom:`1px solid ${B.border}`}}>
-              <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search users..." style={{width:"100%",padding:"7px 10px",borderRadius:8,border:`1px solid ${B.border}`,background:"rgba(0,0,0,0.3)",color:B.text,fontSize:12,outline:"none"}}/>
+              <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search users..." style={{width:"100%",padding:"7px 10px",borderRadius:8,border:`1px solid ${B.border}`,background:B.inset,color:B.text,fontSize:12,outline:"none"}}/>
             </div>
             <div style={{flex:1,overflowY:"auto"}}>
               {loading?(
@@ -7610,7 +7333,7 @@ Write the debrief in this exact format with these four sections. Be specific —
             </div>
             <div style={{display:"flex",gap:8,alignItems:"center"}}>
               {debrief&&!debriefLoading&&(
-                <button onClick={downloadDebrief} style={{padding:"8px 14px",borderRadius:9,border:`1px solid ${B.border}`,background:"rgba(255,255,255,0.04)",color:B.textMuted,cursor:"pointer",fontSize:12,fontWeight:700}}>⤓ PDF</button>
+                <button onClick={downloadDebrief} style={{padding:"8px 14px",borderRadius:9,border:`1px solid ${B.border}`,background:B.hair,color:B.textMuted,cursor:"pointer",fontSize:12,fontWeight:700}}>⤓ PDF</button>
               )}
               <button
                 onClick={generateDebrief}
@@ -7673,7 +7396,7 @@ Write the debrief in this exact format with these four sections. Be specific —
           <div style={{fontSize:11,color:B.textMuted,letterSpacing:1.5,marginBottom:12}}>MY NOTES THIS WEEK</div>
           <textarea value={notes} onChange={e=>setNotes(e.target.value)}
             placeholder="What did you learn? What will you do differently? Any market observations..."
-            style={{width:"100%",minHeight:100,background:"rgba(0,0,0,0.3)",border:`1px solid ${B.border}`,borderRadius:10,padding:"12px 14px",color:B.text,fontSize:13,fontFamily:"'Inter',sans-serif",resize:"vertical",outline:"none",lineHeight:1.6}}/>
+            style={{width:"100%",minHeight:100,background:B.inset,border:`1px solid ${B.border}`,borderRadius:10,padding:"12px 14px",color:B.text,fontSize:13,fontFamily:"'DM Sans','Inter',sans-serif",resize:"vertical",outline:"none",lineHeight:1.6}}/>
         </div>
 
         {/* Focus */}
@@ -7681,7 +7404,7 @@ Write the debrief in this exact format with these four sections. Be specific —
           <div style={{fontSize:11,color:B.teal,letterSpacing:1.5,marginBottom:12}}>MY FOCUS FOR NEXT WEEK</div>
           <input value={focusNext} onChange={e=>setFocusNext(e.target.value)}
             placeholder="One thing I will improve next week..."
-            style={{width:"100%",background:"rgba(0,0,0,0.3)",border:`1px solid ${B.border}`,borderRadius:10,padding:"11px 14px",color:B.text,fontSize:13,outline:"none"}}/>
+            style={{width:"100%",background:B.inset,border:`1px solid ${B.border}`,borderRadius:10,padding:"11px 14px",color:B.text,fontSize:13,outline:"none"}}/>
         </div>
 
         {/* Trade list */}
@@ -7757,7 +7480,7 @@ function TradeReplayButton({trade}){
 
   return(
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.92)",zIndex:400,display:"flex",flexDirection:"column"}} onClick={()=>setOpen(false)}>
-      <div style={{background:"#13121A",borderBottom:`1px solid ${B.border}`,padding:"12px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}} onClick={e=>e.stopPropagation()}>
+      <div style={{background:B.panel,borderBottom:`1px solid ${B.border}`,padding:"12px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}} onClick={e=>e.stopPropagation()}>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
           <div style={{padding:"4px 10px",borderRadius:6,background:`${B.teal}15`,color:B.teal,fontSize:12,fontWeight:700}}>{trade.instrument}</div>
           <div style={{fontSize:13,color:B.text,fontWeight:700}}>{trade.direction} · {trade.date} · {trade.session} Session</div>
@@ -7771,7 +7494,7 @@ function TradeReplayButton({trade}){
               {tf}m Chart ↗
             </a>
           ))}
-          <button onClick={()=>setOpen(false)} style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${B.border}`,borderRadius:8,color:B.textMuted,cursor:"pointer",width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>×</button>
+          <button onClick={()=>setOpen(false)} style={{background:B.hair,border:`1px solid ${B.border}`,borderRadius:8,color:B.textMuted,cursor:"pointer",width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>×</button>
         </div>
       </div>
       <div style={{flex:1,display:"flex",overflow:"hidden"}} onClick={e=>e.stopPropagation()}>
@@ -7797,7 +7520,7 @@ function TradeReplayButton({trade}){
             </div>
           ))}
           {trade.notes&&(
-            <div style={{marginTop:14,padding:"10px 12px",borderRadius:8,background:"rgba(255,255,255,0.03)",border:`1px solid ${B.border}`}}>
+            <div style={{marginTop:14,padding:"10px 12px",borderRadius:8,background:B.hair,border:`1px solid ${B.border}`}}>
               <div style={{fontSize:9,color:B.textMuted,letterSpacing:1,marginBottom:6}}>NOTES</div>
               <div style={{fontSize:11,color:B.text,lineHeight:1.6}}>{trade.notes}</div>
             </div>
@@ -7812,7 +7535,7 @@ function TradeReplayButton({trade}){
             <div style={{display:"flex",flexDirection:"column",gap:8,flexShrink:0,marginLeft:16}}>
               {["1","5","15"].map(tf=>(
                 <a key={tf} href={getTVUrl(tf)} target="_blank" rel="noopener noreferrer"
-                  style={{padding:"8px 16px",borderRadius:9,border:"none",background:tf==="5"?"linear-gradient(135deg,#4F8EF7,#8B5CF6)":B.surface,color:tf==="5"?"#0E0E10":B.textMuted,textDecoration:"none",fontSize:12,fontWeight:700,textAlign:"center",display:"block",border:`1px solid ${B.border}`}}>
+                  style={{padding:"8px 16px",borderRadius:9,border:"none",background:tf==="5"?"linear-gradient(135deg,#4F8EF7,#8B5CF6)":B.surface,color:tf==="5"?B.onAccent:B.textMuted,textDecoration:"none",fontSize:12,fontWeight:700,textAlign:"center",display:"block",border:`1px solid ${B.border}`}}>
                   Open {tf}m Chart ↗
                 </a>
               ))}
@@ -7823,7 +7546,7 @@ function TradeReplayButton({trade}){
               <div style={{fontSize:10,color:B.textMuted,letterSpacing:1.5,marginBottom:16}}>PRICE LEVEL MAP</div>
               <div style={{display:"flex",gap:16}}>
                 <div style={{width:100,position:"relative",height:260,flexShrink:0}}>
-                  <div style={{position:"absolute",inset:0,left:40,width:4,background:"rgba(255,255,255,0.05)",borderRadius:2}}/>
+                  <div style={{position:"absolute",inset:0,left:40,width:4,background:B.hair,borderRadius:2}}/>
                   {tp>0&&<div style={{position:"absolute",top:`${pct(tp)}%`,left:0,right:0,display:"flex",alignItems:"center",gap:6}}>
                     <div style={{fontSize:9,color:B.teal,fontFamily:"monospace",textAlign:"right",width:36,fontWeight:700}}>{tp}</div>
                     <div style={{width:12,height:2,background:B.teal}}/>
@@ -7854,7 +7577,7 @@ function TradeReplayButton({trade}){
                     {label:"Points captured",value:entry&&exit?Math.abs(exit-entry).toFixed(2)+" pts":null,color:pnlColor(trade.pnl)},
                     {label:"Net P&L",value:`${trade.pnl>=0?"+":""}$${trade.pnl?.toFixed(2)}`,color:pnlColor(trade.pnl)},
                   ].filter(Boolean).map(r=>(
-                    <div key={r.label} style={{display:"flex",justifyContent:"space-between",padding:"8px 12px",borderRadius:8,background:"rgba(255,255,255,0.02)",border:`1px solid ${B.border}20`}}>
+                    <div key={r.label} style={{display:"flex",justifyContent:"space-between",padding:"8px 12px",borderRadius:8,background:B.hair,border:`1px solid ${B.border}20`}}>
                       <div style={{fontSize:11,color:B.textMuted}}>{r.label}</div>
                       <div style={{fontSize:12,fontWeight:700,color:r.color,fontFamily:"monospace"}}>{r.value||"—"}</div>
                     </div>
@@ -8016,21 +7739,21 @@ ${recent25.join("\n")}${olderSummary}`;
 
   if(!isOpen)return null;
   return(
-    <div style={{position:"fixed",right:0,top:0,bottom:0,width:380,zIndex:300,background:"#13121A",borderLeft:"1px solid rgba(255,255,255,0.08)",display:"flex",flexDirection:"column",fontFamily:"'Inter',sans-serif"}}>
+    <div style={{position:"fixed",right:0,top:0,bottom:0,width:380,zIndex:300,background:B.panel,borderLeft:`1px solid ${B.border}`,display:"flex",flexDirection:"column",fontFamily:"'DM Sans','Inter',sans-serif"}}>
       <div style={{height:3,background:"linear-gradient(90deg,#00D4A8,#4F8EF7,#8B5CF6)",flexShrink:0}}/>
-      <div style={{padding:"16px 18px",borderBottom:"1px solid rgba(255,255,255,0.07)",display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
+      <div style={{padding:"16px 18px",borderBottom:`1px solid ${B.border}`,display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
         <div style={{width:34,height:34,borderRadius:"50%",background:"linear-gradient(135deg,#00D4A8,#8B5CF6)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>🧠</div>
         <div style={{flex:1}}>
-          <div style={{fontSize:14,fontWeight:800,color:"#F0EEF8"}}>TCA Coach</div>
+          <div style={{fontSize:14,fontWeight:800,color:B.text}}>TCA Coach</div>
           <div style={{fontSize:10,color:"#6B6880"}}>{trades.length} trades · Always learning</div>
         </div>
-        <button onClick={onClose} style={{background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:8,color:"#6B6880",cursor:"pointer",fontSize:18,width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
+        <button onClick={onClose} style={{background:B.hair,border:`1px solid ${B.border}`,borderRadius:8,color:"#6B6880",cursor:"pointer",fontSize:18,width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
       </div>
       <div style={{flex:1,overflowY:"auto",padding:"16px 16px 0",display:"flex",flexDirection:"column",gap:12}}>
         {messages.map(msg=>(
           <div key={msg.id} style={{display:"flex",gap:8,alignItems:"flex-start",flexDirection:msg.role==="user"?"row-reverse":"row"}}>
             {msg.role==="assistant"&&<div style={{width:28,height:28,borderRadius:"50%",background:"linear-gradient(135deg,#00D4A8,#8B5CF6)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,flexShrink:0,marginTop:2}}>🧠</div>}
-            <div style={{maxWidth:"85%",padding:"10px 14px",borderRadius:msg.role==="user"?"14px 14px 4px 14px":"14px 14px 14px 4px",background:msg.role==="user"?"rgba(0,212,168,0.1)":"rgba(255,255,255,0.04)",border:`1px solid ${msg.role==="user"?"rgba(0,212,168,0.2)":"rgba(255,255,255,0.06)"}`,fontSize:13,color:"#D4D0E8",lineHeight:1.65,whiteSpace:"pre-wrap"}}>
+            <div style={{maxWidth:"85%",padding:"10px 14px",borderRadius:msg.role==="user"?"14px 14px 4px 14px":"14px 14px 14px 4px",background:msg.role==="user"?"rgba(0,212,168,0.1)":B.hair,border:`1px solid ${msg.role==="user"?"rgba(0,212,168,0.2)":B.hair}`,fontSize:13,color:B.isDark?"#D4D0E8":"#2B303B",lineHeight:1.65,whiteSpace:"pre-wrap"}}>
               {msg.content}
             </div>
           </div>
@@ -8038,7 +7761,7 @@ ${recent25.join("\n")}${olderSummary}`;
         {loading&&(
           <div style={{display:"flex",gap:8,alignItems:"flex-start"}}>
             <div style={{width:28,height:28,borderRadius:"50%",background:"linear-gradient(135deg,#00D4A8,#8B5CF6)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,flexShrink:0}}>🧠</div>
-            <div style={{padding:"12px 16px",borderRadius:"14px 14px 14px 4px",background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.06)",display:"flex",gap:5,alignItems:"center"}}>
+            <div style={{padding:"12px 16px",borderRadius:"14px 14px 14px 4px",background:B.hair,border:`1px solid ${B.border}`,display:"flex",gap:5,alignItems:"center"}}>
               {[0,1,2].map(i=><div key={i} style={{width:6,height:6,borderRadius:"50%",background:"#00D4A8",opacity:0.7}}/>)}
             </div>
           </div>
@@ -8047,17 +7770,17 @@ ${recent25.join("\n")}${olderSummary}`;
       </div>
       {messages.length<=2&&(
         <div style={{padding:"10px 16px 0",display:"flex",flexWrap:"wrap",gap:5}}>
-          {SUGGESTIONS.map(s=><button key={s} onClick={()=>setInput(s)} style={{padding:"4px 10px",borderRadius:20,fontSize:11,cursor:"pointer",border:"1px solid rgba(0,212,168,0.25)",background:"rgba(0,212,168,0.05)",color:"#00D4A8",fontFamily:"'Inter',sans-serif"}}>{s}</button>)}
+          {SUGGESTIONS.map(s=><button key={s} onClick={()=>setInput(s)} style={{padding:"4px 10px",borderRadius:20,fontSize:11,cursor:"pointer",border:"1px solid rgba(0,212,168,0.25)",background:"rgba(0,212,168,0.05)",color:"#00D4A8",fontFamily:"'DM Sans','Inter',sans-serif"}}>{s}</button>)}
         </div>
       )}
       <div style={{padding:"12px 16px 16px",flexShrink:0}}>
-        <div style={{display:"flex",gap:8,alignItems:"flex-end",background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:12,padding:"8px 8px 8px 14px"}}>
+        <div style={{display:"flex",gap:8,alignItems:"flex-end",background:B.hair,border:`1px solid ${B.border}`,borderRadius:12,padding:"8px 8px 8px 14px"}}>
           <textarea ref={inputRef} value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send();}}} placeholder="Ask anything about your trading..." rows={1}
-            style={{flex:1,background:"none",border:"none",outline:"none",resize:"none",color:"#F0EEF8",fontSize:13,fontFamily:"'Inter',sans-serif",lineHeight:1.5,maxHeight:100,overflowY:"auto"}}
+            style={{flex:1,background:"none",border:"none",outline:"none",resize:"none",color:B.text,fontSize:13,fontFamily:"'DM Sans','Inter',sans-serif",lineHeight:1.5,maxHeight:100,overflowY:"auto"}}
             onInput={e=>{e.target.style.height="auto";e.target.style.height=e.target.scrollHeight+"px";}}/>
-          <button onClick={send} disabled={!input.trim()||loading} style={{width:34,height:34,borderRadius:9,border:"none",flexShrink:0,background:input.trim()&&!loading?"linear-gradient(135deg,#00D4A8,#8B5CF6)":"rgba(255,255,255,0.06)",color:input.trim()&&!loading?"#0E0E10":"#6B6880",cursor:input.trim()&&!loading?"pointer":"not-allowed",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center"}}>↑</button>
+          <button onClick={send} disabled={!input.trim()||loading} style={{width:34,height:34,borderRadius:9,border:"none",flexShrink:0,background:input.trim()&&!loading?"linear-gradient(135deg,#00D4A8,#8B5CF6)":B.hair,color:input.trim()&&!loading?B.onAccent:"#6B6880",cursor:input.trim()&&!loading?"pointer":"not-allowed",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center"}}>↑</button>
         </div>
-        <div style={{fontSize:9,color:"rgba(255,255,255,0.2)",textAlign:"center",marginTop:5}}>Enter to send · Shift+Enter for new line</div>
+        <div style={{fontSize:9,color:B.textDim,textAlign:"center",marginTop:5}}>Enter to send · Shift+Enter for new line</div>
       </div>
     </div>
   );
@@ -8101,9 +7824,9 @@ function TradovateSyncModal({onClose, onSync, syncing, accounts=[]}){
   };
 
   return(
-    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(8px)"}}
+    <div style={{position:"fixed",inset:0,background:B.overlay,zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(8px)"}}
       onClick={onClose}>
-      <div style={{background:"#13121A",border:`1px solid ${B.border}`,borderRadius:20,width:420,padding:28}}
+      <div style={{background:B.panel,border:`1px solid ${B.border}`,borderRadius:20,width:420,padding:28}}
         onClick={e=>e.stopPropagation()}>
         <div style={{height:3,background:GTB,borderRadius:"20px 20px 0 0",margin:"-28px -28px 24px"}}/>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
@@ -8141,7 +7864,7 @@ function TradovateSyncModal({onClose, onSync, syncing, accounts=[]}){
             ))}
           </div>
         </div>
-        <button onClick={handleSync} disabled={syncing} style={{width:"100%",padding:"12px",borderRadius:10,border:"none",background:syncing?"rgba(255,255,255,0.1)":GL,color:syncing?B.textMuted:"#0E0E10",cursor:syncing?"not-allowed":"pointer",fontSize:13,fontWeight:800}}>
+        <button onClick={handleSync} disabled={syncing} style={{width:"100%",padding:"12px",borderRadius:10,border:"none",background:syncing?(B.isDark?"rgba(255,255,255,0.1)":"rgba(14,17,22,0.16)"):GL,color:syncing?B.textMuted:B.onAccent,cursor:syncing?"not-allowed":"pointer",fontSize:13,fontWeight:800}}>
           {syncing?"Syncing...":"↻ Sync Trades"}
         </button>
       </div>
@@ -8222,7 +7945,7 @@ function BestVersionOfYou({trades}){
         <span style={{fontSize:12,fontWeight:700,color:B.text}}>{label}</span>
         <span style={{fontSize:11,color:B.textMuted}}>{count} trade{count!==1?"s":""}  {extra&&<span style={{color}}>{extra}</span>}</span>
       </div>
-      <div style={{height:7,borderRadius:4,background:"rgba(255,255,255,0.06)"}}>
+      <div style={{height:7,borderRadius:4,background:B.hair}}>
         <div style={{height:"100%",borderRadius:4,background:color,width:`${Math.round((count/topN)*100)}%`,transition:"width 0.5s ease"}}/>
       </div>
     </div>
@@ -8344,7 +8067,7 @@ function BestVersionOfYou({trades}){
               {label:"Top Session",...compare(top,rest,"session"),good:true},
               {label:"Top Setup",...compare(top,rest,"setup"),good:true},
             ].map(row=>(
-              <div key={row.label} style={{background:"rgba(0,0,0,0.2)",borderRadius:10,padding:"10px 12px"}}>
+              <div key={row.label} style={{background:B.inset,borderRadius:10,padding:"10px 12px"}}>
                 <div style={{fontSize:10,color:B.textMuted,letterSpacing:1,textTransform:"uppercase",marginBottom:6}}>{row.label}</div>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:6}}>
                   <div style={{textAlign:"center",flex:1}}>
@@ -8368,7 +8091,7 @@ function BestVersionOfYou({trades}){
         <div style={{fontSize:14,fontWeight:800,color:B.text,marginBottom:16}}>Your Top {topN} Trades</div>
         <div style={{display:"flex",flexDirection:"column",gap:8}}>
           {top.map((t,i)=>(
-            <div key={t.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 14px",borderRadius:10,background:"rgba(0,0,0,0.2)"}}>
+            <div key={t.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 14px",borderRadius:10,background:B.inset}}>
               <div style={{width:24,height:24,borderRadius:"50%",background:`${B.teal}18`,border:`1px solid ${B.teal}40`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800,color:B.teal,flexShrink:0}}>#{i+1}</div>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{fontSize:12,fontWeight:700,color:B.text}}>{t.date} · {tradeLabel(t)} {t.direction} · {t.session}</div>
@@ -8386,7 +8109,7 @@ function BestVersionOfYou({trades}){
   );
 }
 
-const NAV=[{id:"overview",label:"Overview",icon:"▦"},{id:"journal",label:"Journal",icon:"⊟"},{id:"analytics",label:"Analytics",icon:"◈"},{id:"calendar",label:"P&L Calendar",icon:"⊞"},{id:"playbooks",label:"Strategies",icon:"⊕"},{id:"weeklyreview",label:"Weekly Review",icon:"🧠"},{id:"economiccalendar",label:"Eco Calendar",icon:"📰"},{id:"library",label:"Playbook",icon:"📚"},{id:"resources",label:"Resources",icon:"◎"},{id:"bestversion",label:"Best You",icon:"⭐"}];
+const NAV=[{id:"overview",label:"Overview",icon:"▦"},{id:"journal",label:"Journal",icon:"⊟"},{id:"analytics",label:"Analytics",icon:"◈"},{id:"calendar",label:"P&L Calendar",icon:"⊞"},{id:"weeklyreview",label:"Weekly Review",icon:"🧠"},{id:"economiccalendar",label:"Eco Calendar",icon:"📰"},{id:"resources",label:"Resources",icon:"◎"},{id:"bestversion",label:"Best You",icon:"⭐"}];
 
 export default function App(){
   const ADMIN_EMAIL = "admin@thecandlestickacademy.com";
@@ -8397,10 +8120,12 @@ export default function App(){
   const [showReport,setShowReport]=useState(false);
   const [replayTrade,setReplayTrade]=useState(null);
     const [isDark,setIsDark]=useState(()=>{
-    try{return localStorage.getItem("tca_theme")!=="light";}catch(e){return true;}
+    try{return localStorage.getItem("tca_theme")==="dark";}catch(e){return false;}
   });
   // Update B whenever theme changes
   B = isDark ? DARK_THEME : LIGHT_THEME;
+  GL = isDark ? GL_DARK : GL_LIGHT; GTB = isDark ? GTB_DARK : GTB_LIGHT; GBP = isDark ? GBP_DARK : GBP_LIGHT;
+  iS = buildIS(); lS = buildLS();
   const [active,setActive]=useState("overview");
   const isAdmin=session?.user?.email===ADMIN_EMAIL;
   const [time,setTime]=useState(new Date());
@@ -8409,6 +8134,7 @@ export default function App(){
   const [editTrade,setEditTrade]=useState(null);
   const [delTrade,setDelTrade]=useState(null);
   const [showImport,setShowImport]=useState(false);
+  const [menuOpen,setMenuOpen]=useState(false);
   const [toast,setToast]=useState(null);
   const [loading,setLoading]=useState(true);
   const [syncStatus,setSyncStatus]=useState("idle");
@@ -8690,25 +8416,36 @@ export default function App(){
   if(!session)return <LoginScreen/>;
   if(loading)return(<div style={{minHeight:"100vh",background:B.bg,display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{fontSize:14,color:B.textMuted}}>Loading your trades...</div></div>);
 
-  return(<div style={{minHeight:"100vh",background:B.isDark?`radial-gradient(900px 500px at 85% -10%,rgba(139,92,246,0.10),transparent 60%),radial-gradient(800px 500px at 10% 0%,rgba(0,212,168,0.07),transparent 55%),${B.bg}`:B.bg,backgroundAttachment:"fixed",fontFamily:"'Inter','Segoe UI',sans-serif",color:B.text,transition:"background 0.3s,color 0.3s"}}><style>{`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap');
+  return(<div style={{minHeight:"100vh",background:B.isDark?`radial-gradient(900px 500px at 85% -10%,rgba(139,92,246,0.10),transparent 60%),radial-gradient(800px 500px at 10% 0%,rgba(0,212,168,0.07),transparent 55%),${B.bg}`:`radial-gradient(1000px 420px at 88% -12%,rgba(61,75,255,0.07),transparent 62%),radial-gradient(800px 380px at 4% -6%,rgba(14,139,214,0.05),transparent 60%),${B.bg}`,backgroundAttachment:"fixed",fontFamily:SANS,color:B.text,transition:"background 0.3s,color 0.3s"}}><style>{`@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap');
 *{box-sizing:border-box;}
 html{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;}
 body{margin:0;font-feature-settings:'cv11','ss01';}
-::selection{background:rgba(0,212,168,0.28);color:inherit;}
+::selection{background:${B.isDark?'rgba(0,212,168,0.28)':'rgba(61,75,255,0.22)'};color:inherit;}
 ::-webkit-scrollbar{width:8px;height:8px;}
 ::-webkit-scrollbar-track{background:transparent;}
-::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.10);border-radius:8px;border:2px solid transparent;background-clip:padding-box;}
-::-webkit-scrollbar-thumb:hover{background:rgba(0,212,168,0.35);background-clip:padding-box;border:2px solid transparent;}
+::-webkit-scrollbar-thumb{background:${B.isDark?'rgba(255,255,255,0.10)':'rgba(14,17,22,0.16)'};border-radius:8px;border:2px solid transparent;background-clip:padding-box;}
+::-webkit-scrollbar-thumb:hover{background:${B.isDark?'rgba(0,212,168,0.35)':'rgba(61,75,255,0.45)'};background-clip:padding-box;border:2px solid transparent;}
 button{transition:filter .15s ease,transform .12s ease,background .15s ease,border-color .15s ease,box-shadow .15s ease;}
 button:not(:disabled):hover{filter:brightness(1.12);}
 button:not(:disabled):active{transform:scale(0.98);}
-button:focus-visible,a:focus-visible{outline:2px solid rgba(0,212,168,0.6);outline-offset:2px;}
-input:focus,select:focus,textarea:focus{outline:none;border-color:rgba(0,212,168,0.55)!important;box-shadow:0 0 0 3px rgba(0,212,168,0.12);}
+button:focus-visible,a:focus-visible{outline:2px solid ${B.isDark?'rgba(0,212,168,0.6)':'rgba(61,75,255,0.7)'};outline-offset:2px;}
+input:focus,select:focus,textarea:focus{outline:none;border-color:${B.isDark?'rgba(0,212,168,0.55)':'rgba(61,75,255,0.6)'}!important;box-shadow:0 0 0 3px ${B.isDark?'rgba(0,212,168,0.12)':'rgba(61,75,255,0.12)'};}
 input,select,textarea{transition:border-color .15s ease,box-shadow .15s ease;}
-input[type=date]::-webkit-calendar-picker-indicator{filter:invert(0.5);}
-select option{background:#13141A;color:#F2F3F8;}
+input[type=date]::-webkit-calendar-picker-indicator{filter:${B.isDark?'invert(0.5)':'none'};}
+select option{background:${B.isDark?'#13141A':'#FFFFFF'};color:${B.isDark?'#F2F3F8':'#0E1116'};}
+h1,h2,.tca-serif{font-family:'Instrument Serif',Georgia,serif!important;font-weight:400!important;letter-spacing:-0.01em;}
 @keyframes tcaFadeUp{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:none;}}
 .tca-page{animation:tcaFadeUp .28s ease both;}
+@media (max-width:860px){
+.tca-hdr{flex-wrap:wrap!important;padding:10px 16px!important;gap:10px!important;margin-right:auto!important;}
+.tca-nav{order:3;flex:1 1 100%!important;}
+.tca-nav>div{justify-content:flex-start!important;border-radius:14px!important;}
+.tca-wrap{padding:20px 16px 60px!important;margin-right:auto!important;}
+.tca-hero{grid-template-columns:1fr!important;gap:22px!important;}
+.tca-cards3{grid-template-columns:1fr!important;}
+.tca-big{grid-template-columns:1fr!important;}
+.tca-stats{grid-template-columns:repeat(2,1fr)!important;}
+}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;}}
 `}</style>
     {toast&&(<div style={{position:"fixed",top:20,right:24,zIndex:200,padding:"12px 20px",borderRadius:10,background:toast.type==="error"?"rgba(24,12,16,0.85)":"rgba(10,24,22,0.85)",border:"1px solid "+(toast.type==="error"?B.loss+"55":B.teal+"55"),color:toast.type==="error"?B.loss:B.teal,fontWeight:700,fontSize:13,boxShadow:"0 12px 40px rgba(0,0,0,0.45)",backdropFilter:"blur(12px)",WebkitBackdropFilter:"blur(12px)"}}>{toast.msg}</div>)}
@@ -8716,70 +8453,74 @@ select option{background:#13141A;color:#F2F3F8;}
     {showForm&&<TradeFormModal onClose={()=>{setShowForm(false);setEditTrade(null);}} onSave={handleSave} editTrade={editTrade}/>}
     {showImport&&<ImportModal onClose={()=>setShowImport(false)} onImport={handleImport} existingTrades={trades}/>}
     {delTrade&&<DeleteConfirm trade={delTrade} onConfirm={handleDelete} onCancel={()=>setDelTrade(null)}/>}
-    <div style={{position:"fixed",top:0,left:0,bottom:0,width:216,background:B.sidebarBg,backdropFilter:"blur(18px)",WebkitBackdropFilter:"blur(18px)",borderRight:`1px solid ${B.border}`,display:"flex",flexDirection:"column",zIndex:100,overflowY:"auto"}}>
-      <div style={{padding:"22px 18px 18px",borderBottom:`1px solid ${B.border}`}}><div style={{display:"flex",alignItems:"center",gap:12}}><TCAIcon size={36}/><div><div style={{fontSize:14,fontWeight:700,background:GL,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",letterSpacing:-0.3}}>TCA Journal</div><div style={{fontSize:9.5,color:B.textMuted,letterSpacing:1.6,textTransform:"uppercase",marginTop:2,fontWeight:500}}>Candlestick Academy</div></div></div></div>
-      <nav style={{padding:"16px 12px",flex:1}}>{NAV.map(n=>(<button key={n.id} onClick={()=>setActive(n.id)} style={{display:"flex",alignItems:"center",gap:11,width:"100%",padding:"9px 12px",borderRadius:10,border:`1px solid ${active===n.id?B.borderTeal:"transparent"}`,background:active===n.id?"linear-gradient(90deg,rgba(0,212,168,0.12),rgba(79,142,247,0.04))":"transparent",color:active===n.id?B.teal:B.textMuted,cursor:"pointer",fontSize:13,fontWeight:active===n.id?600:500,textAlign:"left",marginBottom:3,boxShadow:active===n.id?"0 0 18px rgba(0,212,168,0.08)":"none"}}><span style={{fontSize:14}}>{n.icon}</span>{n.label}</button>))}</nav>
-      <div style={{padding:"16px 18px",borderTop:`1px solid ${B.border}`}}>
-        <div style={{fontSize:9,color:B.textDim,letterSpacing:2,marginBottom:3}}>NY SESSION</div>
-        <div style={{fontSize:13,fontFamily:"monospace",color:B.textMuted}}>{nyTime}</div>
-        {/* Tradovate sync status */}
-        <div style={{marginTop:10,display:"flex",alignItems:"center",gap:6,padding:"8px 12px",borderRadius:8,background:"rgba(0,0,0,0.3)",border:`1px solid ${B.border}`}}>
-          <div style={{width:7,height:7,borderRadius:"50%",background:syncDot,boxShadow:syncStatus==="connected"?`0 0 6px ${B.teal}`:"none"}}/>
-          <div style={{fontSize:10,color:syncStatus==="connected"?B.teal:B.textMuted,fontWeight:600}}>Tradovate {syncLabel}</div>
-          <button onClick={()=>setShowSyncModal(true)} style={{marginLeft:"auto",background:"none",border:"none",color:B.textMuted,cursor:"pointer",fontSize:10,padding:0}} title="Sync with date range">↻</button>
+    {/* ── EDITORIAL TOP BAR ── */}
+    <header style={{position:"sticky",top:0,zIndex:100,background:B.isDark?"rgba(10,11,15,0.82)":"rgba(251,251,253,0.82)",backdropFilter:"blur(16px)",WebkitBackdropFilter:"blur(16px)",borderBottom:`1px solid ${B.border}`}}>
+      <div className="tca-hdr" style={{maxWidth:1360,margin:"0 auto",padding:"12px 28px",display:"flex",alignItems:"center",gap:14,marginRight:chatOpen?380:"auto",transition:"margin-right 0.3s"}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
+          <TCAIcon size={30}/>
+          <div style={{fontFamily:SERIF,fontSize:22,lineHeight:1,color:B.text,letterSpacing:-0.3,whiteSpace:"nowrap"}}>TCA <span style={{fontStyle:"italic",color:B.teal}}>Journal</span></div>
         </div>
-        <div style={{marginTop:10,fontSize:10,color:B.textMuted,textAlign:"center"}}>{trades.filter(t=>!t.id?.startsWith("s")).length} trades logged</div>
-        {lastImport&&<div style={{fontSize:9,color:B.textDim,textAlign:"center",marginTop:3}}>Last import: {lastImport}</div>}
-        <button onClick={()=>setChatOpen(c=>!c)} style={{marginTop:8,width:"100%",padding:"9px",borderRadius:8,border:`1px solid ${chatOpen?"#8B5CF6":"rgba(139,92,246,0.3)"}`,background:chatOpen?"rgba(139,92,246,0.12)":"rgba(139,92,246,0.05)",color:"#8B5CF6",cursor:"pointer",fontSize:11,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>🧠 {chatOpen?"Close Coach":"TCA Coach"}</button>
-        {isAdmin&&<button onClick={()=>setShowAdmin(true)} style={{marginTop:6,width:"100%",padding:"7px",borderRadius:8,border:`1px solid rgba(255,183,0,0.3)`,background:"rgba(255,183,0,0.05)",color:"#FFB700",cursor:"pointer",fontSize:11,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>👑 Admin Panel</button>}
-        <button onClick={()=>setShowProfile(true)} style={{marginTop:6,width:"100%",padding:"7px",borderRadius:8,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:11,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
-          👤 {session?.user?.user_metadata?.full_name||session?.user?.email?.split("@")[0]||"Profile"}
-        </button>
-        <button onClick={()=>{
-              // Clear user-specific caches on sign out
-              const uid = session?.user?.id;
-              if(uid){
-                localStorage.removeItem("tca_aicoach_"+uid);
-                localStorage.removeItem("tca_patterns_"+uid);
-              }
-              supabase.auth.signOut();
-            }} style={{marginTop:6,width:"100%",padding:"7px",borderRadius:8,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:11,fontWeight:600}}>Sign Out</button>
+        <nav aria-label="Main" className="tca-nav" style={{flex:1,minWidth:0,display:"flex",justifyContent:"center"}}>
+          <div style={{display:"flex",gap:2,padding:4,borderRadius:999,background:B.isDark?(B.isDark?"rgba(255,255,255,0.04)":"rgba(14,17,22,0.064)"):"#FFFFFF",border:`1px solid ${B.border}`,overflowX:"auto",maxWidth:"100%",scrollbarWidth:"none"}}>
+            {NAV.map(n=>(<button key={n.id} onClick={()=>setActive(n.id)} aria-current={active===n.id?"page":undefined} style={{padding:"8px 11px",borderRadius:999,border:"none",cursor:"pointer",fontSize:12.5,fontWeight:active===n.id?700:500,whiteSpace:"nowrap",fontFamily:SANS,background:active===n.id?(B.isDark?B.teal:"#0E1116"):"transparent",color:active===n.id?(B.isDark?"#0E0E10":"#FFFFFF"):B.textMuted}}>{({calendar:"Calendar",weeklyreview:"Weekly",economiccalendar:"Econ"})[n.id]||n.label}</button>))}
+          </div>
+        </nav>
+        <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0,position:"relative"}}>
+          <button onClick={()=>setChatOpen(c=>!c)} style={{padding:"9px 15px",borderRadius:999,border:`1px solid ${chatOpen?B.purple:B.border}`,background:chatOpen?`${B.purple}18`:"transparent",color:chatOpen?B.purple:B.text,cursor:"pointer",fontSize:13,fontWeight:600,fontFamily:SANS}}>{chatOpen?"Close Coach":"Coach"}</button>
+          <button onClick={()=>{setEditTrade(null);setShowForm(true);}} style={{padding:"10px 18px",borderRadius:999,border:"none",background:GL,color:B.onAccent,cursor:"pointer",fontSize:13,fontWeight:700,fontFamily:SANS,boxShadow:B.isDark?"0 6px 20px rgba(0,212,168,0.25)":"0 6px 18px rgba(61,75,255,0.28)"}}>+ Log trade</button>
+          <button onClick={()=>setMenuOpen(m=>!m)} aria-label="More" aria-expanded={menuOpen} style={{width:38,height:38,borderRadius:999,border:`1px solid ${B.border}`,background:B.isDark?(B.isDark?"rgba(255,255,255,0.04)":"rgba(14,17,22,0.064)"):"#FFFFFF",color:B.text,cursor:"pointer",fontSize:18,lineHeight:1,display:"grid",placeItems:"center"}}>⋯</button>
+          {menuOpen&&(<>
+            <div onClick={()=>setMenuOpen(false)} style={{position:"fixed",inset:0,zIndex:140}}/>
+            <div style={{position:"absolute",top:48,right:0,zIndex:150,width:280,background:B.panel,border:`1px solid ${B.border}`,borderRadius:18,padding:8,boxShadow:B.isDark?"0 20px 50px rgba(0,0,0,0.5)":"0 20px 50px rgba(14,17,22,0.16)"}}>
+              {(()=>{const item=(label,fn,color)=>(<button key={label} onClick={()=>{setMenuOpen(false);fn();}} style={{display:"block",width:"100%",textAlign:"left",padding:"10px 12px",borderRadius:10,border:"none",background:"transparent",color:color||B.text,cursor:"pointer",fontSize:13,fontWeight:500,fontFamily:SANS}}>{label}</button>);
+                return(<>
+                  {item("Import trades (CSV)",()=>setShowImport(true))}
+                  {item("Sync Tradovate",()=>setShowSyncModal(true))}
+                  {item("Export PDF report",()=>setShowReport(true))}
+                  {hasSample&&item("Clear sample data",()=>setTrades([]))}
+                  {item("Clear imported trades",()=>handleClearImported(),B.loss)}
+                  <div style={{height:1,background:B.border,margin:"6px 4px"}}/>
+                  {item(isDark?"Switch to Light (editorial)":"Switch to Dark",()=>{const next=!isDark;setIsDark(next);try{localStorage.setItem("tca_theme",next?"dark":"light");}catch(e){}})}
+                  {isAdmin&&item("Admin panel",()=>setShowAdmin(true),"#B7791F")}
+                  {item(session?.user?.user_metadata?.full_name||session?.user?.email?.split("@")[0]||"Profile",()=>setShowProfile(true))}
+                  {item("Sign out",()=>{const uid=session?.user?.id;if(uid){localStorage.removeItem("tca_aicoach_"+uid);localStorage.removeItem("tca_patterns_"+uid);}supabase.auth.signOut();},B.textMuted)}
+                  <div style={{height:1,background:B.border,margin:"6px 4px"}}/>
+                  <div style={{padding:"8px 12px",display:"flex",alignItems:"center",gap:8,fontSize:11.5,color:B.textMuted}}>
+                    <span style={{width:7,height:7,borderRadius:"50%",background:syncDot,flexShrink:0}}/>Tradovate {syncLabel}
+                    <span style={{marginLeft:"auto",fontFamily:"'JetBrains Mono',monospace"}}>{nyTime} ET</span>
+                  </div>
+                  <div style={{padding:"0 12px 8px",fontSize:11,color:B.textDim}}>{trades.filter(t=>!t.id?.startsWith("s")).length} trades logged{lastImport?` · last import ${lastImport}`:""}</div>
+                </>);})()}
+            </div>
+          </>)}
+        </div>
       </div>
-    </div>
+    </header>
     <style>{`[contenteditable]{direction:ltr!important;text-align:left!important;unicode-bidi:embed!important;}`}</style>
-    <div style={{marginLeft:216,marginRight:chatOpen?380:0,padding:"32px 36px",minHeight:"100vh",transition:"margin-right 0.3s"}}>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
-        <div><h1 style={{margin:0,fontSize:24,fontWeight:700,color:B.text,letterSpacing:-0.8}}>{NAV.find(n=>n.id===active)?.label}</h1></div>
-        <div style={{display:"flex",gap:8,alignItems:"center"}}>
-          {hasSample&&(<button onClick={()=>setTrades([])} style={{padding:"8px 14px",borderRadius:9,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:11,fontWeight:600}}>Clear Sample Data</button>)}
-          <button onClick={()=>setShowReport(true)} style={{padding:"7px 14px",borderRadius:9,border:`1px solid rgba(0,212,168,0.3)`,background:"rgba(0,212,168,0.06)",color:B.teal,cursor:"pointer",fontSize:11,fontWeight:700,display:"flex",alignItems:"center",gap:5}}>📄 Export PDF</button>
-          {active==="overview"&&<button onClick={()=>document.dispatchEvent(new CustomEvent("tca-toggle-edit"))} style={{padding:"8px 14px",borderRadius:9,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:12,fontWeight:600}}>✏ Edit Layout</button>}
-          {/* Theme toggle */}
-          <button onClick={()=>{const next=!isDark;setIsDark(next);try{localStorage.setItem("tca_theme",next?"dark":"light");}catch(e){}}} title={isDark?"Switch to Light Mode":"Switch to Dark Mode"}
-            style={{padding:"7px 14px",borderRadius:9,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,cursor:"pointer",fontSize:13,display:"flex",alignItems:"center",gap:6}}>
-            {isDark?"☀️ Light":"🌙 Dark"}
-          </button>
-          <select value={activeAccount} onChange={e=>setActiveAccount(e.target.value)}
-            style={{padding:"8px 12px",borderRadius:10,border:`1px solid ${B.border}`,background:B.isDark?"rgba(255,255,255,0.05)":"#FFFFFF",color:B.text,cursor:"pointer",fontSize:12,fontFamily:"'Inter',sans-serif"}}>
-            <option value="all">All Accounts</option>
+    <div className="tca-wrap" style={{maxWidth:1360,margin:"0 auto",marginRight:chatOpen?380:"auto",padding:"34px 36px 72px",minHeight:"100vh",transition:"margin-right 0.3s"}}>
+      <div style={{display:"flex",alignItems:"flex-end",justifyContent:"space-between",gap:16,flexWrap:"wrap",marginBottom:24}}>
+        <div>
+          <div style={{fontSize:12.5,color:B.textMuted,fontWeight:500,marginBottom:4}}>{new Date().toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric"})}</div>
+          <h1 style={{margin:0,fontSize:44,lineHeight:1.05,color:B.text}}>{NAV.find(n=>n.id===active)?.label}</h1>
+        </div>
+        <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+          <select value={activeAccount} onChange={e=>setActiveAccount(e.target.value)} aria-label="Account"
+            style={{padding:"9px 14px",borderRadius:999,border:`1px solid ${B.border}`,background:B.isDark?(B.isDark?"rgba(255,255,255,0.05)":"rgba(14,17,22,0.08)"):"#FFFFFF",color:B.text,cursor:"pointer",fontSize:12.5,fontFamily:SANS}}>
+            <option value="all">All accounts</option>
             {accounts.map(a=>(<option key={a.id} value={a.id}>{a.label}</option>))}
           </select>
-          <button onClick={()=>setShowImport(true)} style={{padding:"8px 16px",borderRadius:9,border:`1px solid ${B.blue}40`,background:`${B.blue}12`,color:B.blue,cursor:"pointer",fontSize:12,fontWeight:700}}>⬆ Import CSV</button>
-          <button onClick={()=>handleClearImported()} style={{padding:"8px 14px",borderRadius:9,border:`1px solid ${B.loss}40`,background:`${B.loss}10`,color:B.loss,cursor:"pointer",fontSize:12,fontWeight:600}} title="Delete all imported trades">🗑 Clear Imports</button>
-          <button onClick={()=>{setEditTrade(null);setShowForm(true);}} style={{padding:"9px 20px",borderRadius:10,border:"none",background:GL,color:"#07080C",cursor:"pointer",fontSize:12.5,fontWeight:700,boxShadow:"0 6px 20px rgba(0,212,168,0.25)"}}>+ Log Trade</button>
+          <button onClick={()=>setShowImport(true)} style={{padding:"9px 16px",borderRadius:999,border:`1px solid ${B.border}`,background:B.isDark?(B.isDark?"rgba(255,255,255,0.05)":"rgba(14,17,22,0.08)"):"#FFFFFF",color:B.text,cursor:"pointer",fontSize:12.5,fontWeight:600,fontFamily:SANS}}>Import CSV</button>
         </div>
       </div>
       {hasSample&&(<div style={{marginBottom:18,padding:"10px 16px",borderRadius:10,background:"rgba(79,142,247,0.07)",border:"1px solid rgba(79,142,247,0.2)",fontSize:12,color:B.blue,display:"flex",alignItems:"center",justifyContent:"space-between"}}><span>Viewing sample data. Import your Tradovate CSV or log a real trade to get started.</span><button onClick={()=>setTrades([])} style={{background:"none",border:"none",color:B.blue,cursor:"pointer",fontWeight:700,fontSize:12,textDecoration:"underline"}}>Clear it</button></div>)}
       <div key={active} className="tca-page">
       {active==="overview"&&<Overview trades={activeAccount==="all"?trades:trades.filter(t=>t.account_id===activeAccount)} onGradeUpdate={handleGradeUpdate} session={session} accounts={accounts} activeAccount={activeAccount} setAccounts={setAccounts}/>}
       {active==="journal"&&<Journal trades={activeAccount==="all"?trades:trades.filter(t=>t.account_id===activeAccount)} onEdit={handleEdit} onDelete={setDelTrade} onGradeUpdate={handleGradeUpdate} onAnalysisSave={handleAnalysisSave}/>}
-      {active==="analytics"&&<Analytics trades={activeAccount==="all"?trades:trades.filter(t=>t.account_id===activeAccount)}/>}
+      {active==="analytics"&&<AnalyticsHub trades={activeAccount==="all"?trades:trades.filter(t=>t.account_id===activeAccount)}/>}
       {active==="calendar"&&<CalendarView trades={activeAccount==="all"?trades:trades.filter(t=>t.account_id===activeAccount)} onGradeUpdate={handleGradeUpdate} onEdit={handleEdit}/>}
-      {active==="playbooks"&&<PlaybookView trades={activeAccount==="all"?trades:trades.filter(t=>t.account_id===activeAccount)}/>}
       {active==="resources"&&<ResourcesPage session={session}/>}
       {active==="weeklyreview"&&<WeeklyReview trades={activeAccount==="all"?trades:trades.filter(t=>t.account_id===activeAccount)} session={session}/>}
       {active==="economiccalendar"&&<EconomicCalendar isDark={isDark}/>}
-      {active==="library"&&<PlaybookLibrary session={session}/>}
       {active==="bestversion"&&<BestVersionOfYou trades={activeAccount==="all"?trades:trades.filter(t=>t.account_id===activeAccount)}/>}
       </div>
     </div>
