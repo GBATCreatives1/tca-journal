@@ -155,6 +155,18 @@ function optionGross(entry,exit,contracts,direction){
   return Math.round(diff*100*q*100)/100;
 }
 const isOptionTrade=(t)=>t&&t.asset_type==="Options";
+// ── Company logos (Brandfetch ticker route; set VITE_BRANDFETCH_ID in Vercel) ──
+const LOGO_ID=(()=>{try{return import.meta.env.VITE_BRANDFETCH_ID||"";}catch(e){return "";}})();
+const NO_LOGO=["MES","ES","NQ","MNQ","MGC","SPX","NDX","RUT","VIX"];
+function TickerLogo({sym,size=44,fallback}){
+  const [bad,setBad]=useState(false);
+  const s=String(sym||"").toUpperCase().trim();
+  if(!LOGO_ID||!s||bad||NO_LOGO.includes(s)||!/^[A-Z.]{1,6}$/.test(s))return fallback;
+  const px=Math.round(size*2);
+  return(<div style={{width:size,height:size,borderRadius:"50%",background:"#FFFFFF",border:`1px solid ${B.border}`,display:"grid",placeItems:"center",flexShrink:0,overflow:"hidden"}}>
+    <img src={`https://cdn.brandfetch.io/ticker/${s}/w/${px}/h/${px}/fallback/404?c=${LOGO_ID}`} alt={`${s} logo`} loading="lazy" onError={()=>setBad(true)} style={{width:"68%",height:"68%",objectFit:"contain"}}/>
+  </div>);
+}
 function tradeLabel(t){
   if(!isOptionTrade(t))return t.instrument;
   const exp=t.expiration?String(t.expiration).slice(5,10).replace("-","/"):"";
@@ -1466,9 +1478,9 @@ function DayModal({date, trades, onClose}){
                   borderLeft:`3px solid ${t.result==="Win"?B.teal:B.loss}`}}>
                   <div style={{fontSize:12,color:B.textMuted,fontFamily:"monospace"}}>{t.session}</div>
                   <div>
-                    <span style={{fontSize:11,padding:"2px 8px",borderRadius:5,fontWeight:700,
+                    <span style={{display:"inline-flex",alignItems:"center",gap:7}}><TickerLogo sym={t.instrument} size={20} fallback={null}/><span style={{fontSize:11,padding:"2px 8px",borderRadius:5,fontWeight:700,
                       background:`${INST_COLOR[t.instrument]||B.teal}20`,
-                      color:INST_COLOR[t.instrument]||B.teal,whiteSpace:"nowrap"}}>{tradeLabel(t)}</span>
+                      color:INST_COLOR[t.instrument]||B.teal,whiteSpace:"nowrap"}}>{tradeLabel(t)}</span></span>
                   </div>
                   <div style={{fontSize:12,fontWeight:700,color:t.direction==="Long"?"#4ade80":"#f87171"}}>{t.direction}</div>
                   <div style={{fontSize:12,fontFamily:"monospace",color:B.text}}>{t.entry||"--"}</div>
@@ -1794,7 +1806,7 @@ function EditorialOverview({trades}){
         <div style={{marginTop:6}}>
           {recent.map((t,i)=>{const pal=dkAv(avatarPal[hash(t.instrument)%avatarPal.length]);const up=(t.pnl||0)>=0;
             return(<div key={t.id||i} style={{display:"grid",gridTemplateColumns:"44px minmax(0,1fr) auto",gap:14,alignItems:"center",padding:"13px 0",borderTop:i?`1px solid ${B.border}`:"none"}}>
-              <div style={{width:44,height:44,borderRadius:"50%",background:pal[0],color:pal[1],display:"grid",placeItems:"center",fontWeight:700,fontSize:12}}>{String(t.instrument||"?").slice(0,4)}</div>
+              <TickerLogo sym={t.instrument} size={44} fallback={<div style={{width:44,height:44,borderRadius:"50%",background:pal[0],color:pal[1],display:"grid",placeItems:"center",fontWeight:700,fontSize:12}}>{String(t.instrument||"?").slice(0,4)}</div>}/>
               <div style={{minWidth:0}}><div style={{fontSize:14,fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{tradeLabel(t)}</div>
                 <div style={{fontSize:12.5,color:B.textMuted,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{[t.setup&&t.setup!=="Imported"?t.setup:null,`${t.direction} ${t.contracts||1}`,t.entry!==undefined&&t.exit!==undefined?`${t.entry} to ${t.exit}`:null].filter(Boolean).join(" · ")}</div></div>
               <div style={{textAlign:"right"}}><div style={{fontSize:15,fontWeight:700,color:up?B.profit:B.loss}}>{money(t.pnl||0,2)}</div><div style={{fontSize:12,color:B.textMuted}}>{(t.date||"").slice(5)}</div></div>
@@ -2180,7 +2192,7 @@ function Journal({trades,onEdit,onDelete,onGradeUpdate,onAnalysisSave}){
       <span style={{fontSize:10,color:B.textMuted,letterSpacing:1,marginLeft:8}}>SORT</span>
       {[{k:"date",l:"Date"},{k:"pnl",l:"P&L"},{k:"grade",l:"Grade"},{k:"rr",l:"R:R"}].map(s=>(<button key={s.k} onClick={()=>{if(sort===s.k)setSortDir(d=>d==="desc"?"asc":"desc");else{setSort(s.k);setSortDir("desc");}}} style={{padding:"4px 12px",borderRadius:20,border:"1px solid",borderColor:sort===s.k?B.purple:B.border,background:sort===s.k?`${B.purple}18`:"transparent",color:sort===s.k?B.purple:B.textMuted,cursor:"pointer",fontSize:11,fontWeight:700}}>{s.l}{sort===s.k?(sortDir==="desc"?" ↓":" ↑"):""}</button>))}
     </div>
-  </div><div style={{display:"grid",gridTemplateColumns:"70px 172px 60px 52px 110px 72px 56px 56px 1fr 78px",padding:"8px 14px",fontSize:10,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",borderBottom:`1px solid ${B.border}`}}>{["Date","Symbol","Dir","Grade","Setup","P&L","R:R","Result","Notes",""].map((h,i)=><div key={i}>{h}</div>)}</div><div style={{display:"flex",flexDirection:"column",gap:4}}>{sorted.map(t=>(<div key={t.id} onClick={()=>setSelectedTrade(t)} style={{display:"grid",gridTemplateColumns:"70px 172px 60px 52px 110px 72px 56px 56px 1fr 78px",padding:"11px 14px",borderRadius:10,background:B.surface,border:`1px solid ${B.border}`,borderLeft:`3px solid ${t.result==="Win"?B.teal:B.loss}`,cursor:"pointer",transition:"background 0.15s"}} onMouseEnter={e=>e.currentTarget.style.background=(B.isDark?"rgba(255,255,255,0.04)":"rgba(14,17,22,0.064)")} onMouseLeave={e=>e.currentTarget.style.background=B.surface}><div style={{fontSize:11,color:B.textMuted}}>{t.date.slice(5)}</div><div><span style={{fontSize:11,padding:"2px 7px",borderRadius:5,fontWeight:700,background:`${INST_COLOR[t.instrument]||B.teal}20`,color:INST_COLOR[t.instrument]||B.teal,whiteSpace:"nowrap"}}>{tradeLabel(t)}</span></div><div style={{fontSize:12,color:t.direction==="Long"?"#4ade80":"#f87171"}}>{t.direction}</div><GradeBadge grade={t.grade||"B"} tradeId={t.id} onSave={g=>onGradeUpdate&&onGradeUpdate(t.id,g)} size="small"/><div style={{fontSize:11,color:B.textMuted,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>{t.setup}</div><div style={{fontSize:13,fontWeight:800,fontFamily:"monospace",color:pnlColor(t.pnl)}}>{fmt(t.pnl)}</div><div style={{fontSize:11,fontFamily:"monospace",color:B.textMuted}}>{t.rr}</div><div style={{fontSize:11,fontWeight:700,color:t.result==="Win"?B.profit:B.loss}}>{t.result}</div><div style={{fontSize:11,color:B.textDim,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>{t.notes}</div><div style={{display:"flex",gap:5}}><button onClick={()=>onEdit(t)} style={{padding:"4px 8px",borderRadius:6,border:`1px solid ${B.blue}40`,background:`${B.blue}12`,color:B.blue,cursor:"pointer",fontSize:10,fontWeight:700}}>Edit</button><button onClick={()=>onDelete(t)} style={{padding:"4px 8px",borderRadius:6,border:`1px solid ${B.loss}40`,background:`${B.loss}12`,color:B.loss,cursor:"pointer",fontSize:10,fontWeight:700}}>Del</button></div></div>))}</div></div>);
+  </div><div style={{display:"grid",gridTemplateColumns:"70px 198px 60px 52px 110px 72px 56px 56px 1fr 78px",padding:"8px 14px",fontSize:10,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",borderBottom:`1px solid ${B.border}`}}>{["Date","Symbol","Dir","Grade","Setup","P&L","R:R","Result","Notes",""].map((h,i)=><div key={i}>{h}</div>)}</div><div style={{display:"flex",flexDirection:"column",gap:4}}>{sorted.map(t=>(<div key={t.id} onClick={()=>setSelectedTrade(t)} style={{display:"grid",gridTemplateColumns:"70px 198px 60px 52px 110px 72px 56px 56px 1fr 78px",padding:"11px 14px",borderRadius:10,background:B.surface,border:`1px solid ${B.border}`,borderLeft:`3px solid ${t.result==="Win"?B.teal:B.loss}`,cursor:"pointer",transition:"background 0.15s"}} onMouseEnter={e=>e.currentTarget.style.background=(B.isDark?"rgba(255,255,255,0.04)":"rgba(14,17,22,0.064)")} onMouseLeave={e=>e.currentTarget.style.background=B.surface}><div style={{fontSize:11,color:B.textMuted}}>{t.date.slice(5)}</div><div style={{display:"flex",alignItems:"center",gap:7}}><TickerLogo sym={t.instrument} size={20} fallback={null}/><span style={{fontSize:11,padding:"2px 7px",borderRadius:5,fontWeight:700,background:`${INST_COLOR[t.instrument]||B.teal}20`,color:INST_COLOR[t.instrument]||B.teal,whiteSpace:"nowrap"}}>{tradeLabel(t)}</span></div><div style={{fontSize:12,color:t.direction==="Long"?"#4ade80":"#f87171"}}>{t.direction}</div><GradeBadge grade={t.grade||"B"} tradeId={t.id} onSave={g=>onGradeUpdate&&onGradeUpdate(t.id,g)} size="small"/><div style={{fontSize:11,color:B.textMuted,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>{t.setup}</div><div style={{fontSize:13,fontWeight:800,fontFamily:"monospace",color:pnlColor(t.pnl)}}>{fmt(t.pnl)}</div><div style={{fontSize:11,fontFamily:"monospace",color:B.textMuted}}>{t.rr}</div><div style={{fontSize:11,fontWeight:700,color:t.result==="Win"?B.profit:B.loss}}>{t.result}</div><div style={{fontSize:11,color:B.textDim,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>{t.notes}</div><div style={{display:"flex",gap:5}}><button onClick={()=>onEdit(t)} style={{padding:"4px 8px",borderRadius:6,border:`1px solid ${B.blue}40`,background:`${B.blue}12`,color:B.blue,cursor:"pointer",fontSize:10,fontWeight:700}}>Edit</button><button onClick={()=>onDelete(t)} style={{padding:"4px 8px",borderRadius:6,border:`1px solid ${B.loss}40`,background:`${B.loss}12`,color:B.loss,cursor:"pointer",fontSize:10,fontWeight:700}}>Del</button></div></div>))}</div></div>);
 }
 
 // ── Analytics hub: Performance + Strategies in one cohesive page ──
@@ -3677,7 +3689,7 @@ function DayJournalModal({date, trades, onClose, onGradeUpdate}){
                       }}>
                         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
                           <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                            <span style={{fontSize:11,padding:"2px 9px",borderRadius:5,fontWeight:700,background:`${INST_COLOR[t.instrument]||B.teal}20`,color:INST_COLOR[t.instrument]||B.teal,whiteSpace:"nowrap"}}>{tradeLabel(t)}</span>
+                            <span style={{display:"inline-flex",alignItems:"center",gap:7}}><TickerLogo sym={t.instrument} size={20} fallback={null}/><span style={{fontSize:11,padding:"2px 9px",borderRadius:5,fontWeight:700,background:`${INST_COLOR[t.instrument]||B.teal}20`,color:INST_COLOR[t.instrument]||B.teal,whiteSpace:"nowrap"}}>{tradeLabel(t)}</span></span>
                             <span style={{fontSize:13,fontWeight:700,color:t.direction==="Long"?"#4ade80":"#f87171"}}>{t.direction}</span>
                             <span style={{fontSize:11,color:B.textMuted}}>{t.contracts} contract{t.contracts!==1?"s":""}</span>
                           </div>
