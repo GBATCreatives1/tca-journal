@@ -53,84 +53,6 @@ async function syncPref(userId, key, onData){
 
 
 
-// ── Tradovate Sync ────────────────────────────────────────────────────────────
-// ── Tradovate via Vercel Proxy (avoids CORS) ─────────────────────────────────
-const PROXY = "/api/tradovate";
-
-async function tvAuth(account="main") {
-  try {
-    const res = await fetch(`${PROXY}?action=auth&account=${account}`);
-    const data = await res.json();
-    if (data.accessToken) {
-      sessionStorage.setItem(`tv_token_${account}`, data.accessToken);
-      sessionStorage.setItem(`tv_expiry_${account}`, Date.now() + 75 * 60 * 1000);
-      return data.accessToken;
-    }
-    console.error("Tradovate auth failed:", data);
-    return null;
-  } catch (e) {
-    console.error("Tradovate auth error:", e);
-    return null;
-  }
-}
-
-async function getToken(account="main") {
-  const expiry = sessionStorage.getItem(`tv_expiry_${account}`);
-  const token  = sessionStorage.getItem(`tv_token_${account}`);
-  if (token && expiry && Date.now() < parseInt(expiry)) return token;
-  return await tvAuth(account);
-}
-
-async function fetchClosedTrades(token, fromDate=null, toDate=null, account="main") {
-  try {
-    let url = `${PROXY}?action=fills&token=${token}&account=${account}`;
-    if (fromDate) url += `&from=${fromDate}`;
-    if (toDate) url += `&to=${toDate}`;
-    const res = await fetch(url);
-    const data = await res.json();
-    // New proxy returns pre-built trade objects directly
-    if (Array.isArray(data)) return data;
-    // Handle old format with execs/filledOrders
-    if (data.fills && Array.isArray(data.fills)) return data.fills;
-    return [];
-  } catch (e) {
-    console.error("fetchClosedTrades error:", e);
-    return [];
-  }
-}
-
-function execToTrade(exec) {
-  if (exec.date && exec.instrument) {
-    // Deduct commission from gross P&L (called once per trade)
-    const comm=getCommission(exec.instrument, exec.contracts||1);
-    exec.pnl=Math.round(((exec.pnl||0)-comm)*100)/100;
-    exec.result=exec.pnl>=0?"Win":"Loss";
-    exec.notes=(exec.notes||"Tradovate sync")+` | Comm: $${comm.toFixed(2)}`;
-    if (!exec.grade || exec.grade === "B") exec.grade = autoGrade(exec);
-    return exec;
-  }
-  // Fallback for old Tradovate format
-  const rawDate = exec.timestamp || new Date().toISOString();
-  const dateStr = new Date(rawDate).toISOString().slice(0, 10);
-  const rawSymbol = exec.name || "MES";
-  const symbol = rawSymbol.replace(/[FGHJKMNQUVXZ]\d+$/, "").replace(/\d+/g, "").toUpperCase() || "MES";
-  const direction = exec.action === "Sell" ? "Short" : "Long";
-  const qty=exec.qty||1;
-  const grossPnl=Math.round((exec.pnl || 0) * 100) / 100;
-  const commission=getCommission(symbol, qty);
-  const pnl=Math.round((grossPnl-commission)*100)/100;
-  const hr = new Date(rawDate).getHours();
-  return {
-    date: dateStr, instrument: symbol, direction,
-    contracts: qty, entry: exec.entry || 0, exit: exec.exit || 0,
-    pnl, rr: null, setup: "Auto-synced", grade: "B",
-    notes: `Tradovate sync | Comm: $${commission.toFixed(2)}`,
-    session: hr < 10 ? "AM" : hr < 13 ? "Mid" : "PM",
-    result: pnl >= 0 ? "Win" : "Loss",
-    tradovate_id: exec.tradovate_id || String(exec.id),
-  };
-}
-
 // ── Commission rates (round-trip, per contract) ───────────────────────────────
 const DEFAULT_COMMISSION_RATES={"MES":1.80,"MNQ":2.40,"MGC":2.50,"ES":2.10,"NQ":3.20};
 function getCommission(instrument, contracts){
@@ -255,6 +177,34 @@ function parseOptionsBrokerCSV(text){
           const side=/SELL/i.test(r[cSd]||"")?"Sell":"Buy";
           legs.push({date:toISO(r[cT]),time:(r[cT]||"").split(/\s+/)[1]||"",open:pe.includes("OPEN"),side,qty:Math.abs(num(r[cQ]))||1,price:num(r[cPr]),fees:0,under:(r[cSy]||"").toUpperCase(),exp:toISO(r[cEx]),strike:parseFloat(r[cSt])||0,type:ty==="CALL"?"Call":"Put"});
         }
+      }
+    }
+  }
+  // ── Format C: ThinkorSwim Account Statement, "Cash Balance" section (TRD rows).
+  // Rows read like: BOT +1 TSLA 100 (Weeklys) 18 NOV 26 385 CALL @2.18 CBOE.
+  // There is no open/close column, so open vs close is inferred from the running position per contract.
+  if(!legs.length){
+    const ci=lines.findIndex(l=>/^date,time,type/i.test(l));
+    if(ci>=0){
+      const h=splitLine(lines[ci]).map(x=>x.toLowerCase());
+      const cDt=h.indexOf("date"),cTm=h.indexOf("time"),cTy=h.indexOf("type"),cDs=h.indexOf("description"),cMf=h.findIndex(x=>x.startsWith("misc")),cCm=h.findIndex(x=>x.startsWith("commissions"));
+      const pos={};
+      for(let i=ci+1;i<lines.length;i++){
+        const l=lines[i];
+        if(!l.trim())break;
+        const r=splitLine(l);
+        if((r[cTy]||"").toUpperCase()!=="TRD")continue;
+        const m=(r[cDs]||"").match(/(BOT|SOLD)\s+([+-]?\d+)\s+([A-Z.]+)\s+\d+\s*(?:\([^)]*\)\s*)?(\d{1,2}\s+[A-Za-z]{3}\s+\d{2,4})\s+([\d.]+)\s+(CALL|PUT)\s+@([\d.]+)/i);
+        if(!m)continue;
+        const side=m[1].toUpperCase()==="BOT"?"Buy":"Sell";
+        const qty=Math.abs(parseInt(m[2]))||1;
+        const under=m[3].toUpperCase(),exp=toISO(m[4]),strike=parseFloat(m[5]),type=m[6].toUpperCase()==="CALL"?"Call":"Put",price=parseFloat(m[7]);
+        const key=`${under}|${exp}|${strike}|${type}`;
+        const delta=side==="Buy"?qty:-qty;
+        const p=pos[key]||0;
+        const open=p===0||(p>0)===(delta>0);
+        pos[key]=p+delta;
+        legs.push({date:toISO(r[cDt]),time:r[cTm]||"",open,side,qty,price,fees:Math.abs(num(r[cMf]))+Math.abs(num(r[cCm])),under,exp,strike,type});
       }
     }
   }
@@ -485,231 +435,6 @@ function GradeBadge({grade, tradeId, onSave, size="normal"}){
 function buildCalendar(trades){const m={};trades.forEach(t=>{if(!m[t.date])m[t.date]={pnl:0,count:0};m[t.date].pnl+=t.pnl;m[t.date].count++;});return m;}
 function buildEquity(trades, startBal=0){const s=[...trades].sort((a,b)=>a.date.localeCompare(b.date));let c=startBal;return s.map(t=>{c+=t.pnl;return{date:t.date.slice(5),equity:Math.round(c*100)/100};});}
 
-function parseTradovateCSV(text){
-  // Detect if this is a Performance CSV (has buyPrice, sellPrice, pnl columns)
-  const firstLine = text.trim().split("\n")[0].toLowerCase();
-  if(firstLine.includes("buyprice") || firstLine.includes("buyfillid") || firstLine.includes("soldtimestamp")){
-    return parseTradovatePerformanceCSV(text);
-  }
-  // Otherwise fall through to Orders CSV parser below
-  return parseTradovateOrdersCSV(text);
-}
-
-function parseTradovatePerformanceCSV(text, commissionRates={}){
-  // Parse CSV respecting quoted fields
-  function parseCSVLine(line){
-    const result=[];let cur="";let inQ=false;
-    for(let i=0;i<line.length;i++){
-      if(line[i]==='"'){inQ=!inQ;}
-      else if(line[i]===","&&!inQ){result.push(cur.trim());cur="";}
-      else cur+=line[i];
-    }
-    result.push(cur.trim());
-    return result;
-  }
-
-  const lines=text.trim().split("\n").filter(l=>l.trim());
-  const headers=parseCSVLine(lines[0]).map(h=>h.replace(/"/g,"").trim().toLowerCase());
-  const trades=[];
-
-  for(let i=1;i<lines.length;i++){
-    const vals=parseCSVLine(lines[i]);
-    const row={};
-    headers.forEach((h,idx)=>{row[h]=(vals[idx]||"").replace(/"/g,"").trim();});
-
-    // Parse gross P&L — handles "$6.25" and "$(51.25)" formats
-    const rawPnl=row["pnl"]||"0";
-    const isNeg=rawPnl.includes("(");
-    const grossPnl=parseFloat(rawPnl.replace(/[$(),]/g,""))*(isNeg?-1:1)||0;
-
-    // Parse dates
-    const rawDate=row["boughttimestamp"]||row["soldtimestamp"]||"";
-    let dateStr=new Date().toISOString().slice(0,10);
-    try{if(rawDate)dateStr=new Date(rawDate).toISOString().slice(0,10);}catch(e){}
-
-    // Parse prices
-    const buyPrice=parseFloat(row["buyprice"]||"0")||0;
-    const sellPrice=parseFloat(row["sellprice"]||"0")||0;
-    const qty=parseInt(row["qty"]||"1")||1;
-
-    // Determine direction: if buyTimestamp < sellTimestamp = Long, else Short
-    const buyTime=new Date(row["boughttimestamp"]||"").getTime();
-    const sellTime=new Date(row["soldtimestamp"]||"").getTime();
-    const direction=buyTime<=sellTime?"Long":"Short";
-    const entryPrice=direction==="Long"?buyPrice:sellPrice;
-    const exitPrice=direction==="Long"?sellPrice:buyPrice;
-
-    // Product
-    const rawSymbol=row["symbol"]||"MES";
-    const product=rawSymbol.replace(/[FGHJKMNQUVXZ]\d+$/,"").replace(/\d+/g,"").toUpperCase()||"MES";
-
-    // Session
-    const hr=rawDate?new Date(rawDate).getHours():9;
-    const session=hr<10?"AM":hr<13?"Mid":hr<16?"PM":"After";
-
-    // Duration
-    const duration=row["duration"]||"";
-
-    if(!dateStr)continue;
-
-    // Deduct commission: rate per contract (round trip) x number of contracts
-    const ratePerContract=commissionRates[product]??commissionRates["MES"]??1.80;
-    const commission=ratePerContract*qty;
-    const pnl=Math.round((grossPnl-commission)*100)/100;
-
-    const tradeObj={
-      id:`perf_${Date.now()}_${i}`,
-      date:dateStr,
-      instrument:product,
-      direction,
-      contracts:qty,
-      entry:entryPrice,
-      exit:exitPrice,
-      pnl,
-      rr:"--",
-      setup:"Imported",
-      grade:"B",
-      notes:`${rawSymbol} | ${duration} | Entry: ${entryPrice} -> Exit: ${exitPrice} | Comm: $${commission.toFixed(2)}`,
-      session,
-      result:pnl>=0?"Win":"Loss",
-    };
-    tradeObj.grade=autoGrade(tradeObj);
-    trades.push(tradeObj);
-  }
-  return trades;
-}
-
-function parseTradovateOrdersCSV(text){
-  // Parse CSV respecting quoted fields
-  function parseCSVLine(line){
-    const result=[];let cur="";let inQ=false;
-    for(let i=0;i<line.length;i++){
-      if(line[i]==='"'){inQ=!inQ;}
-      else if(line[i]===","&&!inQ){result.push(cur.trim());cur="";}
-      else cur+=line[i];
-    }
-    result.push(cur.trim());
-    return result;
-  }
-
-  const lines=text.trim().split("\n").filter(l=>l.trim());
-  const headers=parseCSVLine(lines[0]).map(h=>h.replace(/"/g,"").trim().toLowerCase());
-
-  // Tick value lookup per product
-  const TICK_VAL={MES:1.25,ES:12.5,MNQ:0.5,NQ:5,MYM:0.5,YM:5};
-  const TICK_SIZE=0.25;
-
-  // Collect only Filled orders
-  const filled=[];
-  for(let i=1;i<lines.length;i++){
-    const vals=parseCSVLine(lines[i]);
-    const row={};
-    headers.forEach((h,idx)=>{row[h]=vals[idx]?.replace(/"/g,"").trim()||"";});
-
-    const status=(row["status"]||"").trim().toLowerCase();
-    if(!status.includes("filled"))continue;
-
-    const avgPrice=parseFloat(row["avg fill price"]||row["avgprice"]||row["avg price"]||"0")||0;
-    const qty=parseInt(row["filled qty"]||row["filledqty"]||row["quantity"]||"1")||1;
-    if(!avgPrice||!qty)continue;
-
-    const rawDate=row["fill time"]||row["timestamp"]||row["date"]||"";
-    let dateStr=new Date().toISOString().slice(0,10);
-    try{if(rawDate)dateStr=new Date(rawDate.replace(/,/g,"")).toISOString().slice(0,10);}catch(e){}
-
-    const side=(row["b/s"]||row["side"]||"").trim();
-    const contract=(row["contract"]||row["product"]||"MES").trim();
-    const product=(row["product"]||"MES").replace(/\d+/g,"").toUpperCase().trim();
-    const text2=(row["text"]||"").toLowerCase();
-    const isExit=text2.includes("exit");
-
-    filled.push({
-      id:row["orderid"]||row["order id"]||`${Date.now()}_${i}`,
-      date:dateStr,
-      side:side.includes("Buy")?"Buy":"Sell",
-      product,
-      contract,
-      price:avgPrice,
-      qty,
-      isExit,
-      rawDate,
-    });
-  }
-
-  // Pair entries and exits into round-trip trades
-  const trades=[];
-  const used=new Set();
-
-  for(let i=0;i<filled.length;i++){
-    if(used.has(i))continue;
-    const entry=filled[i];
-    if(entry.isExit)continue; // skip standalone exits
-
-    // Find matching exit — same product, opposite side, not yet used
-    const exitSide=entry.side==="Buy"?"Sell":"Buy";
-    let exitIdx=-1;
-    for(let j=i+1;j<filled.length;j++){
-      if(used.has(j))continue;
-      const ex=filled[j];
-      if(ex.product===entry.product&&ex.side===exitSide&&ex.qty===entry.qty){
-        exitIdx=j;break;
-      }
-    }
-
-    if(exitIdx===-1){
-      // Try to find any matching exit regardless of qty
-      for(let j=i+1;j<filled.length;j++){
-        if(used.has(j))continue;
-        const ex=filled[j];
-        if(ex.product===entry.product&&(ex.isExit||ex.side===exitSide)){
-          exitIdx=j;break;
-        }
-      }
-    }
-
-    if(exitIdx===-1)continue; // no exit found
-
-    const exit=filled[exitIdx];
-    used.add(i);used.add(exitIdx);
-
-    // Calculate P&L
-    const tv=TICK_VAL[entry.product]||1.25;
-    const qty2=Math.min(entry.qty,exit.qty);
-    let pnl;
-    if(entry.side==="Buy"){
-      // Long: exit - entry
-      pnl=Math.round(((exit.price-entry.price)/TICK_SIZE)*tv*qty2*100)/100;
-    }else{
-      // Short: entry - exit
-      pnl=Math.round(((entry.price-exit.price)/TICK_SIZE)*tv*qty2*100)/100;
-    }
-
-    const direction=entry.side==="Buy"?"Long":"Short";
-    const hr=entry.rawDate?new Date(entry.rawDate).getHours():9;
-    const session=hr<10?"AM":hr<13?"Mid":hr<16?"PM":"After";
-
-    const ot={
-      id:`imp_${Date.now()}_${i}`,
-      date:entry.date,
-      instrument:entry.product,
-      direction,
-      contracts:qty2,
-      entry:entry.price,
-      exit:exit.price,
-      pnl,
-      rr:"--",
-      setup:"Imported",
-      grade:"B",
-      notes:`${entry.contract} | Entry: ${entry.price} → Exit: ${exit.price}`,
-      session,
-      result:pnl>=0?"Win":"Loss",
-    };
-    ot.grade=autoGrade(ot);
-    trades.push(ot);
-  }
-
-  return trades;
-}
 
 function parseGenericCSV(text){
   const lines=text.trim().split("\n");
@@ -1023,8 +748,6 @@ function ImportModal({onClose,onImport,existingTrades}){
     {id:"apex_eval",label:"Apex Eval",color:"#4F8EF7"},
     {id:"apex_demo",label:"Apex Demo",color:"#8B5CF6"},
   ]);
-  const [commissionRates,setCommissionRates]=useState({...DEFAULT_COMMISSION_RATES});
-  const [showCommission,setShowCommission]=useState(false);
   const ref=useRef();
 
   // Load custom accounts from localStorage
@@ -1039,20 +762,9 @@ function ImportModal({onClose,onImport,existingTrades}){
     r.onload=(e)=>{
       try{
         const t=e.target.result;
-        const firstLine=t.split("\n")[0].toLowerCase();
-        let tr=[];
-        let type="";
-        if(/account trade history/i.test(t)||/fees\s*&\s*comm/i.test(t)){
-          tr=parseOptionsBrokerCSV(t);
-          type="ThinkorSwim / Schwab Options";
-        }else if(firstLine.includes("buyprice")||firstLine.includes("soldtimestamp")){
-          tr=parseTradovatePerformanceCSV(t,commissionRates);
-          type="Performance CSV";
-        }else{
-          tr=parseTradovateOrdersCSV(t);
-          type="Orders CSV";
-        }
-        if(tr.length===0){setError("No valid trades found. Upload a Tradovate Performance/Orders CSV (futures) or a ThinkorSwim Account Statement / Schwab transactions CSV (options). Options import needs closed trades (both open and close legs).");return;}
+        const tr=parseOptionsBrokerCSV(t);
+        const type="ThinkorSwim / Schwab Options";
+        if(tr.length===0){setError("No valid trades found. Upload a ThinkorSwim Account Statement or Schwab transactions CSV. Options import needs closed trades (both the open and close legs).");return;}
         setParsed(tr);
         setFileType(type);
         setStep("preview");
@@ -1080,7 +792,7 @@ function ImportModal({onClose,onImport,existingTrades}){
         <div style={{padding:"24px 28px 0",display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
           <div>
             <div style={{fontSize:18,fontWeight:800,color:B.text}}>Import Trades</div>
-            <div style={{fontSize:12,color:B.textMuted,marginTop:3}}>Tradovate CSV (futures) · ThinkorSwim / Schwab CSV (options)</div>
+            <div style={{fontSize:12,color:B.textMuted,marginTop:3}}>ThinkorSwim / Schwab CSV (options)</div>
           </div>
           <button onClick={onClose} style={{background:B.hair,border:`1px solid ${B.border}`,borderRadius:8,color:B.textMuted,cursor:"pointer",fontSize:18,width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
         </div>
@@ -1096,43 +808,14 @@ function ImportModal({onClose,onImport,existingTrades}){
                 onClick={()=>ref.current.click()}
                 style={{border:`2px dashed ${drag?B.teal:B.border}`,borderRadius:14,padding:"48px 24px",textAlign:"center",cursor:"pointer",background:drag?`${B.teal}08`:"rgba(0,0,0,0.2)",transition:"all 0.2s",marginBottom:20}}>
                 <div style={{fontSize:40,marginBottom:12}}>📊</div>
-                <div style={{fontSize:15,fontWeight:700,color:B.text,marginBottom:6}}>Drop your Tradovate CSV here</div>
+                <div style={{fontSize:15,fontWeight:700,color:B.text,marginBottom:6}}>Drop your ThinkorSwim / Schwab CSV here</div>
                 <div style={{fontSize:12,color:B.textMuted,marginBottom:16}}>or click to browse</div>
                 <div style={{display:"inline-flex",gap:8}}>
-                  {["Performance.csv","Orders.csv","ThinkorSwim Statement","Schwab Transactions"].map(f=>(
+                  {["ThinkorSwim Statement","Schwab Transactions"].map(f=>(
                     <span key={f} style={{fontSize:11,padding:"3px 10px",borderRadius:20,background:`${B.teal}12`,border:`1px solid ${B.borderTeal}`,color:B.teal,fontWeight:700}}>{f}</span>
                   ))}
                 </div>
                 <input ref={ref} type="file" accept=".csv,.txt" style={{display:"none"}} onChange={e=>handle(e.target.files[0])}/>
-              </div>
-
-              {/* Commission rates */}
-              <div style={{marginBottom:16,borderRadius:12,border:`1px solid ${B.border}`,overflow:"hidden"}}>
-                <button onClick={()=>setShowCommission(p=>!p)} style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"11px 14px",background:B.inset,border:"none",cursor:"pointer",color:B.text}}>
-                  <div style={{display:"flex",alignItems:"center",gap:8}}>
-                    <span style={{fontSize:13}}>💸</span>
-                    <span style={{fontSize:12,fontWeight:700}}>Commission Rates (round trip / contract)</span>
-                  </div>
-                  <span style={{fontSize:11,color:B.textMuted}}>{showCommission?"▲ hide":"▼ edit"}</span>
-                </button>
-                {showCommission&&(
-                  <div style={{padding:"14px 16px",background:"rgba(0,0,0,0.15)",display:"flex",flexWrap:"wrap",gap:12}}>
-                    {Object.entries(commissionRates).map(([sym,rate])=>(
-                      <div key={sym} style={{display:"flex",alignItems:"center",gap:8}}>
-                        <label style={{fontSize:11,fontWeight:700,color:B.teal,minWidth:36}}>{sym}</label>
-                        <div style={{display:"flex",alignItems:"center",gap:4}}>
-                          <span style={{fontSize:12,color:B.textMuted}}>$</span>
-                          <input
-                            type="number" step="0.01" min="0" value={rate}
-                            onChange={e=>setCommissionRates(r=>({...r,[sym]:parseFloat(e.target.value)||0}))}
-                            style={{...iS,width:72,padding:"5px 8px",fontSize:12,textAlign:"right"}}/>
-                          <span style={{fontSize:11,color:B.textMuted}}>/ct</span>
-                        </div>
-                      </div>
-                    ))}
-                    <button onClick={()=>setCommissionRates({...DEFAULT_COMMISSION_RATES})} style={{fontSize:11,color:B.textMuted,background:"none",border:`1px solid ${B.border}`,borderRadius:6,padding:"4px 10px",cursor:"pointer",alignSelf:"center"}}>Reset defaults</button>
-                  </div>
-                )}
               </div>
 
               {error&&<div style={{padding:"12px 16px",borderRadius:10,background:`${B.loss}10`,border:`1px solid ${B.loss}30`,color:B.loss,fontSize:12,marginBottom:16}}>{error}</div>}
@@ -1142,24 +825,6 @@ function ImportModal({onClose,onImport,existingTrades}){
                 <div style={{fontSize:10,color:B.textMuted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:10}}>How to export your trades</div>
                 <div style={{fontSize:11,color:B.textMuted,marginBottom:12,lineHeight:1.6,padding:"8px 10px",borderRadius:8,background:"rgba(139,92,246,0.08)",border:"1px solid rgba(139,92,246,0.25)"}}>
                   <b style={{color:"#8B5CF6"}}>Options (ThinkorSwim / Schwab):</b> In thinkorswim go to Monitor → Account Statement, set the date range, then use the ☰ menu → Export to File (CSV). Or on schwab.com go to Accounts → History → Transactions → Export. Commission uses your actual Fees &amp; Comm column when present; otherwise $0.65/contract/side + est. fees.
-                </div>
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-                  <div>
-                    <div style={{fontSize:11,fontWeight:700,color:B.teal,marginBottom:6}}>Performance.csv (Recommended)</div>
-                    {["Open Tradovate platform","Go to Account → Performance","Set your date range","Click Export → Performance CSV"].map((s,i)=>(
-                      <div key={i} style={{fontSize:11,color:B.textMuted,marginBottom:4,display:"flex",gap:6}}>
-                        <span style={{color:B.teal,fontWeight:700,minWidth:14}}>{i+1}.</span>{s}
-                      </div>
-                    ))}
-                  </div>
-                  <div>
-                    <div style={{fontSize:11,fontWeight:700,color:B.blue,marginBottom:6}}>Orders.csv (Alternative)</div>
-                    {["Open Tradovate platform","Go to Account → Orders","Set your date range","Click Export → Orders CSV"].map((s,i)=>(
-                      <div key={i} style={{fontSize:11,color:B.textMuted,marginBottom:4,display:"flex",gap:6}}>
-                        <span style={{color:B.blue,fontWeight:700,minWidth:14}}>{i+1}.</span>{s}
-                      </div>
-                    ))}
-                  </div>
                 </div>
               </div>
             </>
@@ -1245,7 +910,6 @@ function ImportModal({onClose,onImport,existingTrades}){
                 <button onClick={()=>{
                   const tagged=parsed.map(t=>({...t,account_id:importAccount}));
                   const newTagged=tagged.filter(t=>!existingTrades.some(e=>
-                    (e.tradovate_id&&e.tradovate_id===t.tradovate_id)||
                     (t.asset_type==="Options"&&e.asset_type==="Options"&&e.date===t.date&&e.instrument===t.instrument&&parseFloat(e.strike)===t.strike&&String(e.expiration||"").slice(0,10)===String(t.expiration||"")&&e.option_type===t.option_type&&parseFloat(e.entry)===t.entry&&parseFloat(e.exit)===t.exit&&parseInt(e.contracts)===t.contracts)));
                   onImport(mode==="replace"?tagged:newTagged,mode);
                   onClose();
@@ -1721,6 +1385,44 @@ function EditorialHero({trades}){
   );
 }
 
+// ── Account balance line (starting balance is stored per account) ──
+function AccountBalanceLine({trades,accounts=[],activeAccount="all",setAccounts}){
+  const [edit,setEdit]=useState(false);
+  const [val,setVal]=useState("");
+  const all=activeAccount==="all";
+  const acct=all?null:accounts.find(a=>a.id===activeAccount);
+  const start=all?accounts.reduce((a,x)=>a+(x.startingBalance||0),0):(acct?.startingBalance||0);
+  const pnl=trades.reduce((a,t)=>a+(t.pnl||0),0);
+  const bal=start+pnl;
+  const usd=(n,d=2)=>(n<0?"-":"")+"$"+Math.abs(n).toLocaleString("en-US",{minimumFractionDigits:d,maximumFractionDigits:d});
+  const canEdit=!all&&!!setAccounts&&!!acct;
+  const save=()=>{const v=parseFloat(String(val).replace(/[$,\s]/g,""));if(v>0&&canEdit){setAccounts(prev=>prev.map(a=>a.id===activeAccount?{...a,startingBalance:v}:a));setVal("");setEdit(false);}};
+  const pct=start>0?pnl/start*100:null;
+  const box={display:"flex",flexWrap:"wrap",alignItems:"center",justifyContent:"space-between",gap:14,background:B.surface,border:`1px solid ${B.border}`,borderRadius:18,padding:"16px 22px",margin:"4px 0 6px",boxShadow:B.isDark?"none":"0 1px 2px rgba(14,17,22,0.03)"};
+  const lab={fontSize:11,letterSpacing:1.6,textTransform:"uppercase",color:B.textMuted,fontWeight:600};
+  const inp=(<div style={{display:"flex",gap:8,alignItems:"center"}}>
+    <input type="number" inputMode="decimal" autoFocus={edit} value={val} onChange={e=>setVal(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")save();if(e.key==="Escape")setEdit(false);}} placeholder="e.g. 10000" aria-label="Starting balance" style={{...iS,width:210,fontSize:13,padding:"8px 12px"}}/>
+    <button onClick={save} style={{padding:"8px 16px",borderRadius:10,border:"none",background:GL,color:B.onAccent,fontSize:13,fontWeight:700,cursor:"pointer"}}>Save</button>
+    {start>0&&<button onClick={()=>setEdit(false)} style={{padding:"8px 12px",borderRadius:10,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,fontSize:13,cursor:"pointer"}}>Cancel</button>}
+  </div>);
+  if(start<=0){
+    return(<div style={box}>
+      <div><div style={lab}>Account balance</div>
+        <div style={{fontSize:14,color:B.textMuted,marginTop:5}}>{canEdit?"Add your starting balance to see your account value update with every trade.":"Choose a single account at the top to set its starting balance."}</div></div>
+      {canEdit&&inp}
+    </div>);
+  }
+  return(<div style={box}>
+    <div><div style={lab}>Account balance{all?" · all accounts":""}</div>
+      <div style={{fontFamily:SERIF,fontSize:40,lineHeight:1.05,letterSpacing:-1,color:B.text,marginTop:4}}>{usd(bal)}</div></div>
+    <div style={{display:"flex",alignItems:"center",gap:22,flexWrap:"wrap"}}>
+      <div><div style={{fontSize:11,color:B.textMuted}}>Started with</div><div style={{fontSize:15,fontWeight:600,color:B.text,fontFamily:"'JetBrains Mono',monospace"}}>{usd(start,0)}</div></div>
+      <div><div style={{fontSize:11,color:B.textMuted}}>All-time</div><div style={{fontSize:15,fontWeight:700,color:pnl>=0?B.profit:B.loss,fontFamily:"'JetBrains Mono',monospace"}}>{(pnl>=0?"+":"-")+usd(Math.abs(pnl),2)}{pct!==null&&<span style={{fontSize:12,marginLeft:6,fontWeight:600}}>{(pct>=0?"+":"")+pct.toFixed(1)+"%"}</span>}</div></div>
+      {canEdit&&(edit?inp:<button onClick={()=>{setVal(String(start));setEdit(true);}} style={{padding:"7px 14px",borderRadius:10,border:`1px solid ${B.border}`,background:"transparent",color:B.textMuted,fontSize:12.5,cursor:"pointer"}}>Edit starting balance</button>)}
+    </div>
+  </div>);
+}
+
 // ── Editorial overview sections: pastel stat cards, equity + "Your edge", recent trades ──
 function EditorialOverview({trades}){
   const dk=B.isDark;
@@ -2122,6 +1824,7 @@ function Overview({trades, onGradeUpdate, session, onEdit, accounts=[], activeAc
       )}
 
       <EditorialHero trades={trades}/>
+      <AccountBalanceLine trades={trades} accounts={accounts} activeAccount={activeAccount} setAccounts={setAccounts}/>
       <EditorialOverview trades={trades}/>
     </div>
   );
@@ -7799,90 +7502,6 @@ ${recent25.join("\n")}${olderSummary}`;
 }
 
 
-// ── Tradovate Sync Modal ──────────────────────────────────────────────────────
-function TradovateSyncModal({onClose, onSync, syncing, accounts=[]}){
-  const [range,setRange]=useState("today");
-  const [from,setFrom]=useState(new Date().toISOString().slice(0,10));
-  const [to,setTo]=useState(new Date().toISOString().slice(0,10));
-  const [syncAccount,setSyncAccount]=useState("main");
-
-  const RANGES=[
-    {id:"today",    label:"Today"},
-    {id:"week",     label:"Last 7 Days"},
-    {id:"month",    label:"This Month"},
-    {id:"quarter",  label:"This Quarter"},
-    {id:"year",     label:"This Year"},
-    {id:"all",      label:"All Time"},
-    {id:"custom",   label:"Custom Range"},
-  ];
-
-  const getRange=(id)=>{
-    const now=new Date();
-    const today=now.toISOString().slice(0,10);
-    switch(id){
-      case "today":   return{from:today,to:today};
-      case "week":    {const d=new Date();d.setDate(d.getDate()-7);return{from:d.toISOString().slice(0,10),to:today};}
-      case "month":   return{from:today.slice(0,7)+"-01",to:today};
-      case "quarter": {const d=new Date();d.setMonth(d.getMonth()-3);return{from:d.toISOString().slice(0,10),to:today};}
-      case "year":    return{from:today.slice(0,4)+"-01-01",to:today};
-      case "all":     return{from:"2020-01-01",to:today};
-      default:        return{from,to};
-    }
-  };
-
-  const handleSync=()=>{
-    const r=getRange(range);
-    onSync(r.from,r.to,syncAccount);
-  };
-
-  return(
-    <div style={{position:"fixed",inset:0,background:B.overlay,zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(8px)"}}
-      onClick={onClose}>
-      <div style={{background:B.panel,border:`1px solid ${B.border}`,borderRadius:20,width:420,padding:28}}
-        onClick={e=>e.stopPropagation()}>
-        <div style={{height:3,background:GTB,borderRadius:"20px 20px 0 0",margin:"-28px -28px 24px"}}/>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
-          <div style={{fontSize:16,fontWeight:800,color:B.text}}>Tradovate Sync</div>
-          <button onClick={onClose} style={{background:"none",border:"none",color:B.textMuted,cursor:"pointer",fontSize:20}}>×</button>
-        </div>
-        <div style={{fontSize:11,color:B.textMuted,marginBottom:14}}>Select date range to sync trades</div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:16}}>
-          {RANGES.map(r=>(
-            <button key={r.id} onClick={()=>setRange(r.id)} style={{
-              padding:"10px",borderRadius:9,cursor:"pointer",fontSize:12,fontWeight:600,
-              border:`1px solid ${range===r.id?B.teal:B.border}`,
-              background:range===r.id?`${B.teal}15`:"transparent",
-              color:range===r.id?B.teal:B.textMuted,
-            }}>{r.label}</button>
-          ))}
-        </div>
-        {range==="custom"&&(
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
-            <div><label style={lS}>From</label><input type="date" value={from} onChange={e=>setFrom(e.target.value)} style={iS}/></div>
-            <div><label style={lS}>To</label><input type="date" value={to} onChange={e=>setTo(e.target.value)} style={iS}/></div>
-          </div>
-        )}
-        {/* Account selector */}
-        <div style={{marginBottom:16}}>
-          <div style={{fontSize:11,color:B.textMuted,marginBottom:8}}>Sync from account:</div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
-            {[{id:"main",label:"Live Account",color:B.teal},{id:"demo",label:"Apex Demo",color:B.purple},{id:"eval",label:"Apex Eval",color:B.blue}].map(a=>(
-              <button key={a.id} onClick={()=>setSyncAccount(a.id)} style={{
-                padding:"8px",borderRadius:8,cursor:"pointer",fontSize:11,fontWeight:600,
-                border:`1px solid ${syncAccount===a.id?a.color:B.border}`,
-                background:syncAccount===a.id?`${a.color}15`:"transparent",
-                color:syncAccount===a.id?a.color:B.textMuted,
-              }}>{a.label}</button>
-            ))}
-          </div>
-        </div>
-        <button onClick={handleSync} disabled={syncing} style={{width:"100%",padding:"12px",borderRadius:10,border:"none",background:syncing?(B.isDark?"rgba(255,255,255,0.1)":"rgba(14,17,22,0.16)"):GL,color:syncing?B.textMuted:B.onAccent,cursor:syncing?"not-allowed":"pointer",fontSize:13,fontWeight:800}}>
-          {syncing?"Syncing...":"↻ Sync Trades"}
-        </button>
-      </div>
-    </div>
-  );
-}
 
 
 // ── Best Version of You ───────────────────────────────────────────────────────
@@ -8149,7 +7768,6 @@ export default function App(){
   const [menuOpen,setMenuOpen]=useState(false);
   const [toast,setToast]=useState(null);
   const [loading,setLoading]=useState(true);
-  const [syncStatus,setSyncStatus]=useState("idle");
   const [lastImport,setLastImport]=useState(null);
   const [strategies,setStrategies]=useState([]);
   const [accounts,setAccounts]=useState(()=>{
@@ -8165,8 +7783,6 @@ export default function App(){
     return [{id:"main",label:"Live Account",type:"live",color:"#00D4A8",startingBalance:0}];
   });
   const [activeAccount,setActiveAccount]=useState("main"); // idle | syncing | connected | error
-  const [showSyncModal,setShowSyncModal]=useState(false);
-  const [syncRange,setSyncRange]=useState({from:"",to:""});
 
   useEffect(()=>{
     supabase.auth.getSession().then(({data})=>setSession(data.session));
@@ -8202,104 +7818,6 @@ export default function App(){
     try{localStorage.setItem("pref_tca_accounts_v1",JSON.stringify(accounts));}catch(e){}
   },[accounts]);
 
-  // ── Tradovate Auto Sync ────────────────────────────────────────────────────
-  const syncTradovate = useCallback(async (fromDate=null, toDate=null, accountId="main") => {
-    if (!session) return;
-    setSyncStatus("syncing");
-    try {
-      // Force fresh token for this account
-      sessionStorage.removeItem(`tv_token_${accountId}`);
-      sessionStorage.removeItem(`tv_expiry_${accountId}`);
-      const token = await getToken(accountId);
-      if (!token) { setSyncStatus("error"); return; }
-      // Pass date range directly to proxy
-      const execs = await fetchClosedTrades(token, fromDate, toDate, accountId);
-      console.log("Synced trades from Tradovate:", execs.length);
-      if (!execs.length) { setSyncStatus("connected"); showT("Tradovate connected — no new trades in range"); return; }
-
-      // Get existing tradovate_ids to avoid duplicates
-      const { data: existing } = await supabase
-        .from("trades")
-        .select("tradovate_id")
-        .eq("user_id", session.user.id)
-        .not("tradovate_id", "is", null);
-
-      const existingIds = new Set((existing || []).map(e => e.tradovate_id));
-
-      // Filter out already imported trades
-      const newExecs = execs.filter(e => {
-        const tid = e.tradovate_id || String(e.id);
-        return !existingIds.has(tid);
-      });
-
-      console.log("New trades to insert:", newExecs.length, "of", execs.length);
-
-      if (newExecs.length > 0) {
-        const toNum=(v)=>{const n=parseFloat(v);return isNaN(n)?null:n;};
-        const newTrades = newExecs.map(e => {
-          const built = execToTrade(e);
-          built.grade = autoGrade(built, strategies);
-          // Explicitly build DB row — never spread internal flags into Supabase
-          return {
-            user_id:      session.user.id,
-            day:          dayName(built.date),
-            date:         built.date,
-            account_id:   built.account_id||"main",
-            instrument:   built.instrument,
-            direction:    built.direction,
-            contracts:    parseInt(built.contracts)||1,
-            entry:        toNum(built.entry)??0,
-            exit:         toNum(built.exit)??0,
-            stop_loss:    toNum(built.stop_loss),
-            take_profit:  toNum(built.take_profit),
-            pnl:          toNum(built.pnl)??0,
-            rr:           toNum(built.rr),
-            result:       built.result||"Win",
-            setup:        built.setup||"Auto-synced",
-            strategy:     built.strategy||"",
-            grade:        built.grade||"B",
-            session:      built.session||"AM",
-            notes:        built.notes||"",
-            tradovate_id: built.tradovate_id||null,
-          };
-        });
-        const { data, error } = await supabase.from("trades").insert(newTrades).select();
-        if (error) {
-          console.error("Supabase insert error:", error);
-          showT("Sync failed: "+error.message, "error");
-          setSyncStatus("error");
-          return;
-        }
-        if (data?.length) {
-          setTrades(ts => [...(ts.filter(t => !t.id?.startsWith("s"))), ...data]);
-          showT(`${data.length} new trade${data.length > 1 ? "s" : ""} synced from Tradovate ✓`);
-        }
-      } else {
-        showT("Already up to date — no new trades found");
-      }
-      setSyncStatus("connected");
-    } catch (e) {
-      console.error("Sync error:", e);
-      setSyncStatus("error");
-    }
-  }, [session]);
-
-  // Check connection on load, but don't auto-import trades
-  useEffect(() => {
-    if (!session || loading) return;
-    // Just verify connection on load
-    (async () => {
-      setSyncStatus("syncing");
-      try {
-        sessionStorage.removeItem("tv_token");
-        sessionStorage.removeItem("tv_expiry");
-        const token = await getToken("main");
-        if (token) setSyncStatus("connected");
-        else setSyncStatus("error");
-      } catch(e) { setSyncStatus("error"); }
-    })();
-  }, [session, loading]);
-
   useEffect(()=>{const t=setInterval(()=>setTime(new Date()),1000);return()=>clearInterval(t);},[]);
 
   const showT=(msg,type="success")=>{setToast({msg,type});setTimeout(()=>setToast(null),4000);};
@@ -8329,7 +7847,6 @@ export default function App(){
       session:       trade.session||"AM",
       notes:         trade.notes||"",
       tp_category:   trade.tp_category||null,
-      tradovate_id:  trade.tradovate_id||null,
       asset_type:    trade.asset_type==="Options"?"Options":"Futures",
       option_type:   trade.asset_type==="Options"?(trade.option_type||"Call"):null,
       strike:        trade.asset_type==="Options"?toNum(trade.strike):null,
@@ -8355,7 +7872,7 @@ export default function App(){
   const handleClearImported=async(accountId=null)=>{
     const toDelete=accountId
       ?trades.filter(t=>t.account_id===accountId)
-      :trades.filter(t=>!t.tradovate_id||String(t.id).startsWith("perf_")||String(t.id).startsWith("imp_"));
+      :trades.filter(t=>String(t.id).startsWith("perf_")||String(t.id).startsWith("imp_"));
     if(!toDelete.length){showT("No imported trades found.");return;}
     const msg="Delete "+toDelete.length+" imported trade"+(toDelete.length!==1?"s":"")+(accountId?` from "${accountId}"`:"")+"? This cannot be undone.";
     if(!confirm(msg))return;
@@ -8393,12 +7910,6 @@ export default function App(){
     showT(`${newData.length} trades imported and saved ✓`);
   };
 
-  const handleManualSync=async(from,to,accountId="main")=>{
-    setShowSyncModal(false);
-    showT(`Connecting to Tradovate (${accountId})...`);
-    await syncTradovate(from,to,accountId);
-  };
-
   const handleGradeUpdate=async(tradeId, newGrade)=>{
     await supabase.from("trades").update({grade:newGrade}).eq("id",tradeId);
     setTrades(ts=>ts.map(t=>t.id===tradeId?{...t,grade:newGrade}:t));
@@ -8421,9 +7932,6 @@ export default function App(){
   const nyTime=time.toLocaleTimeString("en-US",{timeZone:"America/New_York",hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false});
   const totalPnl=trades.reduce((a,t)=>a+t.pnl,0);
   const hasSample=trades.some(t=>t.id?.startsWith("s"));
-
-  const syncDot = syncStatus==="connected"?B.teal:syncStatus==="syncing"?B.blue:syncStatus==="error"?B.loss:"#444";
-  const syncLabel = syncStatus==="connected"?"Live":syncStatus==="syncing"?"Syncing...":syncStatus==="error"?"Sync Error":"Connecting";
 
   if(!session)return <LoginScreen/>;
   if(loading)return(<div style={{minHeight:"100vh",background:B.bg,display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{fontSize:14,color:B.textMuted}}>Loading your trades...</div></div>);
@@ -8461,7 +7969,6 @@ h1,h2,.tca-serif{font-family:'Instrument Serif',Georgia,serif!important;font-wei
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;}}
 `}</style>
     {toast&&(<div style={{position:"fixed",top:20,right:24,zIndex:200,padding:"12px 20px",borderRadius:10,background:toast.type==="error"?"rgba(24,12,16,0.85)":"rgba(10,24,22,0.85)",border:"1px solid "+(toast.type==="error"?B.loss+"55":B.teal+"55"),color:toast.type==="error"?B.loss:B.teal,fontWeight:700,fontSize:13,boxShadow:"0 12px 40px rgba(0,0,0,0.45)",backdropFilter:"blur(12px)",WebkitBackdropFilter:"blur(12px)"}}>{toast.msg}</div>)}
-    {showSyncModal&&<TradovateSyncModal onClose={()=>setShowSyncModal(false)} onSync={handleManualSync} syncing={syncStatus==="syncing"} accounts={accounts}/>}
     {showForm&&<TradeFormModal onClose={()=>{setShowForm(false);setEditTrade(null);}} onSave={handleSave} editTrade={editTrade}/>}
     {showImport&&<ImportModal onClose={()=>setShowImport(false)} onImport={handleImport} existingTrades={trades}/>}
     {delTrade&&<DeleteConfirm trade={delTrade} onConfirm={handleDelete} onCancel={()=>setDelTrade(null)}/>}
@@ -8487,7 +7994,6 @@ h1,h2,.tca-serif{font-family:'Instrument Serif',Georgia,serif!important;font-wei
               {(()=>{const item=(label,fn,color)=>(<button key={label} onClick={()=>{setMenuOpen(false);fn();}} style={{display:"block",width:"100%",textAlign:"left",padding:"10px 12px",borderRadius:10,border:"none",background:"transparent",color:color||B.text,cursor:"pointer",fontSize:13,fontWeight:500,fontFamily:SANS}}>{label}</button>);
                 return(<>
                   {item("Import trades (CSV)",()=>setShowImport(true))}
-                  {item("Sync Tradovate",()=>setShowSyncModal(true))}
                   {item("Export PDF report",()=>setShowReport(true))}
                   {hasSample&&item("Clear sample data",()=>setTrades([]))}
                   {item("Clear imported trades",()=>handleClearImported(),B.loss)}
@@ -8498,8 +8004,7 @@ h1,h2,.tca-serif{font-family:'Instrument Serif',Georgia,serif!important;font-wei
                   {item("Sign out",()=>{const uid=session?.user?.id;if(uid){localStorage.removeItem("tca_aicoach_"+uid);localStorage.removeItem("tca_patterns_"+uid);}supabase.auth.signOut();},B.textMuted)}
                   <div style={{height:1,background:B.border,margin:"6px 4px"}}/>
                   <div style={{padding:"8px 12px",display:"flex",alignItems:"center",gap:8,fontSize:11.5,color:B.textMuted}}>
-                    <span style={{width:7,height:7,borderRadius:"50%",background:syncDot,flexShrink:0}}/>Tradovate {syncLabel}
-                    <span style={{marginLeft:"auto",fontFamily:"'JetBrains Mono',monospace"}}>{nyTime} ET</span>
+                    <span style={{fontFamily:"'JetBrains Mono',monospace"}}>{nyTime} ET</span>
                   </div>
                   <div style={{padding:"0 12px 8px",fontSize:11,color:B.textDim}}>{trades.filter(t=>!t.id?.startsWith("s")).length} trades logged{lastImport?` · last import ${lastImport}`:""}</div>
                 </>);})()}
@@ -8524,7 +8029,7 @@ h1,h2,.tca-serif{font-family:'Instrument Serif',Georgia,serif!important;font-wei
           <button onClick={()=>setShowImport(true)} style={{padding:"9px 16px",borderRadius:999,border:`1px solid ${B.border}`,background:B.isDark?(B.isDark?"rgba(255,255,255,0.05)":"rgba(14,17,22,0.08)"):"#FFFFFF",color:B.text,cursor:"pointer",fontSize:12.5,fontWeight:600,fontFamily:SANS}}>Import CSV</button>
         </div>
       </div>
-      {hasSample&&(<div style={{marginBottom:18,padding:"10px 16px",borderRadius:10,background:"rgba(79,142,247,0.07)",border:"1px solid rgba(79,142,247,0.2)",fontSize:12,color:B.blue,display:"flex",alignItems:"center",justifyContent:"space-between"}}><span>Viewing sample data. Import your Tradovate CSV or log a real trade to get started.</span><button onClick={()=>setTrades([])} style={{background:"none",border:"none",color:B.blue,cursor:"pointer",fontWeight:700,fontSize:12,textDecoration:"underline"}}>Clear it</button></div>)}
+      {hasSample&&(<div style={{marginBottom:18,padding:"10px 16px",borderRadius:10,background:"rgba(79,142,247,0.07)",border:"1px solid rgba(79,142,247,0.2)",fontSize:12,color:B.blue,display:"flex",alignItems:"center",justifyContent:"space-between"}}><span>Viewing sample data. Import your ThinkorSwim / Schwab CSV or log a real trade to get started.</span><button onClick={()=>setTrades([])} style={{background:"none",border:"none",color:B.blue,cursor:"pointer",fontWeight:700,fontSize:12,textDecoration:"underline"}}>Clear it</button></div>)}
       <div key={active} className="tca-page">
       {active==="overview"&&<Overview trades={activeAccount==="all"?trades:trades.filter(t=>t.account_id===activeAccount)} onGradeUpdate={handleGradeUpdate} session={session} accounts={accounts} activeAccount={activeAccount} setAccounts={setAccounts}/>}
       {active==="journal"&&<Journal trades={activeAccount==="all"?trades:trades.filter(t=>t.account_id===activeAccount)} onEdit={handleEdit} onDelete={setDelTrade} onGradeUpdate={handleGradeUpdate} onAnalysisSave={handleAnalysisSave}/>}
